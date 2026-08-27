@@ -93,6 +93,9 @@ def check(plugin_root):
     print(f"已注册命令: {sorted(existing_cmds)}")
     print()
 
+    # v1.22 病例驱动断言（在汇总打印前执行）
+    check_v122(plugin_root, errors, warnings)
+
     if errors:
         print(f"❌ 错误 ({len(errors)}):")
         for e in errors:
@@ -107,6 +110,49 @@ def check(plugin_root):
 
     print()
     return 1 if errors else 0
+
+
+# ─── v1.22（顾问修正案 A'）：病例驱动的文档断言 ──────────────
+# 高精度 → 阻断；中精度 → 仅警告（Goodhart/误报防线：宁可漏报不误报）
+
+# 死词短语表（数据化：半年无命中即标废弃——检查器自身的衰变管理）
+# 每条必须注释真实病例，无病例不立规则
+DEAD_PHRASES = [
+    ("自动触发的 skill", "病例：v1.1 砍 skills，小白指南残留教用户期待不存在的组件（2026-08-27 审计）"),
+    ("characterization test", "病例：WORKFLOW 流程图残留 skill 自动提示（同上）"),
+]
+
+
+def check_v122(plugin_root, errors, warnings):
+    # ① 高精度（block）：REQUIRED_COMMANDS 与命令目录漂移
+    # 病例：v1.17 发现 self_heal 恢复清单漏 trace/resume（代码内列表过期于实况）
+    heal = os.path.join(plugin_root, "hooks", "scripts", "self_heal.py")
+    if os.path.isfile(heal):
+        src = open(heal, encoding="utf-8").read()
+        m = re.search(r"REQUIRED_COMMANDS\s*=\s*\[(.*?)\]", src, re.DOTALL)
+        if m:
+            listed = set(re.findall(r'"(regress:[\w:]+)"', m.group(1)))
+            actual = {os.path.basename(f)[:-3]
+                      for f in glob.glob(os.path.join(plugin_root, "commands", "*.md"))}
+            drift = listed ^ actual
+            if drift:
+                errors.append(f"REQUIRED_COMMANDS 与命令目录漂移: {sorted(drift)}"
+                              "（病例：v1.17 漏 trace/resume）")
+    # ② 中精度（warn）：死词短语（文档侧）
+    # 病例见 DEAD_PHRASES 注释；未来半年零命中的条目删除并记录
+    for md in glob.glob(os.path.join(plugin_root, "**", "*.md"), recursive=True):
+        text = open(md, encoding="utf-8").read()
+        for phrase, case in DEAD_PHRASES:
+            if phrase in text and "DEAD_PHRASES" not in text:  # 本文件自身豁免
+                warnings.append(f"{os.path.relpath(md, plugin_root)} 含死词「{phrase}」——{case}")
+    # ③ 高精度（block）：README 生成区与实况一致（派生优于断言）
+    gen = os.path.join(plugin_root, "scripts", "gen_reference.py")
+    if os.path.isfile(gen) and os.path.isfile(os.path.join(plugin_root, "README.md")):
+        import subprocess as _sp
+        r = _sp.run([sys.executable, gen, "--check"], capture_output=True,
+                    text=True, cwd=plugin_root, timeout=30)
+        if r.returncode != 0:
+            errors.append("README 生成区与实况不一致: " + r.stderr.strip())
 
 
 def rel(path, root):

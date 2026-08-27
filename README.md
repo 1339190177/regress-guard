@@ -118,3 +118,28 @@
 代码全局装一次（`~/.zcode/`），数据各项目独立（`项目/.regress/`）。
 
 详见 [小白指南](docs/小白指南.md) · [WORKFLOW](docs/WORKFLOW.md)
+
+<!-- generated: reference start · 本区由 scripts/gen_reference.py 生成，勿手改 -->
+
+**实况（由 gen_reference.py 生成，勿手改本区）**
+
+- 命令：14 个 · hook 注册：14 个事件条目 · 测试函数：255 个
+
+| 命令 | 说明 |
+|---|---|
+| `/regress:bypass` | 紧急绕过回归卡点（限时 + 审计日志），用于 hotfix 等紧急场景 |
+| `/regress:evolve` | 遇到难点时查社区经验→适配项目→沉淀为知识库（不再重复查） |
+| `/regress:finish` | 收尾流水线：track 回写 → verify 全证据 → 状态推进 → 汇总报告（一条命令走完收尾，人只出现在决策点） |
+| `/regress:init` | 初始化项目的 .regress/ 数据目录（代码已在全局级安装，这里只建数据） |
+| `/regress:install` | 一键安装 regress-guard 到用户级（零配置，装一次全局生效） |
+| `/regress:learn` | 分析历史+检测框架规则，输出项目洞察，写入 AGENTS.md |
+| `/regress:plan` | 需求→解析→消歧→改动清单。AI 先补全上下文再动手（不问能推断的，只问关键分歧） |
+| `/regress:quick` | 快速模式——合并 plan+track 一步到位（适合个人项目/小改动） |
+| `/regress:resume` | 从 .regress/ 产物层单侧重建工作现场（断点续作，不依赖对话历史） |
+| `/regress:trace` | 查看交付链：需求→会话→事件→提交 的可追溯视图（文本版 Inspector） |
+| `/regress:track` | 对比 git diff 发现 F3 并直接回写（AI 完成修改后自动执行，不需用户手动触发） |
+| `/regress:uninstall` | 卸载 regress-guard（清理用户级配置 + hook + skill + 命令） |
+| `/regress:update` | 检查并更新 regress-guard 到最新版（手动触发；SessionStart 也会自动检测） |
+| `/regress:verify` | 跑测试预览结果（提交时 hook 也会自动跑；测试失败 AI 应自行修复重跑） |
+
+<!-- generated: reference end -->
