@@ -20,6 +20,18 @@
 - 完整工作流：[docs/WORKFLOW.md](docs/WORKFLOW.md)
 - 健康检查：`bash validate.sh`（应 5/5）· 单元测试：`python3 -m pytest tests/ -q`（应全绿）
 
+## 与 ZCode 原生能力的关系（分层，不重复）
+
+本插件遵循第一原则"不做 ZCode 已有的，只做增强层"——原生能力是战友不是对手：
+
+| ZCode 原生 | 本插件的关系 | 分层逻辑 |
+|---|---|---|
+| 计划模式（EnterPlanMode） | **互补** | 宿主计划模式管**会话权限**（只读探索，批准后放开工具）；本插件 planning 状态管**产物生命周期**（清单未批准，边界守卫拦编辑、批准落 approved.at、临行进否决窗）。一个绑会话、一个绑清单，可叠加：计划阶段建议在宿主计划模式下探索 |
+| 智能体（Agent 工具） | **复用** | /regress:plan 步骤 3 的 A/B/C 并行分析（需求理解/改动点/影响面）就是直接委派宿主智能体 |
+| TodoWrite | **分层** | 会话内待办（易失）vs 清单 manifest（跨会话、门禁绑定） |
+| hooks 事件系统 | **复用** | 全部强制力（11 个注册）骑在宿主 PreToolUse/PostToolUse/Stop/SessionStart 事件上——"外挂宪法"的字面含义 |
+| skills / MCP | **复用** | second-opinion 技能、advisor MCP；verify 报告可接 document-skills，GUI 回归可接 browser-use |
+
 ## 可选：第二意见顾问生态
 
 部分注入文本会建议调用 `mcp__advisor__consult`（外部第二意见工具）——这是**可选生态**：
