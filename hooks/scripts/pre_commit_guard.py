@@ -9,6 +9,8 @@
   3. bypass 有效？记日志 + exit 0
   4. staged 文件都在清单内？否则 exit 2
   5. 自己跑测试：pass→exit0+标done / fail→exit2 / skip→降级检查status
+     （5.5 V门禁：open 禁提交；5.6 证据律：locked 门禁复验 verify 命令，
+       human_check: 前缀验化石存在性不复跑感官）
 
 退出码：0=放行，2=阻断
 """

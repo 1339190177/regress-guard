@@ -15,6 +15,7 @@
 """
 import sys
 import os
+import re
 import json
 import glob
 
@@ -186,20 +187,46 @@ def find_readme_template():
     return None
 
 
-def backfill_project_readme(regress_dir):
-    """老项目自动升级（v1.16）：.regress/ 在而 README 缺 → 从模板补零号入口。
+_README_MARKER = re.compile(r"generated-by:\s*regress-guard\s*v(\d[\d.]*)")
 
-    幂等且**永不覆盖**——README 可能已被按项目定制。返回补写说明或 None。
+
+def _tpl_version(tpl_path):
+    try:
+        with open(tpl_path, encoding="utf-8") as f:
+            m = _README_MARKER.search(f.read())
+        return m.group(1) if m else ""
+    except (IOError, OSError):
+        return ""
+
+
+def backfill_project_readme(regress_dir):
+    """老项目自动升级（v1.16 补 / v1.21 刷新）：.regress/ 的零号 README。
+
+    三分法：缺失→补；带 generated-by 标记且版本旧→刷新（机器写的，安全）；
+    无标记（人类定制）或版本不旧→**永不动**。
     """
     readme = os.path.join(regress_dir, "README.md")
-    if os.path.exists(readme):
-        return None
     tpl = find_readme_template()
     if not tpl:
         return None
-    import shutil
-    shutil.copy2(tpl, readme)
-    return f"老项目升级·补零号入口: {readme}"
+    if not os.path.exists(readme):
+        import shutil
+        shutil.copy2(tpl, readme)
+        return f"老项目升级·补零号入口: {readme}"
+    try:
+        with open(readme, encoding="utf-8") as f:
+            existing = f.read()
+    except (IOError, OSError):
+        return None
+    m = _README_MARKER.search(existing)
+    if not m:
+        return None  # 人类定制（或无标记）——永不覆盖
+    tpl_ver = _tpl_version(tpl)
+    if tpl_ver and _ver_gt(tpl_ver, m.group(1)):
+        import shutil
+        shutil.copy2(tpl, readme)
+        return f"老项目升级·刷新机器生成的 README v{m.group(1)}→v{tpl_ver}: {readme}"
+    return None
 
 
 def _active_manifest_sentinel():

@@ -132,3 +132,45 @@ def test_sentinel_provisional(tmp_path, monkeypatch):
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
     out = sh._active_manifest_sentinel()
     assert out and "🚀 R1" in out and "否决窗" in out and "--cancel" in out
+
+
+# ── v1.21：README 刷新三分法（机器写的旧版才刷新，定制永不动）──
+
+_TPL_V121 = "# 先读我\n机器版\n<!-- generated-by: regress-guard v1.21.0 -->\n"
+
+
+def _tpl_with_marker(tmp_path, monkeypatch):
+    sh = _load_heal(tmp_path, monkeypatch)
+    tpl = tmp_path / "hookhome" / "templates" / "regress-dir-readme.md"
+    tpl.write_text(_TPL_V121, encoding="utf-8")
+    return sh
+
+
+def test_refresh_stale_machine_readme(tmp_path, monkeypatch):
+    """带旧版本标记（机器生成）→ 自动刷新到新版。"""
+    sh = _tpl_with_marker(tmp_path, monkeypatch)
+    rg = tmp_path / "proj" / ".regress"
+    rg.mkdir(parents=True)
+    (rg / "README.md").write_text(
+        "旧机器版\n<!-- generated-by: regress-guard v1.16.0 -->\n", encoding="utf-8")
+    note = sh.backfill_project_readme(str(rg))
+    assert note and "刷新" in note and "v1.16.0→v1.21.0" in note
+    assert "机器版" in (rg / "README.md").read_text(encoding="utf-8")
+
+
+def test_no_marker_never_touched_even_if_stale_content(tmp_path, monkeypatch):
+    """无标记（人类定制）→ 即便内容是旧措辞也永不动。"""
+    sh = _tpl_with_marker(tmp_path, monkeypatch)
+    rg = tmp_path / "proj" / ".regress"
+    rg.mkdir(parents=True)
+    (rg / "README.md").write_text("我的定制版（旧措辞）", encoding="utf-8")
+    assert sh.backfill_project_readme(str(rg)) is None
+    assert "我的定制版" in (rg / "README.md").read_text(encoding="utf-8")
+
+
+def test_same_version_no_refresh(tmp_path, monkeypatch):
+    sh = _tpl_with_marker(tmp_path, monkeypatch)
+    rg = tmp_path / "proj" / ".regress"
+    rg.mkdir(parents=True)
+    (rg / "README.md").write_text(_TPL_V121, encoding="utf-8")
+    assert sh.backfill_project_readme(str(rg)) is None

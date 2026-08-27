@@ -102,7 +102,7 @@
 
 | 模式 | 步骤 | 适用 |
 |------|------|------|
-| full | plan→track→commit | 团队/大需求 |
+| full | 说需求→批准卡片→实施→finish→commit（门禁发 done） | 团队/大需求 |
 | fast | 改代码→quick→commit | 个人/小改动 |
 | bypass | bypass→commit | 紧急 hotfix |
 

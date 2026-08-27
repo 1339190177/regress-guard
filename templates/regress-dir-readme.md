@@ -26,3 +26,6 @@
 
 断点续作直接跑 `/regress:resume`（从本目录产物单侧重建现场）。
 其他：decisions.md=决策史（否决过的方案别重走）；journal/=考古地层；history.jsonl=门禁决策史。
+
+---
+<!-- generated-by: regress-guard v1.21.0 · 机器生成；人工定制请删除本行（删除后永不被自动覆盖/刷新） -->
