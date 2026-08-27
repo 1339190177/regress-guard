@@ -1,0 +1,108 @@
+# regress-guard
+
+> AI 辅助开发的测试回归卡点 + 反脆弱控制体（四公理架构，版本见 plugin.json）
+>
+> **先读思想**：[docs/PHILOSOPHY.md](docs/PHILOSOPHY.md)——十二条设计哲学与它们背后的真实教训。功能会过时，思想不会。
+
+## 安装
+
+对 AI 说 `/regress:install`，或运行 `bash install.sh`。
+
+## 五分钟上手
+
+1. **环境**：ZCode 客户端（hooks/commands 机制）+ Python 3.10+
+2. **安装**：`bash install.sh`（或对 AI 说 `/regress:install`）
+3. **接入项目**：任意项目里对 AI 说 `/regress:init`
+4. **日常**：说需求 → AI 出计划卡片 → 你「批准/修改/取消」→ 开工；
+   提交时 hook 自动跑测试拦问题；卡住看项目里的 `.regress/README.md`
+
+- 人类使用手册：[docs/小白指南.md](docs/小白指南.md)——你只需要会说三类话
+- 完整工作流：[docs/WORKFLOW.md](docs/WORKFLOW.md)
+- 健康检查：`bash validate.sh`（应 5/5）· 单元测试：`python3 -m pytest tests/ -q`（应全绿）
+
+## 可选：第二意见顾问生态
+
+部分注入文本会建议调用 `mcp__advisor__consult`（外部第二意见工具）——这是**可选生态**：
+
+- **未安装顾问**：AI 收到降级提示（自行判断并标注「未获第二意见」），全部核心门禁不受影响
+- **一票关闭**：`REGRESS_AUTO_CONSULT=off`
+- 设计哲学：顾问有一票否决权、无一票批准权（见 `commands/regress:plan.md` 步骤 5a）——
+  意见只注入文本、永不执行
+
+## 四公理架构（v1.8：基于脆弱性前置的分布式认知控制论）
+
+| 公理 | 机制 | 强制力 |
+|------|------|--------|
+| **一·脆弱性前置** | 清单 `fragile_points` 挂牌（open/locked/flagged）；verify 命令拿证据；环境指纹 env.lock.json 漂移检测 | open 状态 **hook 阻断提交** |
+| **二·认知物质化** | 决策链写 `.regress/decisions.md`；文件指纹（mtime+size）——读后被外部改过禁止盲改 | 指纹不匹配 **hook 阻断修改** |
+| **三·考古持久化** | 失败/风险动作/用户纠正自动埋入 `.regress/journal/`（append-only，随 git 入库）；/regress:learn 挖跨会话重复失败 | 自动、无感、不可关闭（REGRESS_JOURNAL=off 除外） |
+| **四·建议执行分离** | 执行阀：mkfs/dd if=/force push/DROP/TRUNCATE/chmod -R 777/项目外 rm -rf 需显式令牌；顾问意见只注入文本、永不执行 | 无令牌 **hook 阻断**（令牌 `REGRESS_CONFIRM=YES`） |
+
+一句话：不要指望变聪明，要指望变死板——灰尘对得上（指纹）、失败刻在石头上（地层）、拆弹要输密码（令牌）、未挂牌的脆弱点不许出门（V 门禁）。
+
+## 核心能力（全部有 hook 强制力）
+
+| 能力 | 实现方式 | 什么时候触发 |
+|------|---------|------------|
+| **commit 门禁** | hook 自跑测试，exit 2 阻断 | git commit 时 |
+| **F3 追踪** | git diff 对比清单 | /regress:track |
+| **先读后改** | hook 阻断（ratio=2）+ 文件指纹复核 | Edit/Write 时 |
+| **pre-mortem** | Stop hook 注入提醒 | 改≥3 文件时 |
+| **自愈+升级** | SessionStart hook | ZCode 启动时 |
+| **需求入口检查** | UserPromptSubmit hook | 用户输入时 |
+| **提交观测** | git post-commit 钩子（静默/自禁用/monorepo 感知） | 任何来源的提交，含 IDE/终端 |
+| **覆盖率信号** | jest --coverage 自动采集 | 每次门禁测试 |
+| **经验注入** | 启动时摘要注入（防重复门） | 项目规律变化时 |
+| **执行阀** | PreToolUse(Bash) 令牌制 | 不可逆命令时 |
+| **开发边界守卫** | PreToolUse(Edit/Write) 事前拦截越界编辑；track 回写即扩界 | 活跃清单存在时 |
+| **计划审批落产物** | planning 清单边界内拦编辑；plan_approve.py 转写 approved.{at,note} + base_head 漂移检查；人类可直接填 approved.at（产物直通） | /regress:plan 步骤 5 |
+| **现场重建** | /regress:resume 从 .regress/ 产物层单侧重建工作现场（不依赖对话） | 断点续作时 |
+| **受阻一等状态** | plan_approve.py --block 四问落产物（阻塞/已试/为何不能绕/需要人类什么）；受阻期间边界守卫拦编辑；--unblock 解阻 | 实施卡住时 |
+| **假设失效化石** | 推测被实测证伪→追加 was→reality→evidence + journal add assumption_broken | verify 证伪假设时 |
+| **项目禁改区** | config boundary.forbidden 冻结区通配——与任务无关任何状态都拦；逃生口统一 /regress:bypass（赦后记债） | 编辑冻结区时 |
+| **赦免权普适化** | bypass_until 与 commit 门禁同源，边界/提交类流程闸统一认；**不可赦名单两条**：执行阀（物理不可逆，逐次令牌）+ 先读后改（防盲改，读文件成本≈10s，赦它省时间只会引雷） | bypass 有效期内 |
+| **解析单一来源** | lib/manifest_fields.py 统一 frontmatter 读取与可编辑性判定；validate 架构守卫保证块正则不出 lib | 维护时 |
+| **感官证据（AVS）** | sensory 脆弱点问人只收布尔 → human_check 化石；门禁验化石存在性不复跑感官；拓扑新增 oracle 类（测试替身保真度） | 终验/提交时 |
+| **顾问预审·临行** | 计划卡片送顾问预审（一票否决权/无一票批准权）；预授权+无异议 → --provisional 临行进否决窗，哨兵标 🚀 | /regress:plan 步骤 5a |
+| **活跃清单哨兵** | SessionStart 注入进行中任务（id/status/open 数/受阻 need）→ 指路 /regress:resume | 每次会话启动 |
+| **老项目自动迁移** | SessionStart self_heal 检测 .regress/ 缺零号 README → 从模板幂等补写（永不覆盖定制版） | 每次会话启动 |
+| **失忆读者层** | 清单正文写给断上下文的读者：实施顺序一步一响（可观察里程碑）+ 环境准备 + 报错自救（rescue 字段） | /regress:plan 步骤 4.7 |
+| **考古地层** | 探测器自动 append 到 journal/ | 每次失败/风险/纠正 |
+
+## 命令
+
+| 命令 | 作用 |
+|------|------|
+| `/regress:install` / `uninstall` / `update` | 安装/卸载/升级 |
+| `/regress:init` | 初始化项目 .regress/ |
+| `/regress:plan` | 需求解析 + 改动清单 |
+| `/regress:track` | 发现 F3 + 回写 |
+| `/regress:verify` | 跑测试 |
+| `/regress:quick` | 快速模式 |
+| `/regress:bypass` | 紧急绕过 |
+| `/regress:learn` | 分析历史 + 框架规则 → 写入 AGENTS.md |
+| `/regress:trace` | 交付链视图（意图→过程→产出） |
+| `/regress:resume` | 断点续作：产物层单侧重建现场 |
+| `/regress:finish` | 收尾流水线：track→verify→状态推进→报告 |
+| `/regress:evolve` | 查社区 → 适配 → 沉淀到知识库 |
+
+## 三种工作密度
+
+| 模式 | 步骤 | 适用 |
+|------|------|------|
+| full | plan→track→commit | 团队/大需求 |
+| fast | 改代码→quick→commit | 个人/小改动 |
+| bypass | bypass→commit | 紧急 hotfix |
+
+## 配置
+
+`.regress/config.json`：
+```json
+{"strict": true, "read_before_edit_ratio": 2}
+```
+
+## 安装架构
+
+代码全局装一次（`~/.zcode/`），数据各项目独立（`项目/.regress/`）。
+
+详见 [小白指南](docs/小白指南.md) · [WORKFLOW](docs/WORKFLOW.md)
