@@ -1,0 +1,422 @@
+#!/usr/bin/env python3
+"""SessionStart 自愈脚本——每次 ZCode 启动时检查 regress-guard 文件完整性。
+
+检查项：
+  1. ~/.zcode/regress-guard-hooks/launcher.js 是否存在
+  2. ~/.zcode/regress-guard-hooks/pre_commit_guard.py 是否存在
+  3. ~/.zcode/regress-guard-hooks/lib/*.py 是否完整
+  4. ~/.zcode/skills/ 下的 3 个 skill 是否存在
+  5. config.json 中 hook 是否注册
+
+如果发现缺失，尝试从源目录自动修复。
+如果有字段缺失但无法修复，输出警告（通过 additionalContext 注入对话）。
+
+被 SessionStart hook 调用，输出 JSON 到 stdout。
+"""
+import sys
+import os
+import json
+import glob
+
+
+def _ver_gt(a, b):
+    """比较语义版本 a > b（如 '0.6.0' > '0.5.0'）。"""
+    def parse(v):
+        try:
+            return tuple(int(x) for x in v.split("."))
+        except (ValueError, AttributeError):
+            return (0, 0, 0)
+    return parse(a) > parse(b)
+
+
+ZCODE_HOME = os.path.expanduser("~/.zcode")
+HOOK_HOME = os.path.join(ZCODE_HOME, "regress-guard-hooks")
+SKILLS_DIR = os.path.join(ZCODE_HOME, "skills")
+COMMANDS_DIR = os.path.join(ZCODE_HOME, "commands")
+CONFIG_FILE = os.path.join(ZCODE_HOME, "cli", "config.json")
+
+# 源目录（尝试多个位置）
+SOURCE_CANDIDATES = [
+    os.path.join(ZCODE_HOME, "workspace", "default", "regress-guard"),
+    os.path.join(os.getcwd(), "regress-guard"),
+    # 从 hook 脚本自身位置反推（hook 脚本在 regress-guard/hooks/scripts/lib/ 下）
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+    # 常见开发路径
+    os.path.join(os.path.expanduser("~"), "regress-guard"),
+    os.path.join(os.path.expanduser("~"), "projects", "regress-guard"),
+]
+
+REQUIRED_HOOK_FILES = ["launcher.js", "pre_commit_guard.py", "read_before_edit_guard.py", "prompt_intercept.py", "reflection_check.py", "fail_watch.py"]
+REQUIRED_LIB_FILES = [
+    "manifest_parser.py", "git_diff_analyzer.py",
+    "test_runner.py", "history.py", "filelock.py", "self_heal.py",
+    "cochange_rules.py"
+]
+REQUIRED_COMMANDS = [
+    "regress:init", "regress:plan", "regress:track", "regress:verify",
+    "regress:quick", "regress:bypass", "regress:learn", "regress:evolve",
+    "regress:trace", "regress:resume", "regress:finish",
+    "regress:install", "regress:uninstall", "regress:update"
+]
+
+README_TEMPLATE_NAME = "regress-dir-readme.md"
+
+
+def find_source():
+    """找到插件源目录。"""
+    for path in SOURCE_CANDIDATES:
+        if os.path.isfile(os.path.join(path, "install.sh")):
+            return os.path.abspath(path)
+    return None
+
+
+def get_installed_version():
+    """读取已安装版本号。"""
+    meta_path = os.path.join(HOOK_HOME, ".source")
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path) as f:
+                for line in f:
+                    if line.startswith("source_version="):
+                        return line.strip().split("=", 1)[1]
+        except (IOError, OSError):
+            pass
+    return "0.0.0"
+
+
+def get_source_version(source):
+    """读取源目录版本号。"""
+    pj = os.path.join(source, ".zcode-plugin", "plugin.json")
+    try:
+        with open(pj) as f:
+            import json
+            return json.load(f).get("version", "0.0.0")
+    except (IOError, json.JSONDecodeError):
+        return "0.0.0"
+
+
+def do_upgrade(source):
+    """从源目录全量覆盖升级（commands/hooks/lib/scripts）。"""
+    import shutil
+    upgraded = []
+
+    # 清理旧版 skills（v1.1 砍掉了 skills 目录）
+    skills_dir_source = os.path.join(source, "skills")
+    if not os.path.isdir(skills_dir_source):
+        # 源已无 skills → 清理安装目录的旧 skills
+        if os.path.isdir(SKILLS_DIR):
+            for old_skill in ("regression-planning", "characterization-testing",
+                              "change-impact-analysis", "requirement-parsing",
+                              "adaptive-thinking", "adaptive-learning"):
+                old_path = os.path.join(SKILLS_DIR, old_skill)
+                if os.path.isdir(old_path):
+                    shutil.rmtree(old_path, ignore_errors=True)
+                    upgraded.append(f"清理旧skill:{old_skill}")
+
+    # 清理旧版 evolution.py（v1.1 砍掉了）
+    old_evolution = os.path.join(HOOK_HOME, "lib", "evolution.py")
+    if os.path.exists(old_evolution) and not os.path.exists(os.path.join(source, "hooks", "scripts", "lib", "evolution.py")):
+        os.remove(old_evolution)
+        upgraded.append("清理旧lib:evolution.py")
+
+    # commands
+    for cmd_file in os.listdir(os.path.join(source, "commands")):
+        if cmd_file.endswith(".md"):
+            shutil.copy2(os.path.join(source, "commands", cmd_file), COMMANDS_DIR)
+            upgraded.append(f"cmd:{cmd_file}")
+
+    # hook scripts
+    for f in REQUIRED_HOOK_FILES + ["read_before_edit_guard.py"]:
+        src = os.path.join(source, "hooks", "scripts", f)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(HOOK_HOME, f))
+            upgraded.append(f"hook:{f}")
+
+    # lib
+    for f in REQUIRED_LIB_FILES:
+        src = os.path.join(source, "hooks", "scripts", "lib", f)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(HOOK_HOME, "lib", f))
+            upgraded.append(f"lib:{f}")
+
+    # self_heal 本身
+    src = os.path.join(source, "hooks", "scripts", "self_heal.py")
+    if os.path.exists(src):
+        shutil.copy2(src, os.path.join(HOOK_HOME, "lib", "self_heal.py"))
+
+    # 更新版本标记
+    meta_path = os.path.join(HOOK_HOME, ".source")
+    with open(meta_path, "w") as f:
+        f.write(f"source_path={source}\n")
+        f.write(f"source_version={get_source_version(source)}\n")
+        import datetime
+        f.write(f"upgraded_at={datetime.datetime.now().isoformat()}\n")
+
+    return upgraded
+
+
+def _current_regress_dir():
+    """定位当前项目的 .regress/（向上最多 10 级）。"""
+    d = (
+        os.environ.get("CLAUDE_PROJECT_DIR")
+        or os.environ.get("ZCODE_PROJECT_DIR")
+        or os.getcwd()
+    )
+    d = os.path.abspath(d)
+    for _ in range(10):
+        cand = os.path.join(d, ".regress")
+        if os.path.isdir(cand):
+            return cand
+        parent = os.path.dirname(d)
+        if parent == d:
+            return None
+        d = parent
+    return None
+
+
+def find_readme_template():
+    """零号入口模板：安装目录 templates/ 或源目录 templates/。"""
+    cands = [os.path.join(HOOK_HOME, "templates", README_TEMPLATE_NAME)]
+    src = find_source()
+    if src:
+        cands.append(os.path.join(src, "templates", README_TEMPLATE_NAME))
+    for c in cands:
+        if os.path.isfile(c):
+            return c
+    return None
+
+
+def backfill_project_readme(regress_dir):
+    """老项目自动升级（v1.16）：.regress/ 在而 README 缺 → 从模板补零号入口。
+
+    幂等且**永不覆盖**——README 可能已被按项目定制。返回补写说明或 None。
+    """
+    readme = os.path.join(regress_dir, "README.md")
+    if os.path.exists(readme):
+        return None
+    tpl = find_readme_template()
+    if not tpl:
+        return None
+    import shutil
+    shutil.copy2(tpl, readme)
+    return f"老项目升级·补零号入口: {readme}"
+
+
+def _active_manifest_sentinel():
+    """活跃清单哨兵（v1.17）：新会话第一眼知道有任务在进行、续作走哪条路。
+
+    失忆读者层的命令召唤侧——产物层建了自足性，还得有人在会话开场指路。
+    SessionStart(startup) 每会话只发一次，无需防重复门。
+    字段读取统一走 lib/manifest_fields（v1.20 单一来源）。
+    """
+    regress_dir = _current_regress_dir()
+    if not regress_dir:
+        return None
+    base = os.path.dirname(os.path.abspath(__file__))
+    for p in (base, os.path.join(base, "lib")):
+        if p not in sys.path:
+            sys.path.insert(0, p)
+    from manifest_fields import parse_core, ACTIVE_STATUSES
+    lines = []
+    mdir = os.path.join(regress_dir, "manifests")
+    if not os.path.isdir(mdir):
+        return None
+    import glob as _glob
+    for mf in sorted(_glob.glob(os.path.join(mdir, "*.md")), reverse=True):
+        try:
+            with open(mf, encoding="utf-8") as f:
+                content = f.read()
+        except (IOError, OSError):
+            continue
+        core = parse_core(content)
+        status = core.get("status", "")
+        if status not in ACTIVE_STATUSES:
+            continue
+        name = core.get("id") or os.path.basename(mf)
+        if status == "blocked":
+            need = core.get("blocked_need", "") or "见 blocked 块"
+            lines.append(f"🛑 {name}（blocked · 受阻，需要人类：{need[:40]}）")
+        elif status == "in-progress" and core.get("provisional_at"):
+            # 临行（伪全自动）：否决窗内——执行授权来自人类事前预授权，此刻仍可 --cancel
+            lines.append(f"🚀 {name}（临行中 · 顾问预审通过 · 否决窗内，--cancel 可停）")
+        else:
+            extra = {"planning": "待人类批准",
+                     "verifying": "验证中"}.get(status, f"{core.get('open_fragiles', 0)} 个脆弱点未锁")
+            icon = {"planning": "⏸", "in-progress": "🎯", "verifying": "🔍"}[status]
+            lines.append(f"{icon} {name}（{status} · {extra}）")
+        if len(lines) >= 3:
+            break
+    if not lines:
+        return None
+    return ("【进行中任务】\n" + "\n".join(lines)
+            + "\n断点续作：/regress:resume（从 .regress/ 产物层单侧重建现场）")
+
+
+def check_and_heal():
+    """检查文件完整性 + 版本升级。返回 (issues, healed)。"""
+    issues = []
+    healed = []
+    source = find_source()
+
+    # ─── 0. 版本检测：源版本更高则自动升级 ───────────
+    if source:
+        installed_ver = get_installed_version()
+        source_ver = get_source_version(source)
+        if _ver_gt(source_ver, installed_ver):
+            upgraded = do_upgrade(source)
+            healed.append(f"自动升级 v{installed_ver} → v{source_ver}（{len(upgraded)} 个文件）")
+            # 升级后不需要再检查文件完整性（刚全量覆盖）
+            return issues, healed
+
+    # ─── 1. hook 脚本 ─────────────────────────────────
+
+    # ─── 1. hook 脚本 ─────────────────────────────────
+    for f in REQUIRED_HOOK_FILES:
+        path = os.path.join(HOOK_HOME, f)
+        if not os.path.exists(path):
+            if source:
+                src = os.path.join(source, "hooks", "scripts", f)
+                if os.path.exists(src):
+                    os.makedirs(HOOK_HOME, exist_ok=True)
+                    import shutil
+                    shutil.copy2(src, path)
+                    healed.append(f"恢复 hook: {f}")
+                else:
+                    issues.append(f"hook 脚本缺失且无法恢复: {f}")
+            else:
+                issues.append(f"hook 脚本缺失: {f}")
+
+    # ─── 2. lib 文件 ──────────────────────────────────
+    lib_dir = os.path.join(HOOK_HOME, "lib")
+    for f in REQUIRED_LIB_FILES:
+        path = os.path.join(lib_dir, f)
+        if not os.path.exists(path):
+            if source:
+                src = os.path.join(source, "hooks", "scripts", "lib", f)
+                if os.path.exists(src):
+                    os.makedirs(lib_dir, exist_ok=True)
+                    import shutil
+                    shutil.copy2(src, path)
+                    healed.append(f"恢复 lib: {f}")
+                else:
+                    issues.append(f"lib 缺失且无法恢复: {f}")
+            else:
+                issues.append(f"lib 缺失: {f}")
+
+    # ─── 3. commands ──────────────────────────────────
+    for cmd in REQUIRED_COMMANDS:
+        cmd_path = os.path.join(COMMANDS_DIR, f"{cmd}.md")
+        if not os.path.exists(cmd_path):
+            if source:
+                src = os.path.join(source, "commands", f"{cmd}.md")
+                if os.path.exists(src):
+                    os.makedirs(COMMANDS_DIR, exist_ok=True)
+                    import shutil
+                    shutil.copy2(src, cmd_path)
+                    healed.append(f"恢复命令: {cmd}")
+                else:
+                    issues.append(f"命令缺失且无法恢复: {cmd}")
+            else:
+                issues.append(f"命令缺失: {cmd}")
+
+    return issues, healed
+
+
+def main():
+    # 快速检查：如果连 hook_home 都不存在，说明根本没装过，跳过
+    if not os.path.isdir(HOOK_HOME):
+        # 未安装状态，不干预
+        print(json.dumps({"status": "not_installed"}))
+        return
+
+    issues, healed = check_and_heal()
+
+    # 老项目自动升级：零号入口缺失即补（幂等，永不覆盖已定制内容）
+    rg = _current_regress_dir()
+    if rg:
+        note = backfill_project_readme(rg)
+        if note:
+            healed.append(note)
+
+    # 项目经验注入（越用越聪明的 ambient 层）：摘要有变化才注入，避免每次启动刷屏
+    # 活跃清单哨兵：有任务在进行则必注入（每会话一次，指路 /regress:resume）
+    sentinel = _active_manifest_sentinel()
+    digest = _project_digest()
+    context = "\n\n".join(p for p in (sentinel, digest) if p)
+    if healed:
+        msg = "regress-guard 自愈：恢复了 " + ", ".join(healed)
+        if context:
+            msg += "\n\n" + context
+        print(json.dumps({"status": "healed", "additionalContext": msg}))
+    elif issues:
+        msg = "regress-guard 警告：以下文件缺失且无法自动恢复：\n" + "\n".join(f"  - {i}" for i in issues)
+        msg += "\n\n建议重新运行 /regress:install"
+        print(json.dumps({"status": "warning", "additionalContext": msg}))
+    elif context:
+        # 哨兵（有活跃任务时）或摘要变化时注入
+        print(json.dumps({"status": "ok", "additionalContext": context}))
+    else:
+        print(json.dumps({"status": "ok"}))
+
+
+def _project_digest(max_lines=5):
+    """从当前项目的 .regress 生成经验摘要；无有效数据或未变化时返回 None。
+
+    防重复门：摘要 hash 存 .regress/.last-digest，相同则不注入。
+    """
+    import hashlib
+    try:
+        base = os.path.dirname(os.path.abspath(__file__))
+        for p in (base, os.path.join(base, "lib")):
+            if p not in sys.path:
+                sys.path.insert(0, p)
+        from history import summarize
+    except ImportError:
+        return None
+
+    # 定位当前项目的 .regress
+    regress_dir = _current_regress_dir()
+    if not regress_dir:
+        return None
+
+    try:
+        s = summarize(regress_dir)
+    except Exception:
+        return None
+
+    lines = []
+    f3s = s.get("top_f3_files") or []
+    if f3s:
+        files = ", ".join(f"{f}({c})" for f, c in f3s[:2])
+        lines.append(f"📋 本项目规律：改这些文件时容易漏改 {files}")
+    debt = s.get("tech_debt", 0)
+    if debt > 0:
+        lines.append(f"💳 有 {debt} 笔 bypass 未补回归")
+    cov = s.get("avg_coverage_pct")
+    if cov is not None:
+        lines.append(f"📊 平均测试覆盖率 {cov}%")
+    outs = s.get("outside_gate_commits", 0)
+    if outs > 0:
+        lines.append(f"📤 {outs} 次提交未走门禁（IDE/终端直提）")
+    if not lines:
+        return None
+
+    digest = "【regress-guard 项目经验】\n" + "\n".join(lines[:max_lines])
+    marker = os.path.join(regress_dir, ".last-digest")
+    h = hashlib.md5(digest.encode()).hexdigest()[:10]
+    prev = ""
+    try:
+        prev = open(marker).read().strip()
+    except (IOError, OSError):
+        pass
+    if prev == h:
+        return None  # 摘要未变化，不重复注入
+    try:
+        open(marker, "w").write(h)
+    except (IOError, OSError):
+        pass
+    return digest
+
+
+if __name__ == "__main__":
+    main()

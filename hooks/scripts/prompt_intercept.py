@@ -1,0 +1,288 @@
+#!/usr/bin/env python3
+"""UserPromptSubmit hook：用户提交输入时自动检测需求特征。
+
+不阻断（exit 0），通过 additionalContext 注入提醒：
+  - 需求太短（<20字）→ 提醒先解析
+  - 含模糊词 → 提醒歧义检测
+  - 像"改/加/修"类变更 → 提醒先 /regress:plan
+  - 重复提交（和上一条一样）→ 提醒可能重复
+
+这是"需求进来时的第一道关口"。
+"""
+import sys
+import os
+import json
+import re
+import tempfile
+
+# 考古地层（公理三）：用户纠正是最稀缺的化石（"自信地错"的唯一信号）
+_LIB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib")
+if _LIB_DIR not in sys.path:
+    sys.path.insert(0, _LIB_DIR)
+try:
+    from journal import journal_append
+except ImportError:  # lib 缺失时地层降级关闭
+    def journal_append(*a, **k):
+        return False
+
+
+# 模糊词模式（触发歧义检测提醒）
+AMBIGUOUS_PATTERNS = [
+    r'(大概|差不多|那种|类似的|好像|应该|可能)',
+    r'(全部|所有|都)',
+    r'(优化|改进|完善|调整)',
+    r'(那个|这个|之前|上次)',
+    r'(弄一下|搞一下|处理一下|看看)',
+]
+
+# 变更类动词（触发 plan 提醒）
+CHANGE_VERBS = r'(改|加|修|删|重构|新增|去掉|替换|迁移)'
+
+# 最小需求长度
+MIN_REQUIREMENT_LEN = 15
+
+
+def _state_path():
+    """状态文件路径——按项目隔离（避免跨项目污染重复检测）。"""
+    import hashlib
+    project_dir = (
+        os.environ.get("CLAUDE_PROJECT_DIR")
+        or os.environ.get("ZCODE_PROJECT_DIR")
+        or os.getcwd()
+    )
+    key = hashlib.md5(project_dir.encode()).hexdigest()[:8]
+    return os.path.join(tempfile.gettempdir(), f"regress-guard-last-prompt-{key}.txt")
+
+
+def load_last_prompt():
+    """读取本项目上一条用户输入（检测重复提交）。"""
+    try:
+        with open(_state_path(), encoding="utf-8") as f:
+            return f.read().strip()
+    except (IOError, OSError):
+        return ""
+
+
+def save_prompt(text):
+    """保存当前输入（供下次比对）。"""
+    try:
+        with open(_state_path(), "w", encoding="utf-8") as f:
+            f.write(text[:500])
+    except (IOError, OSError):
+        pass
+
+
+# ── 卡死自动触发（"自己爬出来"的最后一环）──
+# 用户连续无信息催促 = 当前路线无进展的信号。第 2 次即注入 scout 升级指令。
+
+PROD_THRESHOLD = 2
+
+def _prod_count_path():
+    key = _state_path().replace("last-prompt", "prod-count")
+    return key
+
+def is_content_free_prod(text):
+    """无信息催促：归一化后 ≤12 字符且以继续类词开头（覆盖"继续攻克，自决策"）。"""
+    t = re.sub(r"[\s，。！？,.!?]", "", text).lower()
+    if not t or len(t) > 12:
+        return False
+    return t.startswith(("继续", "接着", "go", "ok", "加油", "搞起", "弄完"))
+
+def bump_prod_count(is_prod):
+    """催促计数：prod 则 +1 并返回新值；实质输入则清零并返回 0。"""
+    path = _prod_count_path()
+    try:
+        n = int(open(path, encoding="utf-8").read().strip() or 0)
+    except (IOError, ValueError):
+        n = 0
+    n = n + 1 if is_prod else 0
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(str(n))
+    except (IOError, OSError):
+        pass
+    return n
+
+def _scout_fire_path():
+    return _state_path().replace("last-prompt", "scout-fires")
+
+def _bump_scout_fires(reset=False):
+    path = _scout_fire_path()
+    try:
+        n = int(open(path, encoding="utf-8").read().strip() or 0)
+    except (IOError, ValueError):
+        n = 0
+    n = 0 if reset else n + 1
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(str(n))
+    except (IOError, OSError):
+        pass
+    return n
+
+def scout_escalation_reminder(n):
+    base = (
+        f"🚨 卡死检测：用户已第 {n} 次无信息催促——当前路线大概率无进展。"
+        f"立即行动：调用 mcp__advisor__consult，参数 mode=\"scout\"、"
+        f"question=<当前核心问题一句话>、context=<已试方案与结果摘要>，"
+        f"由带实时搜索的顾问调查后给出新方案，按其意见调整路线后再继续。"
+        f"（顾问工具不可用则自行判断并标注「未获第二意见」；"
+        f"禁止不改方法地重复原路线）"
+    )
+    fires = _bump_scout_fires()
+    if fires >= 2:
+        base += (
+            f"\n⚠️ 升级：scout 意见已第 {fires} 轮仍未破局——上下文可能已耗尽。"
+            f"先运行 /handoff 生成会话交接（含顾问意见与当前状态），"
+            f"建议用户新开会话读交接文件后继续，而不是在本会话继续堆上下文。"
+        )
+    return base
+
+
+# ── 纠错检测（"自信地错"的唯一信号）──
+# 流畅地走错方向不产生工具失败、不触发卡死计数，只有用户的纠正能暴露。
+# 负向后顾排除"报错了/出错了/崩错了"等描述性用法（那是工具报错，不是纠正）。
+CORRECTION_RE = re.compile(
+    r"(?<![报出崩闪])错了|不对|不是这样|理解错|方向错|搞反了|弄反了|又错|wrong"
+)
+
+
+def correction_reminder(text):
+    """检测到用户纠正 → 注入"先向顾问求证方向，再动手"。"""
+    m = CORRECTION_RE.search(text)
+    if not m:
+        return None
+    return (
+        f"🔁 用户在纠正方向（检测到「{m.group(0)}」）——之前的方案可能\"自信地错\"："
+        f"这类错误没有失败信号，只有用户能察觉。先别急着按字面小修，"
+        f"调用 mcp__advisor__consult，把【用户纠正原文＋你刚才的方案与理由＋"
+        f"关键代码位置】原样发给顾问，判断是方向性错误（推倒重来）还是细节偏差"
+        f"（局部修正），判断清楚再动手。"
+        f"（顾问工具不可用则自行判断并标注「未获第二意见」）"
+    )
+
+
+def analyze_prompt(text):
+    """分析用户输入，返回需要注入的提醒列表。"""
+    if not text:
+        return []
+
+    # 去掉命令前缀
+    clean = re.sub(r'^/\S+\s*', '', text).strip()
+    reminders = []
+
+    # 0. 卡死自动触发（最高优先级，先于一切提醒）
+    if is_content_free_prod(clean):
+        n = bump_prod_count(True)
+        if n >= PROD_THRESHOLD:
+            reminders.append(scout_escalation_reminder(n))
+            bump_prod_count(False)  # 触发后重置，再积 2 次才重触（防每条催促都刷）
+            save_prompt(clean)
+            return reminders  # 卡死信号独占注入，避免与其他提醒混杂
+    else:
+        bump_prod_count(False)  # 实质输入 → 清零
+        _bump_scout_fires(reset=True)  # 实质进展也重置 scout 未破局计数
+
+    # 0.5 纠错检测（"自信地错"不产生失败信号，用户纠正词是唯一探测器）
+    cr = correction_reminder(clean)
+    if cr:
+        reminders.append(cr)
+        journal_append("user_correction", excerpt=clean[:200])  # 纠正化石入地层
+
+    # 1. 重复提交检测
+    last = load_last_prompt()
+    if last and clean == last:
+        reminders.append(
+            "⚠️ 这条需求和上一条完全相同——如果是在等待 AI 响应，"
+            "可能是模型慢导致的重复发送。AI 已经在处理了。"
+        )
+
+    # 2. 需求太短
+    if len(clean) < MIN_REQUIREMENT_LEN and re.search(CHANGE_VERBS, clean):
+        reminders.append(
+            f"💡 需求描述较短（{len(clean)}字）。"
+            f"建议先 /regress:plan 让 AI 解析需求、补全上下文后再动手。"
+        )
+
+    # 3. 模糊词检测
+    found_ambiguous = []
+    for pattern in AMBIGUOUS_PATTERNS:
+        m = re.search(pattern, clean)
+        if m:
+            found_ambiguous.append(m.group(0))
+    if found_ambiguous:
+        reminders.append(
+            f"💡 需求含模糊词（{', '.join(set(found_ambiguous))}）——"
+            f"AI 会先解析歧义、做假设、只问关键分歧。"
+            f"如果你有明确预期，建议直接说出来能减少返工。"
+        )
+
+    # 4. 变更类需求 → 提醒 plan
+    if re.search(CHANGE_VERBS, clean) and len(clean) >= MIN_REQUIREMENT_LEN:
+        # 检查是否有 .regress/
+        project_dir = (
+            os.environ.get("CLAUDE_PROJECT_DIR")
+            or os.environ.get("ZCODE_PROJECT_DIR")
+            or os.getcwd()
+        )
+        # 向上查找
+        has_regress = False
+        search_dir = project_dir
+        for _ in range(10):
+            if os.path.isdir(os.path.join(search_dir, ".regress")):
+                has_regress = True
+                break
+            parent = os.path.dirname(search_dir)
+            if parent == search_dir:
+                break
+            search_dir = parent
+
+        if has_regress and "/regress:" not in text:
+            reminders.append(
+                "📋 检测到变更需求——AI 会先解析需求+分析改动点（/regress:plan 逻辑），"
+                "不需要你手动触发。"
+            )
+
+    save_prompt(clean)
+    return reminders
+
+
+def main():
+    raw = sys.stdin.read() if not sys.stdin.isatty() else ""
+    if not raw:
+        sys.exit(0)
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        sys.exit(0)
+
+    # UserPromptSubmit 的 match value 是 prompt 文本
+    prompt_text = ""
+    if isinstance(data, dict):
+        prompt_text = data.get("prompt", data.get("text", data.get("message", "")))
+        if not prompt_text:
+            # 可能直接是字符串
+            prompt_text = str(data)
+
+    if not isinstance(prompt_text, str):
+        prompt_text = str(prompt_text)
+
+    # 跳过命令自身（/regress:xxx）
+    if prompt_text.strip().startswith("/"):
+        sys.exit(0)
+
+    # 跳过系统消息
+    if "<task-" in prompt_text or "<system" in prompt_text:
+        sys.exit(0)
+
+    reminders = analyze_prompt(prompt_text)
+    if reminders:
+        context = "【regress-guard 需求入口检查】\n" + "\n".join(f"  {r}" for r in reminders)
+        print(json.dumps({"additionalContext": context}))
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

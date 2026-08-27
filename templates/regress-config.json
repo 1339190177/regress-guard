@@ -1,0 +1,7 @@
+{
+  "strict": true,
+  "read_before_edit_ratio": 2,
+  "boundary": {
+    "forbidden": []
+  }
+}
