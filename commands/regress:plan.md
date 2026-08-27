@@ -8,6 +8,11 @@ allowed-tools: Read, Write, Edit, Bash, Grep
 
 参数 `$ARGUMENTS` 是需求描述。为空则提示用法。
 
+> **与宿主计划模式的叠加**：本命令可在 ZCode 原生计划模式（EnterPlanMode）下进行——
+> 原生模式把全部工具锁成只读（探索期容器，比边界守卫的 Edit 拦截更宽），本命令产出
+> 清单（批准后的执行契约，跨会话值班到 done）。批准时**双落**：宿主手势退出计划模式
+> + `plan_approve.py` 落 approved.at。小改动不需要本仪式：走 /regress:quick。
+
 ## 步骤 0：自动初始化（如果无 .regress/）
 
 检测到无 `.regress/config.json` → 直接创建（不问）。
