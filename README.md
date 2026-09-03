@@ -127,7 +127,7 @@
 
 **实况（由 gen_reference.py 生成，勿手改本区）**
 
-- 命令：14 个 · hook 注册：12 个事件条目 · 测试函数：274 个
+- 命令：15 个 · hook 注册：12 个事件条目 · 测试函数：274 个
 
 | 命令 | 说明 |
 |---|---|
@@ -140,6 +140,7 @@
 | `/regress:plan` | 需求→解析→消歧→改动清单。AI 先补全上下文再动手（不问能推断的，只问关键分歧） |
 | `/regress:quick` | 快速模式——合并 plan+track 一步到位（适合个人项目/小改动） |
 | `/regress:resume` | 从 .regress/ 产物层单侧重建工作现场（断点续作，不依赖对话历史） |
+| `/regress:stats` | 健康报表：门禁拦截/债务/规律命中/僵尸清单/钩子活性一屏读（观测期仪表盘，只读不改） |
 | `/regress:trace` | 查看交付链：需求→会话→事件→提交 的可追溯视图（文本版 Inspector） |
 | `/regress:track` | 对比 git diff 发现 F3 并直接回写（AI 完成修改后自动执行，不需用户手动触发） |
 | `/regress:uninstall` | 卸载 regress-guard（清理用户级配置 + hook + skill + 命令） |
