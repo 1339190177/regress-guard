@@ -279,3 +279,14 @@ def test_template_kind_vocab_includes_oracle_sensory():
     body = open(os.path.abspath(tmpl), encoding="utf-8").read()
     assert "oracle" in body and "sensory" in body
     assert "human_check" in body
+
+
+def test_template_body_has_hypothesis_ledger():
+    """v1.23：假设账本骨架在模板里（假设/检验命令/结果/裁决），排障纪律可寻址。"""
+    tmpl = os.path.join(os.path.dirname(__file__), "..", "templates",
+                        "regress-manifest.md")
+    body = open(os.path.abspath(tmpl), encoding="utf-8").read()
+    assert "假设账本" in body
+    for col in ("检验命令", "结果", "裁决"):
+        assert col in body, f"账本缺「{col}」列"
+    assert "第一嫌疑人" in body and "证伪" in body

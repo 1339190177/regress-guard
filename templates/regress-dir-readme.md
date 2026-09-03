@@ -21,6 +21,8 @@
 - 修复 3 次仍败/需要人类输入 → 受阻（`~/.zcode/regress-guard-hooks/lib/plan_approve.py <清单> --block`），
   转达 need——受阻是合法停止
 - 假设被实测推翻 → 清单「假设失效记录」追加 was→reality→evidence，别悄悄改写
+- 排障改了仍不好 → 这是**假设被证伪**不是防御不够：回「假设账本」新增一行重新取证，
+  禁止直接叠防御层
 
 ## AI 会话
 
@@ -28,4 +30,4 @@
 其他：decisions.md=决策史（否决过的方案别重走）；journal/=考古地层；history.jsonl=门禁决策史。
 
 ---
-<!-- generated-by: regress-guard v1.21.0 · 机器生成；人工定制请删除本行（删除后永不被自动覆盖/刷新） -->
+<!-- generated-by: regress-guard v1.23.0 · 机器生成；人工定制请删除本行（删除后永不被自动覆盖/刷新） -->
