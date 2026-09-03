@@ -99,6 +99,8 @@ def check(plugin_root):
     check_v123(plugin_root, errors, warnings)
     # v1.26.1 部署契约漂移守卫
     check_v1241(plugin_root, errors, warnings)
+    # v1.27 文档层覆盖矩阵
+    check_v127(plugin_root, errors, warnings)
 
     if errors:
         print(f"❌ 错误 ({len(errors)}):")
@@ -193,6 +195,32 @@ def check_v1241(plugin_root, errors, warnings):
         if drift:
             errors.append(f"{list_name} 与 {sub}/ 漂移: {sorted(drift)}"
                           "（病例：2026-09-03 审计，do_upgrade 半量拷贝）")
+
+
+# ─── v1.27：文档层覆盖矩阵（block）──────────────────────────────
+# 病例：v1.25/v1.26 连续两版只改命令层，WORKFLOW/零号README/小白指南对新能力词
+# 零覆盖（2026-09-03 全面审查）。键=能力词，值=必须覆盖它的文档层文件。
+# 诚实边界：漏写新词永远是人的问题（PHILOSOPHY §13）——本矩阵只保已写过的不再烂。
+DOC_COVERAGE = {
+    "验收标准": ("docs/WORKFLOW.md", "templates/regress-dir-readme.md"),
+    "产品上下文": ("docs/WORKFLOW.md", "templates/regress-dir-readme.md", "docs/小白指南.md"),
+    "草图": ("docs/WORKFLOW.md", "docs/小白指南.md"),
+    "假设账本": ("docs/WORKFLOW.md",),
+    "设计取舍": ("docs/WORKFLOW.md",),
+    "design_rejected": ("docs/WORKFLOW.md",),
+    "代谢": ("docs/WORKFLOW.md",),
+}
+
+
+def check_v127(plugin_root, errors, warnings):
+    for kw, docs in DOC_COVERAGE.items():
+        for d in docs:
+            p = os.path.join(plugin_root, d)
+            if not os.path.isfile(p):
+                errors.append(f"DOC_COVERAGE 引用文档不存在: {d}")
+                continue
+            if kw not in open(p, encoding="utf-8").read():
+                errors.append(f"{d} 未覆盖能力词「{kw}」（病例：v1.25/v1.26 连续两版漏文档层）")
 
 
 def check_v123(plugin_root, errors, warnings):

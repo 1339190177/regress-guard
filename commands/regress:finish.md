@@ -56,7 +56,19 @@ python3 "<插件路径>/hooks/scripts/lib/journal.py" . digest
 - 顺带跑 `rules_ledger.py . health`：命中 ≥3 的稳定规律输出「建议固化 skill」卡片
   （🦴 经人批准后用 skill-creator 固化——**自动固化的错误经验会以技能的形式高速复发**）
 
-## 步骤 5：汇总报告
+## 步骤 5：产物干净检查（v1.27：学费随分支走）
+
+```bash
+git status --porcelain .regress 2>/dev/null
+```
+
+- 非空 → 汇报「.regress 有 <n> 项未提交——清单/地层/决策是学费，随分支走才不丢
+  （worktree 场景：remove 前未合并 = 蒸发）」
+- 命令失败（非 git 项目）→ 报告一行「产物层无版本保护（非 git），地层只活在
+  单份工作区」，后续不重复提醒
+- 双仓库项目（.regress 与代码分属两仓，如 dogfood 工作区）→ 在 .regress 所属仓库执行
+
+## 步骤 6：汇总报告
 
 ```
 🏁 收尾完成 · REGRESS-<id>

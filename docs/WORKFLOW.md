@@ -15,10 +15,22 @@
       ↓ （预授权任务无异议可 --provisional 临行，进否决窗）
 [AI 开发]                ← 边界守卫事前拦截越界编辑；受阻则四问落产物
       ↓                    （人类决策点 ②：给 need 所需的输入/权限）
-/regress:finish          → track 回写 F3 → verify 全证据（rescue 自救/感官问人收布尔）→ 代谢沉淀
+/regress:finish          → track 回写 F3 → verify 全证据（rescue 自救/感官问人收布尔）→ 代谢沉淀 → 产物干净检查（产品否决已埋 design_rejected 化石）
       ↓                    （人类决策点 ③：感官终验 human_check）
 git commit               ← 门禁自跑测试 + locked 复验，通过自动写 done
 ```
+
+## git worktree：独立任务舱（v1.27，实测于临时仓）
+
+`git worktree add` 出的每个工作目录是一套独立治理（2026-09-03 四项实测）：
+无 `.regress` 的 worktree 守卫放行（fail-open）；自建 `.regress` 后哨兵/边界/
+清单自成一体，主仓清单互不可见——base_head 漂移也不会被其他舱的提交污染。
+产物层随分支走，**merge 即知识回流**；注意三点：
+
+- worktree 清理前先确认 `.regress` 变更已随分支提交（finish 步骤 5 会检查——
+  未合并就 remove = 学费蒸发）
+- journal 同位置追加在两个舱都写过时 merge 必冲突：两边都保留即可
+- 边界交叉（两个舱都含同一文件）留给 git merge——冲突检测是 git 的领土
 
 ## Fast 模式（个人/小改动）
 

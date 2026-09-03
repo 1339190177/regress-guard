@@ -4,7 +4,7 @@
 
 ## 三步上手
 
-0. **产品需求**：先读 `product-context.md`（用户/价值观/行业惯例——如果存在）
+0. **产品需求**：先读 `product-context.md`（产品上下文卡：用户/价值观/行业惯例——如果存在）
 1. **看现场**：`manifests/` 里 status ∈ planning/in-progress/verifying/blocked 的清单——
    planning=等人类批准；blocked=受阻（读清单 blocked 四问，need 写着需要你提供什么）
 2. **跑环境**：清单正文「环境准备（必读）」段——版本/连接命令/唯一正确的启动入口

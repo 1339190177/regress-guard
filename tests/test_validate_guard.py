@@ -84,3 +84,25 @@ def test_deploy_contract_drift_guard(tmp_path):
     errs2, _ = [], []
     check_docs.check_v1241(str(proj), errs2, _)
     assert any("zzz_extra" in e for e in errs2) and any("zzz_lib" in e for e in errs2)
+
+
+def test_doc_coverage_matrix_both_paths(tmp_path):
+    """v1.27：文档层覆盖矩阵——正路真实仓库全绿；负路缺词必拦（v1.25/26 腐烂病例）。"""
+    import sys
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import check_docs
+    errs, warns = [], []
+    check_docs.check_v127(ROOT, errs, warns)
+    assert not errs, f"真实仓库覆盖不全: {errs}"
+    # 负路：伪造缺词文档
+    proj = tmp_path / "plug2"
+    (proj / "docs").mkdir(parents=True)
+    (proj / "docs" / "WORKFLOW.md").write_text("这里没有能力词\n", encoding="utf-8")
+    saved = dict(check_docs.DOC_COVERAGE)
+    try:
+        check_docs.DOC_COVERAGE = {"验收标准": ("docs/WORKFLOW.md",)}
+        errs2, _w = [], []
+        check_docs.check_v127(str(proj), errs2, _w)
+        assert any("验收标准" in e for e in errs2)
+    finally:
+        check_docs.DOC_COVERAGE = saved
