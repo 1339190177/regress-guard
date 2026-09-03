@@ -47,11 +47,17 @@ SOURCE_CANDIDATES = [
     os.path.join(os.path.expanduser("~"), "projects", "regress-guard"),
 ]
 
-REQUIRED_HOOK_FILES = ["launcher.js", "pre_commit_guard.py", "read_before_edit_guard.py", "prompt_intercept.py", "reflection_check.py", "fail_watch.py"]
+# 完整契约清单（v1.26.1 补全；与源目录的漂移由 check_docs 守卫拦——病例：本次审计发现
+# 清单停在 v1.19，boundary_guard 等 5 脚本与 4 个 lib 不在清单，do_upgrade 半量拷贝）
+REQUIRED_HOOK_FILES = ["launcher.js", "pre_commit_guard.py", "read_before_edit_guard.py",
+                       "prompt_intercept.py", "reflection_check.py", "fail_watch.py",
+                       "risk_watch.py", "compact_notice.py", "execution_valve.py",
+                       "boundary_guard.py"]
 REQUIRED_LIB_FILES = [
     "manifest_parser.py", "git_diff_analyzer.py",
     "test_runner.py", "history.py", "filelock.py", "self_heal.py",
-    "cochange_rules.py"
+    "cochange_rules.py",
+    "journal.py", "plan_approve.py", "manifest_fields.py", "rules_ledger.py"
 ]
 REQUIRED_COMMANDS = [
     "regress:init", "regress:plan", "regress:track", "regress:verify",
@@ -126,19 +132,27 @@ def do_upgrade(source):
             shutil.copy2(os.path.join(source, "commands", cmd_file), COMMANDS_DIR)
             upgraded.append(f"cmd:{cmd_file}")
 
-    # hook scripts
-    for f in REQUIRED_HOOK_FILES + ["read_before_edit_guard.py"]:
-        src = os.path.join(source, "hooks", "scripts", f)
-        if os.path.exists(src):
-            shutil.copy2(src, os.path.join(HOOK_HOME, f))
+    # hook scripts + lib：全量拷贝（v1.26.1——目录本身是单一来源，清单只做缺失检测；
+    # 旧实现按过时清单半量拷贝，升级机拿到陈旧 boundary_guard/缺失 rules_ledger）
+    scripts_dir = os.path.join(source, "hooks", "scripts")
+    for f in sorted(os.listdir(scripts_dir)):
+        if f.endswith((".py", ".js")) and f != "self_heal.py":
+            shutil.copy2(os.path.join(scripts_dir, f), os.path.join(HOOK_HOME, f))
             upgraded.append(f"hook:{f}")
-
-    # lib
-    for f in REQUIRED_LIB_FILES:
-        src = os.path.join(source, "hooks", "scripts", "lib", f)
-        if os.path.exists(src):
-            shutil.copy2(src, os.path.join(HOOK_HOME, "lib", f))
+    lib_dir = os.path.join(scripts_dir, "lib")
+    for f in sorted(os.listdir(lib_dir)):
+        if f.endswith(".py"):
+            shutil.copy2(os.path.join(lib_dir, f), os.path.join(HOOK_HOME, "lib", f))
             upgraded.append(f"lib:{f}")
+
+    # templates：全部部署（init 的 cp 引用 <插件路径>/templates/，缺文件即断链）
+    tpl_src = os.path.join(source, "templates")
+    tpl_dst = os.path.join(HOOK_HOME, "templates")
+    os.makedirs(tpl_dst, exist_ok=True)
+    for f in sorted(os.listdir(tpl_src)):
+        if f.endswith(".md"):
+            shutil.copy2(os.path.join(tpl_src, f), os.path.join(tpl_dst, f))
+            upgraded.append(f"tpl:{f}")
 
     # self_heal 本身
     src = os.path.join(source, "hooks", "scripts", "self_heal.py")

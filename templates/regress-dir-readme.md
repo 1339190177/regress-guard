@@ -4,6 +4,7 @@
 
 ## 三步上手
 
+0. **产品需求**：先读 `product-context.md`（用户/价值观/行业惯例——如果存在）
 1. **看现场**：`manifests/` 里 status ∈ planning/in-progress/verifying/blocked 的清单——
    planning=等人类批准；blocked=受阻（读清单 blocked 四问，need 写着需要你提供什么）
 2. **跑环境**：清单正文「环境准备（必读）」段——版本/连接命令/唯一正确的启动入口
@@ -11,7 +12,7 @@
 
 ## 什么时候算做完（不由感觉定义）
 
-- 脆弱点全部 locked（verify 实测通过）或显式 flagged（写明知悉原因）——open 禁止提交
+- 验收标准表逐条 locked（判据拿到证据）+ 脆弱点全部 locked/flagged——open 禁止提交
 - 实际改动全部回写清单（F3 清零）；提交时 hook 自跑测试通过
 - 清单 status → done
 
@@ -30,4 +31,4 @@
 其他：decisions.md=决策史（否决过的方案别重走）；journal/=考古地层；history.jsonl=门禁决策史。
 
 ---
-<!-- generated-by: regress-guard v1.23.0 · 机器生成；人工定制请删除本行（删除后永不被自动覆盖/刷新） -->
+<!-- generated-by: regress-guard v1.26.1 · 机器生成；人工定制请删除本行（删除后永不被自动覆盖/刷新） -->

@@ -82,7 +82,7 @@ cp "${PLUGIN_ROOT}/hooks/scripts/boundary_guard.py" "${HOOK_HOME}/"
 cp "${PLUGIN_ROOT}/hooks/scripts/self_heal.py" "${HOOK_HOME}/lib/"
 cp "${PLUGIN_ROOT}/hooks/scripts/lib/"*.py "${HOOK_HOME}/lib/"
 mkdir -p "${HOOK_HOME}/templates"
-cp "${PLUGIN_ROOT}/templates/regress-dir-readme.md" "${HOOK_HOME}/templates/"
+cp "${PLUGIN_ROOT}/templates/"*.md "${HOOK_HOME}/templates/"   # v1.26.1：全部模板（product-context 缺部署会断 init 链）
 chmod +x "${HOOK_HOME}/pre_commit_guard.py" "${HOOK_HOME}/read_before_edit_guard.py" "${HOOK_HOME}/risk_watch.py" "${HOOK_HOME}/compact_notice.py" "${HOOK_HOME}/execution_valve.py" "${HOOK_HOME}/boundary_guard.py" "${HOOK_HOME}/lib/"*.py 2>/dev/null || true
 info "hook 脚本 → ${HOOK_HOME}"
 

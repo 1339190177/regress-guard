@@ -97,6 +97,8 @@ def check(plugin_root):
     check_v122(plugin_root, errors, warnings)
     # v1.23.1 长度预算（命令文件是上下文热路径，调用即入 AI 上下文）
     check_v123(plugin_root, errors, warnings)
+    # v1.26.1 部署契约漂移守卫
+    check_v1241(plugin_root, errors, warnings)
 
     if errors:
         print(f"❌ 错误 ({len(errors)}):")
@@ -163,6 +165,34 @@ def check_v122(plugin_root, errors, warnings):
 # 预算锚点 = 瘦身后最大命令文件的体积；超限 = 先问删哪一条（PHILOSOPHY §12
 # 契约长度冻结：太长的规则会被摘要，被摘要的规则等于没写）
 COMMAND_BYTE_BUDGET = 16000
+
+
+def check_v1241(plugin_root, errors, warnings):
+    """④ v1.26.1：部署契约清单与源目录漂移（block）。
+
+    病例：2026-09-03 全面审查发现 REQUIRED_HOOK/REQUIRED_LIB 停在 v1.19——
+    boundary_guard 等 5 脚本与 4 个 lib 缺席，do_upgrade 半量拷贝导致升级机
+    拿到陈旧守卫/缺失 rules_ledger。
+    """
+    heal = os.path.join(plugin_root, "hooks", "scripts", "self_heal.py")
+    if not os.path.isfile(heal):
+        return
+    src = open(heal, encoding="utf-8").read()
+    import re as _re
+    for list_name, sub in (("REQUIRED_HOOK_FILES", "hooks/scripts"),
+                           ("REQUIRED_LIB_FILES", "hooks/scripts/lib")):
+        m = _re.search(list_name + r"\s*=\s*\[(.*?)\]", src, _re.DOTALL)
+        if not m:
+            continue
+        listed = set(_re.findall(r'"([\w.\-]+\.(?:py|js))"', m.group(1)))
+        d = os.path.join(plugin_root, *sub.split("/"))
+        actual = {f for f in os.listdir(d)
+                  if f.endswith((".py", ".js")) and f != "__init__.py"
+                  and not (list_name.endswith("HOOK_FILES") and f == "self_heal.py")}
+        drift = (actual - listed) - {"self_heal.py"} if list_name.endswith("HOOK_FILES") else actual - listed
+        if drift:
+            errors.append(f"{list_name} 与 {sub}/ 漂移: {sorted(drift)}"
+                          "（病例：2026-09-03 审计，do_upgrade 半量拷贝）")
 
 
 def check_v123(plugin_root, errors, warnings):

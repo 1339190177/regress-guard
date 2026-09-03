@@ -59,3 +59,28 @@ def test_command_byte_budget_warns_on_bloat():
         errs2, warns2 = [], []
         check_docs.check_v123(td, errs2, warns2)
         assert not errs2 and not warns2
+
+
+def test_deploy_contract_drift_guard(tmp_path):
+    """v1.26.1：REQUIRED_HOOK/LIB 与源目录漂移 → block（病例：2026-09-03 审计半量拷贝）。"""
+    import sys
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import check_docs
+    # 正路：真实插件目录无漂移
+    errs, warns = [], []
+    check_docs.check_v1241(ROOT, errs, warns)
+    assert not errs, f"真实目录被判漂移: {errs}"
+    # 负路：伪源目录多一个脚本不在清单 → 报错
+    import shutil
+    proj = tmp_path / "plug"
+    (proj / "hooks" / "scripts" / "lib").mkdir(parents=True)
+    heal = proj / "hooks" / "scripts" / "self_heal.py"
+    heal.write_text('REQUIRED_HOOK_FILES = ["a.py"]\nREQUIRED_LIB_FILES = ["l.py"]\n',
+                    encoding="utf-8")
+    (proj / "hooks" / "scripts" / "a.py").write_text("", encoding="utf-8")
+    (proj / "hooks" / "scripts" / "zzz_extra.py").write_text("", encoding="utf-8")
+    (proj / "hooks" / "scripts" / "lib" / "l.py").write_text("", encoding="utf-8")
+    (proj / "hooks" / "scripts" / "lib" / "zzz_lib.py").write_text("", encoding="utf-8")
+    errs2, _ = [], []
+    check_docs.check_v1241(str(proj), errs2, _)
+    assert any("zzz_extra" in e for e in errs2) and any("zzz_lib" in e for e in errs2)
