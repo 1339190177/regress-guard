@@ -1,12 +1,12 @@
 ---
-description: 收尾流水线：track 回写 → verify 全证据 → 状态推进 → 汇总报告（一条命令走完收尾，人只出现在决策点）
+description: 收尾流水线：track 回写 → verify 全证据 → 代谢沉淀 → 状态推进 → 汇总报告（一条命令走完收尾，人只出现在决策点）
 argument-hint: [manifest-id]
 allowed-tools: Read, Write, Edit, Bash, Grep
 ---
 
 # /regress:finish — 收尾流水线
 
-实施完成后的一条命令收尾：**track → verify → 提交就绪**。
+实施完成后的一条命令收尾：**track → verify → 代谢沉淀 → 提交就绪**。
 流程段之间没有人肉粘合剂——中间不需要人，人只出现在两个决策点
 （残留 open/flagged 的处置、提交本身）。
 
@@ -41,7 +41,21 @@ F3 直接回写 `actual_changes`（这是开发边界的扩界出口，留痕）
   ① 列出每条 open，说明锁死还差什么证据；② 显式 flagged（写明知悉原因）
   用户不表态不继续
 
-## 步骤 4：汇总报告
+## 步骤 4：代谢沉淀位（v1.24：任务结束必过，有料沉淀无料跳过）
+
+任务收尾即代谢入口——规律不靠人想起来才沉淀（病例：v1.23 排障纪律靠人类推动才固化）：
+
+```bash
+python3 "<插件路径>/hooks/scripts/lib/journal.py" . digest
+```
+
+- **digest 非空 / 本次有 rescue 回填 / top_f3 有新共变** → 执行 /regress:learn 的沉淀
+  流程（规律入 AGENTS.md 标记块 + `rules_ledger.py . record` 记账），汇报新增规律条数
+- 全空 → 报告一行「无可沉淀，代谢跳过」——不硬凑
+- 顺带跑 `rules_ledger.py . health`：命中 ≥3 的稳定规律输出「建议固化 skill」卡片
+  （🦴 经人批准后用 skill-creator 固化——**自动固化的错误经验会以技能的形式高速复发**）
+
+## 步骤 5：汇总报告
 
 ```
 🏁 收尾完成 · REGRESS-<id>

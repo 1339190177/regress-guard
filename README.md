@@ -2,7 +2,7 @@
 
 > AI 辅助开发的测试回归卡点 + 反脆弱控制体（四公理架构，版本见 plugin.json）
 >
-> **先读思想**：[docs/PHILOSOPHY.md](docs/PHILOSOPHY.md)——十三条设计哲学与它们背后的真实教训。功能会过时，思想不会。
+> **先读思想**：[docs/PHILOSOPHY.md](docs/PHILOSOPHY.md)——十四条设计哲学与它们背后的真实教训。功能会过时，思想不会。
 
 ## 安装
 
@@ -81,6 +81,7 @@
 | **老项目自动迁移** | SessionStart self_heal 检测 .regress/ 缺零号 README → 从模板幂等补写（永不覆盖定制版） | 每次会话启动 |
 | **失忆读者层** | 清单正文写给断上下文的读者：实施顺序一步一响（可观察里程碑）+ 环境准备 + 报错自救（rescue 字段） | /regress:plan 步骤 4.7 |
 | **考古地层** | 探测器自动 append 到 journal/ | 每次失败/风险/纠正 |
+| **代谢链（规律账本）** | finish 收尾必过沉淀位（有料沉淀无料跳过）；规律记账（再检出=命中）；🍂 半年零命中列降级候选提示人工修剪（永不自动删）；🦴 命中≥3 建议经人批准用 skill-creator 固化为宿主 skill——地层是脂肪，规律是肌肉，skill 是骨骼 | /regress:finish · /regress:learn |
 
 ## 命令
 
@@ -124,13 +125,13 @@
 
 **实况（由 gen_reference.py 生成，勿手改本区）**
 
-- 命令：14 个 · hook 注册：14 个事件条目 · 测试函数：265 个
+- 命令：14 个 · hook 注册：14 个事件条目 · 测试函数：269 个
 
 | 命令 | 说明 |
 |---|---|
 | `/regress:bypass` | 紧急绕过回归卡点（限时 + 审计日志），用于 hotfix 等紧急场景 |
 | `/regress:evolve` | 遇到难点时查社区经验→适配项目→沉淀为知识库（不再重复查） |
-| `/regress:finish` | 收尾流水线：track 回写 → verify 全证据 → 状态推进 → 汇总报告（一条命令走完收尾，人只出现在决策点） |
+| `/regress:finish` | 收尾流水线：track 回写 → verify 全证据 → 代谢沉淀 → 状态推进 → 汇总报告（一条命令走完收尾，人只出现在决策点） |
 | `/regress:init` | 初始化项目的 .regress/ 数据目录（代码已在全局级安装，这里只建数据） |
 | `/regress:install` | 一键安装 regress-guard 到用户级（零配置，装一次全局生效） |
 | `/regress:learn` | 分析历史+检测框架规则，输出项目洞察，写入 AGENTS.md |

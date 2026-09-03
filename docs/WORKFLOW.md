@@ -15,7 +15,7 @@
       ↓ （预授权任务无异议可 --provisional 临行，进否决窗）
 [AI 开发]                ← 边界守卫事前拦截越界编辑；受阻则四问落产物
       ↓                    （人类决策点 ②：给 need 所需的输入/权限）
-/regress:finish          → track 回写 F3 → verify 全证据（rescue 自救/感官问人收布尔）
+/regress:finish          → track 回写 F3 → verify 全证据（rescue 自救/感官问人收布尔）→ 代谢沉淀
       ↓                    （人类决策点 ③：感官终验 human_check）
 git commit               ← 门禁自跑测试 + locked 复验，通过自动写 done
 ```

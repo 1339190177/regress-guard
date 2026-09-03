@@ -13,7 +13,9 @@ allowed-tools: Read, Write, Edit, Bash, WebSearch, WebFetch, Grep
 ## 流程
 
 ### 1. 先查知识库
-读 `.regress/knowledge-base.json`。如果已有匹配的 → 直接用，不查社区。
+读 `.regress/knowledge-base.json`。如果已有匹配的 → 直接用，不查社区，
+**并给该条记一笔**（v1.24 代谢链：`hits` +1、`last_hit` 今天——命中是留存的证据，
+半年零命中的条下次提示复验，知识库也要新陈代谢）。
 
 ### 2. 查社区（WebSearch）
 搜索关键词，读 2-3 个高赞结果，提取社区公认的解法 + 坑 + 适用条件。
@@ -32,7 +34,10 @@ allowed-tools: Read, Write, Edit, Bash, WebSearch, WebFetch, Grep
   "question": "遇到的问题",
   "answer": "社区的解法",
   "adaptation": "针对本项目的调整",
-  "verified": true/false
+  "verified": true/false,
+  "captured_at": "首次沉淀日期",
+  "hits": 0,
+  "last_hit": ""
 }
 ```
 同时把适配后的经验写入项目 AGENTS.md。
