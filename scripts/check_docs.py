@@ -101,6 +101,8 @@ def check(plugin_root):
     check_v1241(plugin_root, errors, warnings)
     # v1.27 文档层覆盖矩阵
     check_v127(plugin_root, errors, warnings)
+    # v1.27.2 门禁活性（链外看门狗）
+    check_gate_liveness(plugin_root, errors, warnings)
 
     if errors:
         print(f"❌ 错误 ({len(errors)}):")
@@ -221,6 +223,45 @@ def check_v127(plugin_root, errors, warnings):
                 continue
             if kw not in open(p, encoding="utf-8").read():
                 errors.append(f"{d} 未覆盖能力词「{kw}」（病例：v1.25/v1.26 连续两版漏文档层）")
+
+
+# ─── v1.27.2：门禁活性（链外看门狗）───────────────────────────
+# 病例：2026-09-03 钩子静默悬案——install.sh 空 matcher 致 config 整体丢弃，
+# 全机钩子零装载一周无人知（所有"验证"都是直跑脚本=戏台上验证）。
+# 原则：看门狗不能住在被看的那条链里（链死则狗死）——检查 config 结构（确定性）
+# 与客户端日志（链外数据源）。修复当日日志会残留修复前记录，故日志项 warn 不 error。
+def check_gate_liveness(plugin_root, errors, warnings,
+                        cfg_path=None, log_dir=None):
+    cfg_path = cfg_path or os.path.join(os.path.expanduser("~"),
+                                        ".zcode", "cli", "config.json")
+    log_dir = log_dir or os.path.join(os.path.expanduser("~"),
+                                      ".zcode", "cli", "log")
+    if os.path.isfile(cfg_path):
+        try:
+            cfg = json.load(open(cfg_path, encoding="utf-8"))
+            bad = [f"{ev}.{i}"
+                   for ev, arr in cfg.get("hooks", {}).get("events", {}).items()
+                   for i, e in enumerate(arr or [])
+                   if isinstance(e.get("matcher"), str) and e["matcher"] == ""]
+            if bad:
+                errors.append(
+                    f"cli/config.json 空 matcher: {bad}——schema 违例致整份 config "
+                    "被客户端丢弃、全机钩子零装载（病例：2026-09-03 悬案）")
+        except (json.JSONDecodeError, IOError, OSError):
+            pass
+    try:
+        logs = sorted(glob.glob(os.path.join(log_dir, "zcode-*.jsonl")))
+        if not logs:
+            return  # 非 ZCode 客户端环境（CI/他人机器）——静默跳过
+        latest = logs[-1]
+        n = sum(1 for line in open(latest, encoding="utf-8", errors="replace")
+                if '"config.file.invalid"' in line)
+        if n:
+            warnings.append(
+                f"客户端日志 {os.path.basename(latest)} 含 {n} 次 config.file.invalid"
+                "——若修复后新会话仍出现则钩子链未活（链外看门狗）")
+    except (IOError, OSError):
+        pass
 
 
 def check_v123(plugin_root, errors, warnings):

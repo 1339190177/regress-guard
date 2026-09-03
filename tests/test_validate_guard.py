@@ -1,5 +1,6 @@
 """架构守卫（validate 5/5）的负路径测试——从未失败过的守卫等于未验证的守卫。"""
 import glob
+import json
 import os
 import subprocess
 
@@ -106,3 +107,40 @@ def test_doc_coverage_matrix_both_paths(tmp_path):
         assert any("验收标准" in e for e in errs2)
     finally:
         check_docs.DOC_COVERAGE = saved
+
+
+def test_gate_liveness_watchdog_both_paths(tmp_path):
+    """v1.27.2：链外看门狗——空 matcher 配置必拦（本周病例）；干净配置+无日志静默。"""
+    import sys
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import check_docs
+    # 负路：空 matcher 配置 → error
+    bad_cfg = tmp_path / "config.json"
+    bad_cfg.write_text(json.dumps(
+        {"hooks": {"enabled": True, "events": {
+            "UserPromptSubmit": [{"matcher": "", "hooks": []}]}}}),
+        encoding="utf-8")
+    errs, warns = [], []
+    check_docs.check_gate_liveness(str(tmp_path), errs, warns,
+                                   cfg_path=str(bad_cfg),
+                                   log_dir=str(tmp_path / "nologi"))
+    assert any("空 matcher" in e for e in errs)
+    # 正路：干净配置 + 无日志目录 → 全静默
+    good_cfg = tmp_path / "config2.json"
+    good_cfg.write_text(json.dumps(
+        {"hooks": {"enabled": True, "events": {
+            "UserPromptSubmit": [{"hooks": []}]}}}),
+        encoding="utf-8")
+    errs2, warns2 = [], []
+    check_docs.check_gate_liveness(str(tmp_path), errs2, warns2,
+                                   cfg_path=str(good_cfg),
+                                   log_dir=str(tmp_path / "nologi"))
+    assert not errs2 and not warns2
+    # 日志负路：含 invalid 记录 → warn
+    logd = tmp_path / "logs"; logd.mkdir()
+    (logd / "zcode-2026-09-03.jsonl").write_text(
+        '{"event":"config.file.invalid"}\n', encoding="utf-8")
+    errs3, warns3 = [], []
+    check_docs.check_gate_liveness(str(tmp_path), errs3, warns3,
+                                   cfg_path=str(good_cfg), log_dir=str(logd))
+    assert not errs3 and any("config.file.invalid" in w for w in warns3)
