@@ -60,6 +60,14 @@ mkdir -p .regress/manifests .regress/journal
 cp "<插件路径>/templates/regress-dir-readme.md" .regress/README.md
 ```
 
+创建 `.regress/product-context.md`（v1.26 产品上下文卡——「资深·懂行业·贴近用户」
+那部分知识的住所；用户/价值观段人类填，行业惯例段可由顾问带搜索起草。
+缺失才补、永不覆盖）：
+
+```bash
+cp "<插件路径>/templates/product-context.md" .regress/product-context.md
+```
+
 创建决策日志 `.regress/decisions.md`（公理二：认知物质化——决策链刻在文件里，
 新会话/新人不靠记忆，读文件）：
 

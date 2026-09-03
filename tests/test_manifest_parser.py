@@ -323,3 +323,13 @@ def test_template_body_has_acceptance_and_tradeoff():
     for col in ("判据（可检验）", "证据（verify", "状态"):
         assert col in body, f"验收标准缺「{col}」列"
     assert "设计取舍" in body and "否决因" in body
+
+
+def test_template_product_context_sections():
+    """v1.26：产品上下文卡四段骨架在模板里——行业暗知识的住所。"""
+    tmpl = os.path.join(os.path.dirname(__file__), "..", "templates",
+                        "product-context.md")
+    body = open(os.path.abspath(tmpl), encoding="utf-8").read()
+    for sec in ("用户是谁", "产品价值观（不可牺牲的）", "行业惯例", "设计否决记录"):
+        assert sec in body, f"产品上下文卡缺「{sec}」段"
+    assert "scout" in body and "永不删人类写的段" in body
