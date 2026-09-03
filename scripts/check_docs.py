@@ -95,6 +95,8 @@ def check(plugin_root):
 
     # v1.22 病例驱动断言（在汇总打印前执行）
     check_v122(plugin_root, errors, warnings)
+    # v1.23.1 长度预算（命令文件是上下文热路径，调用即入 AI 上下文）
+    check_v123(plugin_root, errors, warnings)
 
     if errors:
         print(f"❌ 错误 ({len(errors)}):")
@@ -153,6 +155,24 @@ def check_v122(plugin_root, errors, warnings):
                     text=True, cwd=plugin_root, timeout=30)
         if r.returncode != 0:
             errors.append("README 生成区与实况不一致: " + r.stderr.strip())
+
+
+# ─── v1.23.1：长度预算（warn）——命令文件是上下文热路径 ──────────────
+# 病例：2026-09-03 膨胀审计发现 plan.md 三版 +10.5%（14.3K→15.8K），REGRESS-005
+# 病例故事在 plan/模板/PHILOSOPHY 三处完整重复；模板指导语随实例化进入每个清单。
+# 预算锚点 = 瘦身后最大命令文件的体积；超限 = 先问删哪一条（PHILOSOPHY §12
+# 契约长度冻结：太长的规则会被摘要，被摘要的规则等于没写）
+COMMAND_BYTE_BUDGET = 16000
+
+
+def check_v123(plugin_root, errors, warnings):
+    cmd_dir = os.path.join(plugin_root, "commands")
+    for f in sorted(glob.glob(os.path.join(cmd_dir, "*.md"))):
+        size = os.path.getsize(f)
+        if size > COMMAND_BYTE_BUDGET:
+            warnings.append(
+                f"{os.path.relpath(f, plugin_root)} {size}B 超命令长度预算 {COMMAND_BYTE_BUDGET}B"
+                "——加一条先问删哪一条（PHILOSOPHY §12；病例：2026-09-03 plan.md 审计）")
 
 
 def rel(path, root):
