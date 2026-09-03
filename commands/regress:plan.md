@@ -49,10 +49,8 @@ AI 推断（从代码读）:
 ```
 "下发全部成功才是200" 的歧义:
 
-  理解A: 所有设备都成功才200（有一个失败就报错）
-         → 改为同步等待所有设备响应
-  理解B: 下发操作执行完毕就200（不管个别设备是否接收）
-         → 保持异步，只是把"操作完成"作为200条件
+  理解A: 所有设备都成功才200（有一个失败就报错）→ 同步等待所有设备响应
+  理解B: 下发操作执行完毕就200（不管个别设备是否接收）→ "操作完成"作200条件
   理解C: 200表示请求被接受（当前行为，不改）
 ```
 
@@ -62,11 +60,7 @@ AI 推断（从代码读）:
 
 ```
 能从代码推断答案的 → 自己定，标注"我理解为X（基于YYY代码）"
-  例如: 代码显示设备控制是同步调用 → 理解A
-
 无法从代码推断的 → 只问这一个点（不问其他）
-  例如: "是否需要兼容旧的异步模式？" → 这个确实要问
-
 改变交付性质的 → 必须问
   例如: "失败时回滚已保存的设置吗？" → 影响数据一致性
 ```
@@ -84,15 +78,10 @@ AI 推断（从代码读）:
   有任一设备失败 → 返回 500 + 失败设备信息。
 
 依据（从代码推断）：
-  • Controller: Ma4gSosSettingController.java
-  • 当前: saveSettings() 保存后直接返回200
-  • 下发: 调用 DeviceControlService.dispatch()
-  • 协议: MQTT（同步等待 ack，timeout 5s）
+  • Controller: Ma4gSosSettingController.java · 协议: MQTT（同步等待 ack，5s）
 
 我做的假设（如有不符请指出）：
-  1. 下发失败不回滚已保存的设置（只是返回错误）
-  2. 超时5s视为失败
-  3. 不需要兼容旧的异步模式
+  1. 下发失败不回滚已保存的设置 · 超时5s视为失败
 
 需要你确认的（只1个问题）：
   • 下发部分失败时：返回200+partial结果，还是500+全部失败？
@@ -159,26 +148,25 @@ Agent(prompt="评估以下改动的影响范围：{改动文件列表}。
 id: REGRESS-<序号>
 requirement: "<原始需求>"
 understood_intent: "<AI 理解后的完整描述>"
-assumptions:          # AI 自己做的假设
+assumptions:              # AI 自己做的假设（2d 的产出落这里）
   - "下发失败不回滚"
-  - "超时5s视为失败"
-confirmed: []         # 人类确认过的（初始为空）
-ambiguities_resolved: # 歧义解决记录
+confirmed: []             # 人类确认过的（初始为空）
+ambiguities_resolved:     # 歧义解决记录：point / ai_choice / basis 三键
   - point: "下发模式"
     ai_choice: "同步等待所有设备"
     basis: "DeviceControlService.dispatch() 是同步调用"
-status: planning      # 待人类批准（边界守卫拦编辑）→ plan_approve.py 转写后 in-progress
-base_head: "<git rev-parse --short HEAD>"   # 创建时基线（非 git 项目留空）——批准时校验漂移
-approved:             # 批准落产物（v1.13）：plan_approve.py 填，或人类直接填 at（产物直通）
+status: planning          # 待人类批准（拦编辑）→ plan_approve.py 转写后 in-progress
+base_head: "<git rev-parse --short HEAD>"   # 创建时基线——批准时校验漂移
+approved:                 # 批准落产物：转写器填，或人类直接填 at（产物直通）
   at: ""
   note: ""
-planned_changes: [...]
-fragile_points:       # 公理一：穷举致使失败的关键脆弱点
+planned_changes: [...]    # id/file/type/reason/tests_required——全量字段见 templates/regress-manifest.md
+fragile_points:           # 公理一：穷举致使失败的关键脆弱点（字段见模板）
   - id: V1
-    kind: env         # env/dependency/resource/data/concurrency/api
+    kind: env
     description: "CUDA 由 module 加载，重启后丢失"
     verify: "python3 -c 'import torch;print(torch.cuda.is_available())'"
-    status: open      # open→locked(verify过)/flagged(带病挂牌)
+    status: open          # open→locked(verify过)/flagged(带病挂牌)
 ---
 ```
 
@@ -235,6 +223,13 @@ fragile_points:       # 公理一：穷举致使失败的关键脆弱点
 fragile_points 每条可选 `rescue:` 字段，与报错自救表同源——检查=verify，自救=rescue，
 两半齐了才对初级读者（= 失忆会话）友好。
 
+### 步骤 4.8：设计备选（v1.25：没有备选的设计不是设计）
+
+动手前至少否决一条备选路径——方案唯一往往不是想清楚了，是没想过
+（病例：v1.23 复盘框定"过度设计"视角被用户纠正"方向偏差"——卡片上有备选，
+人类 30 秒就能在送审时纠偏）。落产物：清单「需求理解」记一行
+**设计取舍**：`<被否方案>——否决因：<一句理由>`。
+
 ## 步骤 5：计划审批（人类的一寸——方向错误的最后低价纠偏点）
 
 ### 5a：顾问预审（先于卡片输出）
@@ -270,7 +265,9 @@ python3 "<插件路径>/hooks/scripts/lib/journal.py" . add plan_advisor_review 
   改动点：F1 <文件·类型> ／ F2 …
   边界：<include 目录列表>
   脆弱点：V1 <描述·验证命令·状态> …
+  备选：<被否方案 + 一句否决因>（4.8：没有备选=没想过）
   测试：<要求> ／ 假设：<我做的假设>
+  验收：<done 的可检验判据，非功能底线在此定型>
   待确认歧义（如有）：<只列无法自决且影响交付的>
 ```
 

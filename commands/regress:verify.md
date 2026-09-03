@@ -31,6 +31,14 @@ allowed-tools: Read, Write, Edit, Bash
 - **Java**: `mvn test -q`
 - **Go**: `go test ./...`
 
+## 验收标准（v1.25：需求侧的 done 定义）
+
+清单正文「验收标准」表逐条拿证据（判据 → 证据列的 verify 命令 / `human_check:<vid>`），
+通过在表内标 `locked`。**汇报里的"根治/完成/更好"必须能指回这里某一条判据**，
+指不回去的词不许说（病例：REGRESS-005"根治"×3，每次证据等级零）。
+非功能底线（延迟/安全/兼容）若发现缺席——报告里标红"验收标准缺非功能判据"，
+补上再继续（缺席的底线会在设计后期反噬，jitter buffer 病例）。
+
 ## 脆弱点证据（公理一：证据律）
 
 活跃清单 frontmatter 里有 `fragile_points` 时，测试之外还要逐条拿证据：

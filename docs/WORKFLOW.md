@@ -8,7 +8,7 @@
 ```
 说需求（自然语言，无需敲命令）
       ↓ UserPromptSubmit 钩子提示 AI 走 plan 流程（含 /regress:init 自动兜底）
-/regress:plan 逻辑       → 清单（F1/F2 + 脆弱点拓扑 + 边界 + 实施顺序；修 bug 类先过假设账本），status: planning
+/regress:plan 逻辑       → 清单（F1/F2 + 脆弱点拓扑 + 边界 + 实施顺序 + 验收标准/设计取舍；修 bug 类先过假设账本），status: planning
       ↓ （可选顾问预审：有方向性异议必等人）
 📋 计划卡片 → 人类 30 秒：批准 / 修改 / 取消      ← 人类决策点 ①
       ↓ plan_approve.py：status→in-progress + approved.at 落产物

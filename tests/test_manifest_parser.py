@@ -312,3 +312,14 @@ def test_read_frontmatter_unfenced_fallback_capped(tmp_path):
     head = mp.read_frontmatter(str(p))
     assert "id: Y" in head
     assert head.count("\n") <= 202  # line_cap=200 兜底
+
+
+def test_template_body_has_acceptance_and_tradeoff():
+    """v1.25：验收标准节（判据/证据/状态）与设计取舍行骨架在模板里——需求的证据律。"""
+    tmpl = os.path.join(os.path.dirname(__file__), "..", "templates",
+                        "regress-manifest.md")
+    body = open(os.path.abspath(tmpl), encoding="utf-8").read()
+    assert "验收标准（做到什么算完" in body
+    for col in ("判据（可检验）", "证据（verify", "状态"):
+        assert col in body, f"验收标准缺「{col}」列"
+    assert "设计取舍" in body and "否决因" in body
