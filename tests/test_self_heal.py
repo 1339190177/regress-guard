@@ -174,3 +174,34 @@ def test_same_version_no_refresh(tmp_path, monkeypatch):
     rg.mkdir(parents=True)
     (rg / "README.md").write_text(_TPL_V121, encoding="utf-8")
     assert sh.backfill_project_readme(str(rg)) is None
+
+
+def test_sentinel_stale_planning_hint(tmp_path, monkeypatch):
+    """v1.23.2 长寿可见化：planning 搁置 >30 天 → 哨兵标 ⏰（只提示不处置）。"""
+    from datetime import date, timedelta
+    sh = _load_heal(tmp_path, monkeypatch)
+    proj = tmp_path / "sproj"
+    (proj / ".regress" / "manifests").mkdir(parents=True, exist_ok=True)
+    old = (date.today() - timedelta(days=40)).isoformat()
+    (proj / ".regress" / "manifests" / "R1.md").write_text(
+        _MF_ACTIVE.format(status="planning", fp="open").replace(
+            "status: planning", f'status: planning\ncreated_at: "{old}"'),
+        encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
+    out = sh._active_manifest_sentinel()
+    assert out and "⏸ R1" in out and "已搁置40天" in out
+
+
+def test_sentinel_fresh_planning_no_stale_hint(tmp_path, monkeypatch):
+    """对照：新建 planning 不带 ⏰（30 天内的等待是正常节奏）。"""
+    from datetime import date
+    sh = _load_heal(tmp_path, monkeypatch)
+    proj = tmp_path / "sproj"
+    (proj / ".regress" / "manifests").mkdir(parents=True, exist_ok=True)
+    (proj / ".regress" / "manifests" / "R1.md").write_text(
+        _MF_ACTIVE.format(status="planning", fp="open").replace(
+            "status: planning", f'status: planning\ncreated_at: "{date.today().isoformat()}"'),
+        encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
+    out = sh._active_manifest_sentinel()
+    assert out and "⏸ R1" in out and "⏰" not in out

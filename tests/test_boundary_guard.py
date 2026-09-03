@@ -310,3 +310,22 @@ def test_forbidden_wrong_shape_warns_not_bricks(tmp_path):
     r = run_guard(proj, proj / "legacy" / "old.ts")
     assert r.returncode == 0
     assert "形状错误" in r.stderr
+
+
+def test_done_manifest_body_status_quote_passes(tmp_path):
+    """v1.23.2 长寿回归：done 清单正文引用状态词（如报错自救备注里写 status: in-progress）
+    不得诈尸回 active——旧实现 ACTIVE_STATUS_RE.search(全文) 会中招，导致神秘禁编。"""
+    proj = make_project(tmp_path, status="done")
+    mf = proj / ".regress" / "manifests" / "R1.md"
+    mf.write_text(mf.read_text() + "\n> 复盘备注：当时卡在 status: in-progress 的误判上\n")
+    r = run_guard(proj, proj / "src" / "auth" / "login.ts")
+    assert r.returncode == 0, f"done 清单被正文引用诈尸: {r.stdout}"
+
+
+def test_long_body_manifest_still_detected(tmp_path):
+    """对照：正文极长的真活跃清单仍被识别（head 读只截正文，不吞 frontmatter）。"""
+    proj = make_project(tmp_path, status="in-progress")
+    mf = proj / ".regress" / "manifests" / "R1.md"
+    mf.write_text(mf.read_text() + ("填充行\n" * 800))
+    r = run_guard(proj, proj / "src" / "other" / "x.ts")
+    assert r.returncode == 2

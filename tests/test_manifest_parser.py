@@ -290,3 +290,25 @@ def test_template_body_has_hypothesis_ledger():
     for col in ("检验命令", "结果", "裁决"):
         assert col in body, f"账本缺「{col}」列"
     assert "第一嫌疑人" in body and "证伪" in body
+
+
+def test_read_frontmatter_stops_at_closing_fence(tmp_path):
+    """v1.23.2：只读到闭合 ---——正文再长、再引用状态词都与扫描无关。"""
+    import manifest_parser as mp
+    p = tmp_path / "m.md"
+    p.write_text("---\nid: X\nstatus: done\n---\n"
+                 + "filler\n" * 500 + "> 引用 status: in-progress\n", encoding="utf-8")
+    head = mp.read_frontmatter(str(p))
+    assert "status: done" in head
+    assert "引用 status: in-progress" not in head
+    assert head.count("\n") < 10  # 只读了 frontmatter 那几行
+
+
+def test_read_frontmatter_unfenced_fallback_capped(tmp_path):
+    """容错对齐：无闭合 --- 的文件读到 line_cap 为止（不吞整文件）。"""
+    import manifest_parser as mp
+    p = tmp_path / "m2.md"
+    p.write_text("---\nid: Y\n" + "x: 1\n" * 400, encoding="utf-8")
+    head = mp.read_frontmatter(str(p))
+    assert "id: Y" in head
+    assert head.count("\n") <= 202  # line_cap=200 兜底

@@ -47,6 +47,29 @@ def parse_frontmatter(filepath):
     return _parse_fallback(yaml_text)
 
 
+def read_frontmatter(filepath, line_cap=200):
+    """只读文件的 frontmatter（到闭合 --- 为止），返回文本。
+
+    长寿扫描（v1.23.2）：done 清单逐年堆积后，守卫/反思钩子每次触发仍只付
+    O(frontmatter) 而非 O(整文件)；同时天然只搜 frontmatter，正文中引用
+    状态词（如报错自救表里写着 status: in-progress）不会让 done 清单诈尸回
+    active——旧实现 ACTIVE_STATUS_RE.search(全文) 两头都吃亏。
+    无闭合 --- 的容错文件读到 line_cap 行为止（与 parse_frontmatter 的容错语义对齐）。
+    """
+    out = []
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+            for i, line in enumerate(f):
+                out.append(line)
+                if i > 0 and line.strip() == "---":
+                    break
+                if i >= line_cap:
+                    break
+    except (IOError, OSError):
+        return ""
+    return "".join(out)
+
+
 def update_frontmatter(filepath, updates):
     """更新清单的 frontmatter 字段（保留正文不变，加文件锁防并发竞争）。
 

@@ -37,6 +37,7 @@ if LIB_DIR not in sys.path:
 from manifest_fields import (  # noqa: E402
     ACTIVE_STATUS_RE, block_value, editable, parse_core,
 )
+from manifest_parser import read_frontmatter  # noqa: E402  长寿扫描：只读 frontmatter
 
 # 自定位绝对路径（源/安装两种布局同构）——拦截消息不留给读者猜的相对引用
 APPROVE_SCRIPT = os.path.join(LIB_DIR, "plan_approve.py")
@@ -145,10 +146,11 @@ def active_manifests(project_dir):
     mdir = os.path.join(project_dir, ".regress", "manifests")
     if os.path.isdir(mdir):
         for f in sorted(glob.glob(os.path.join(mdir, "*.md")), reverse=True):
+            # v1.23.2 长寿扫描：只搜 frontmatter——done 堆积后仍是 O(frontmatter)，
+            # 且正文引用状态词不再让 done 清单诈尸（旧实现两头的坑）
             try:
-                with open(f, encoding="utf-8") as fh:
-                    if ACTIVE_STATUS_RE.search(fh.read()):
-                        out.append(f)
+                if ACTIVE_STATUS_RE.search(read_frontmatter(f)):
+                    out.append(f)
             except (IOError, OSError):
                 pass
     return out

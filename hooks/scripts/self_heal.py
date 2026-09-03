@@ -243,7 +243,25 @@ def _active_manifest_sentinel():
     for p in (base, os.path.join(base, "lib")):
         if p not in sys.path:
             sys.path.insert(0, p)
-    from manifest_fields import parse_core, ACTIVE_STATUSES
+    from manifest_fields import parse_core, ACTIVE_STATUSES, field
+    from manifest_parser import read_frontmatter
+
+    def _stale_suffix(content, status):
+        """长寿可见化（v1.23.2）：planning/verifying 搁置 >30 天标 ⏰。
+
+        遗忘的清单不会过期（设计如此——清单是人类的决策物），但僵尸的默认
+        状态不该是"神秘禁编"，该是"一眼可见"。只提示，不自动处置。
+        """
+        if status not in ("planning", "verifying"):
+            return ""
+        created = (field(content, "created_at") or "")[:10]
+        try:
+            from datetime import date
+            days = (date.today() - date.fromisoformat(created)).days
+        except ValueError:
+            return ""
+        return f" · ⏰ 已搁置{days}天" if days > 30 else ""
+
     lines = []
     mdir = os.path.join(regress_dir, "manifests")
     if not os.path.isdir(mdir):
@@ -251,8 +269,7 @@ def _active_manifest_sentinel():
     import glob as _glob
     for mf in sorted(_glob.glob(os.path.join(mdir, "*.md")), reverse=True):
         try:
-            with open(mf, encoding="utf-8") as f:
-                content = f.read()
+            content = read_frontmatter(mf)
         except (IOError, OSError):
             continue
         core = parse_core(content)
@@ -270,7 +287,7 @@ def _active_manifest_sentinel():
             extra = {"planning": "待人类批准",
                      "verifying": "验证中"}.get(status, f"{core.get('open_fragiles', 0)} 个脆弱点未锁")
             icon = {"planning": "⏸", "in-progress": "🎯", "verifying": "🔍"}[status]
-            lines.append(f"{icon} {name}（{status} · {extra}）")
+            lines.append(f"{icon} {name}（{status} · {extra}{_stale_suffix(content, status)}）")
         if len(lines) >= 3:
             break
     if not lines:

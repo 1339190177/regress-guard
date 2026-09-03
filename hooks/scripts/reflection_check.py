@@ -290,9 +290,11 @@ def check_context(project_dir):
     manifest_files = set()
     if os.path.isdir(manifests_dir):
         for f in sorted(glob.glob(os.path.join(manifests_dir, "*.md")), reverse=True):
+            # v1.23.2 长寿扫描：只读 frontmatter（done 堆积后 O(frontmatter)；
+            # 正文引用状态词不再诈尸；file: 条目全在 frontmatter 的 planned/actual 里）
             try:
-                with open(f, encoding="utf-8") as fh:
-                    content = fh.read()
+                from manifest_parser import read_frontmatter
+                content = read_frontmatter(f)
                 if _MF_ACTIVE_STATUS_RE.search(content):
                     active_manifests.append(os.path.basename(f))
                     for m in re.finditer(r'file:\s*["\']?([^"\'\n#]+)', content):
