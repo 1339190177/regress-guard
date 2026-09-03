@@ -156,6 +156,45 @@ def active_manifests(project_dir):
     return out
 
 
+def extract_write_targets(cmd):
+    """Bash 高置信度写目标（v1.29 旁路收口；病例：rm 删边界内文件零拦截）。
+
+    只认高置信形态，不确定一律漏过——fail-open 防误拦测试命令（2> 重定向不收：
+    stderr 日志类误拦代价高于漏拦；/dev/null 豁免）。
+    """
+    targets = set()
+    for m in re.finditer(r'(?<![0-9])>{1,2}\s*([^\s;|&]+)', cmd):
+        targets.add(m.group(1))
+    for m in re.finditer(r'&>{1,2}\s*([^\s;|&]+)', cmd):
+        targets.add(m.group(1))
+    for m in re.finditer(
+            r'(?:^|[;|&\s])(rm|rmdir|mv|cp|tee|truncate|touch|install|shred)\s+([^;|&\n]+)',
+            cmd):
+        name, rest = m.group(1), m.group(2)
+        toks = [t for t in rest.split() if not t.startswith("-")]
+        if not toks:
+            continue
+        if name in ("mv", "cp", "install"):
+            if len(toks) >= 2:
+                targets.add(toks[-1])
+        else:
+            targets.update(toks)
+    for m in re.finditer(r'(?:^|[;|&\s])sed\s+(?:-[^\s]*i[^\s]*\s+)?(?:-[^\s]*\s+)*([^;|&\n]+)', cmd):
+        toks = [t for t in m.group(1).split() if not t.startswith("-")]
+        if toks:
+            targets.add(toks[-1])
+    for m in re.finditer(r'\bof=([^\s;|&]+)', cmd):
+        targets.add(m.group(1))
+    out = set()
+    for t in targets:
+        t = t.strip('\'""')
+        if (not t or t.startswith("$") or t in ("/dev/null", "/dev/stdout", "/dev/stderr")
+                or t.isdigit()):
+            continue
+        out.add(t)
+    return out
+
+
 def path_matches(path_rel, patterns, exact_files):
     p = path_rel.strip("/")
     for e in exact_files:
@@ -194,14 +233,22 @@ def main():
         sys.exit(0)
 
     tool = data.get("tool_name", "")
-    if tool not in ("Edit", "Write", "ApplyPatch"):
+    if tool not in ("Edit", "Write", "ApplyPatch", "Bash"):
         sys.exit(0)
     ti = data.get("tool_input", {})
     if not isinstance(ti, dict):
         sys.exit(0)
-    fp = str(ti.get("file_path") or ti.get("path") or "")
-    if not fp:
-        sys.exit(0)
+    if tool == "Bash":
+        # v1.29 旁路收口：Bash 写目标走与 Edit 相同的边界判定（病例：rm 删边界内文件零拦截）
+        fps = sorted(extract_write_targets(str(ti.get("command") or "")))
+        if not fps:
+            sys.exit(0)
+    else:
+        fp = str(ti.get("file_path") or ti.get("path") or "")
+        if not fp:
+            sys.exit(0)
+        fps = [fp]
+    via = "（Bash 写目标）" if tool == "Bash" else ""
 
     project_dir = find_project_dir()
     if project_dir is None:
@@ -213,110 +260,107 @@ def main():
     if bypass_active(project_dir):
         sys.exit(0)
 
-    fp_abs = os.path.abspath(fp)
-    try:
-        fp_rel = os.path.relpath(fp_abs, project_dir).replace(os.sep, "/")
-    except ValueError:
-        fp_rel = fp_abs.replace(os.sep, "/")
-    if fp_rel.startswith("../"):
-        # 项目目录之外的文件：一律视为边界外（除非豁免路径）
-        fp_rel = os.path.normpath(fp_abs).replace(os.sep, "/")
-
-    if is_exempt(fp_rel, fp_abs):
-        sys.exit(0)
-
-    # ─── 1. 项目级禁改区：与任务无关，任何状态都拦 ───
     forb = forbidden_globs(project_dir)
-    if forb and path_matches(fp_rel, forb, []):
-        print(
-            f"REGRESS-GUARD: ⛔ 项目禁改区\n"
-            f"  {fp_rel}\n"
-            f"  命中 .regress/config.json 的 boundary.forbidden（冻结区/遗留区）。\n\n"
-            f"  禁改区与任务边界无关——它保护的是「不该再被碰」的代码。\n"
-            f"  · 确有必要 → /regress:bypass <分钟>（限时赦免，赦后记债）\n"
-            f"  · 冻结已解除 → 从 config 的 forbidden 列表移除（留痕于 git）",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-
     manifests = active_manifests(project_dir)
-    if not manifests:
-        sys.exit(0)
-
     boundaries = []
     for mf in manifests:
         patterns, exact, mid, status, approved_at = parse_boundary(mf)
         if (patterns or exact) and status not in ("done", "completed", "cancelled"):
             boundaries.append((mf, patterns, exact, mid, status, approved_at))
+    if not boundaries and not forb:
+        sys.exit(0)  # 无边界信息，fail-open（含无活跃清单——设计语义）
 
-    if not boundaries:
-        sys.exit(0)  # 无边界信息，fail-open
+    for fp in fps:
+        fp_abs = os.path.abspath(
+            fp if os.path.isabs(fp) else os.path.join(project_dir, fp))
+        try:
+            fp_rel = os.path.relpath(fp_abs, project_dir).replace(os.sep, "/")
+        except ValueError:
+            fp_rel = fp_abs.replace(os.sep, "/")
+        if fp_rel.startswith("../"):
+            # 项目目录之外的文件：一律视为边界外（除非豁免路径）
+            fp_rel = os.path.normpath(fp_abs).replace(os.sep, "/")
+        if is_exempt(fp_rel, fp_abs):
+            continue
 
-    matched = [(mf, mid, status, appr)
-               for mf, patterns, exact, mid, status, appr in boundaries
-               if path_matches(fp_rel, patterns, exact)]
-    if any(editable(status, appr) for _, _, status, appr in matched):
-        sys.exit(0)  # 已批准（status 翻转 或 approved.at 产物直通）
-    if matched:
-        blocked_hits = [(mf, mid) for mf, mid, status, _ in matched
-                        if status == "blocked"]
-        if blocked_hits:
-            # 命中受阻清单：受阻是合法的停止状态，编辑被拦直到解阻
-            mf0, mid0 = blocked_hits[0]
-            with open(mf0, encoding="utf-8") as f:
-                content = f.read()
-            reason = block_value(content, "blocked", "reason") if "---" in content else ""
-            need = block_value(content, "blocked", "need") if "---" in content else ""
-            ids = ", ".join(mid or os.path.basename(mf) for mf, mid in blocked_hits[:3])
-            extra = ""
-            planning_ids = [mid or os.path.basename(mf)
-                            for mf, mid, status, _ in matched if status == "planning"]
-            if planning_ids:
-                extra = f"\n  （另有待批准清单：{', '.join(planning_ids[:3])}）"
+        # ─── 1. 项目级禁改区：与任务无关，任何状态都拦 ───
+        if forb and path_matches(fp_rel, forb, []):
             print(
-                f"REGRESS-GUARD: 🛑 任务受阻\n"
-                f"  {fp_rel}\n"
-                f"  在受阻清单（{ids}）的边界内——受阻是合法停止，不是绕过的理由。\n\n"
-                f"  阻塞：{reason or '（读清单 blocked 块）'}\n"
-                f"  需要人类：{need or '（读清单 blocked.need）'}\n\n"
-                f"  · 把 need 转达给人类——这是受阻的出口，不是继续硬磨\n"
-                f"  · 阻塞解除 → python3 {APPROVE_SCRIPT} <清单> --unblock 后恢复编辑\n"
-                f"  · 认为不该受阻 → 在回复中说明理由，经人类同意后解阻"
-                f"{extra}",
+                f"REGRESS-GUARD: ⛔ 项目禁改区\n"
+                f"  {fp_rel}{via}\n"
+                f"  命中 .regress/config.json 的 boundary.forbidden（冻结区/遗留区）。\n\n"
+                f"  禁改区与任务边界无关——它保护的是「不该再被碰」的代码。\n"
+                f"  · 确有必要 → /regress:bypass <分钟>（限时赦免，赦后记债）\n"
+                f"  · 冻结已解除 → 从 config 的 forbidden 列表移除（留痕于 git）",
                 file=sys.stderr,
             )
             sys.exit(2)
-        # 只命中待批准（planning）清单：计划审批的机器强制——批准前拦编辑
-        ids = ", ".join(mid or os.path.basename(mf) for mf, mid, _, _ in matched[:3])
+
+        matched = [(mf, mid, status, appr)
+                   for mf, patterns, exact, mid, status, appr in boundaries
+                   if path_matches(fp_rel, patterns, exact)]
+        if any(editable(status, appr) for _, _, status, appr in matched):
+            continue  # 已批准（status 翻转 或 approved.at 产物直通）
+        if matched:
+            blocked_hits = [(mf, mid) for mf, mid, status, _ in matched
+                            if status == "blocked"]
+            if blocked_hits:
+                # 命中受阻清单：受阻是合法的停止状态，编辑被拦直到解阻
+                mf0, mid0 = blocked_hits[0]
+                with open(mf0, encoding="utf-8") as f:
+                    content = f.read()
+                reason = block_value(content, "blocked", "reason") if "---" in content else ""
+                need = block_value(content, "blocked", "need") if "---" in content else ""
+                ids = ", ".join(mid or os.path.basename(mf) for mf, mid in blocked_hits[:3])
+                extra = ""
+                planning_ids = [mid or os.path.basename(mf)
+                                for mf, mid, status, _ in matched if status == "planning"]
+                if planning_ids:
+                    extra = f"\n  （另有待批准清单：{', '.join(planning_ids[:3])}）"
+                print(
+                    f"REGRESS-GUARD: 🛑 任务受阻\n"
+                    f"  {fp_rel}{via}\n"
+                    f"  在受阻清单（{ids}）的边界内——受阻是合法停止，不是绕过的理由。\n\n"
+                    f"  阻塞：{reason or '（读清单 blocked 块）'}\n"
+                    f"  需要人类：{need or '（读清单 blocked.need）'}\n\n"
+                    f"  · 把 need 转达给人类——这是受阻的出口，不是继续硬磨\n"
+                    f"  · 阻塞解除 → python3 {APPROVE_SCRIPT} <清单> --unblock 后恢复编辑\n"
+                    f"  · 认为不该受阻 → 在回复中说明理由，经人类同意后解阻"
+                    f"{extra}",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+            # 只命中待批准（planning）清单：计划审批的机器强制——批准前拦编辑
+            ids = ", ".join(mid or os.path.basename(mf) for mf, mid, _, _ in matched[:3])
+            print(
+                f"REGRESS-GUARD: ⏸ 计划待批准\n"
+                f"  {fp_rel}{via}\n"
+                f"  在清单（{ids}）的边界内，但该计划尚未获得人类批准（status: planning）。\n\n"
+                f"  批准前只读探索，不动手——这是方向错误的最后低价纠偏点。\n"
+                f"  · 人类回复「批准/开始/ok」→ python3 {APPROVE_SCRIPT} <清单> 完成转写\n"
+                f"    （status→in-progress + approved 落产物 + 漂移检查 + 入地层）\n"
+                f"  · 人类也可直接编辑清单填 approved.at（产物直通），守卫视同已批准\n"
+                f"  · 计划需修改 → /regress:plan 继续对话完善（保持 planning）\n"
+                f"  · 你认为不该等批准 → 在回复中说明理由，请人类显式批准",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
+        ids = ", ".join(b[3] or os.path.basename(b[0]) for b in boundaries[:3])
         print(
-            f"REGRESS-GUARD: ⏸ 计划待批准\n"
-            f"  {fp_rel}\n"
-            f"  在清单（{ids}）的边界内，但该计划尚未获得人类批准（status: planning）。\n\n"
-            f"  批准前只读探索，不动手——这是方向错误的最后低价纠偏点。\n"
-            f"  · 人类回复「批准/开始/ok」→ python3 {APPROVE_SCRIPT} <清单> 完成转写\n"
-            f"    （status→in-progress + approved 落产物 + 漂移检查 + 入地层）\n"
-            f"  · 人类也可直接编辑清单填 approved.at（产物直通），守卫视同已批准\n"
-            f"  · 计划需修改 → /regress:plan 继续对话完善（保持 planning）\n"
-            f"  · 你认为不该等批准 → 在回复中说明理由，请人类显式批准",
+            f"REGRESS-GUARD: 🚧 开发边界拦截\n"
+            f"  {fp_rel}{via}\n"
+            f"  不在任何活跃清单（{ids}）的边界内。\n\n"
+            f"  边界 = 计划的物理化：越界动作在发生前被拦截，而不是烧完 token 后被提醒。\n"
+            f"  三条路（选一）：\n"
+            f"  1. 这确实是本任务需要的 → /regress:track 把它回写 actual_changes"
+            f"（边界随之扩展，扩界留痕）\n"
+            f"  2. 这属于另一个任务 → 先收尾当前清单（status: done 解除边界），再开新清单\n"
+            f"  3. 误锁 → .regress/config.json 设 \"boundary_enforced\": false 项目级关闭\n\n"
+            f"  需要临时绕过：/regress:bypass <分钟>",
             file=sys.stderr,
         )
         sys.exit(2)
-
-    ids = ", ".join(b[3] or os.path.basename(b[0]) for b in boundaries[:3])
-    print(
-        f"REGRESS-GUARD: 🚧 开发边界拦截\n"
-        f"  {fp_rel}\n"
-        f"  不在任何活跃清单（{ids}）的边界内。\n\n"
-        f"  边界 = 计划的物理化：越界动作在发生前被拦截，而不是烧完 token 后被提醒。\n"
-        f"  三条路（选一）：\n"
-        f"  1. 这确实是本任务需要的 → /regress:track 把它回写 actual_changes"
-        f"（边界随之扩展，扩界留痕）\n"
-        f"  2. 这属于另一个任务 → 先收尾当前清单（status: done 解除边界），再开新清单\n"
-        f"  3. 误锁 → .regress/config.json 设 \"boundary_enforced\": false 项目级关闭\n\n"
-        f"  需要临时绕过：/regress:bypass <分钟>",
-        file=sys.stderr,
-    )
-    sys.exit(2)
 
 
 if __name__ == "__main__":

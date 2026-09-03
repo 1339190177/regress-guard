@@ -127,3 +127,18 @@ def test_prod_second_time_triggers_scout(isolated_tmp):
     assert prompt_intercept.analyze_prompt("继续") == []
     rs = prompt_intercept.analyze_prompt("继续")
     assert any("卡死检测" in r for r in rs)
+
+
+def test_approval_delegation_not_counted_as_prod():
+    """v1.29：授权语不算无信息催促（病例：连续"继续，自决策"误报卡死检测）。"""
+    import importlib.util as ilu
+    import os as _os
+    src = _os.path.join(_os.path.dirname(__file__), "..", "hooks", "scripts",
+                        "prompt_intercept.py")
+    spec = ilu.spec_from_file_location("pi_v129", src)
+    pi = ilu.module_from_spec(spec)
+    spec.loader.exec_module(pi)
+    assert pi.is_content_free_prod("继续，自决策") is False   # 授权语
+    assert pi.is_content_free_prod("继续，直接做") is False
+    assert pi.is_content_free_prod("继续") is True            # 真空催促仍计
+    assert pi.is_content_free_prod("go") is True

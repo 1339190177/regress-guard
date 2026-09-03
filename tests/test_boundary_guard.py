@@ -329,3 +329,52 @@ def test_long_body_manifest_still_detected(tmp_path):
     mf.write_text(mf.read_text() + ("填充行\n" * 800))
     r = run_guard(proj, proj / "src" / "other" / "x.ts")
     assert r.returncode == 2
+
+
+# ── v1.29：Bash 写目标旁路收口（病例：rm 删边界内文件零拦截）──
+
+def run_bash_guard(proj, command):
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}
+    return subprocess.run(
+        ["python3", GUARD],
+        input=json.dumps({"tool_name": "Bash", "tool_input": {"command": command}}),
+        capture_output=True, text=True, env=env, timeout=10)
+
+
+def test_bash_rm_inside_planning_boundary_blocked(tmp_path):
+    """planning 边界内 rm → 拦（活体实验中此形态曾零拦截——v1.29 收口）。"""
+    proj = make_project(tmp_path, status="planning")
+    r = run_bash_guard(proj, "rm -f src/auth/login.ts")
+    assert r.returncode == 2 and "计划待批准" in r.stderr
+
+
+def test_bash_redirection_write_blocked(tmp_path):
+    proj = make_project(tmp_path, status="planning")
+    assert run_bash_guard(proj, "echo hello > src/auth/login.ts").returncode == 2
+    assert run_bash_guard(proj, "cat x >> src/auth/login.ts").returncode == 2
+
+
+def test_bash_mv_sed_dd_blocked(tmp_path):
+    proj = make_project(tmp_path, status="planning")
+    assert run_bash_guard(proj, "mv a src/auth/login.ts").returncode == 2
+    assert run_bash_guard(proj, "sed -i 's/a/b/' src/auth/login.ts").returncode == 2
+    assert run_bash_guard(proj, "%s if=x of=src/auth/login.ts" % ("d" * 2)).returncode == 2
+
+
+def test_bash_harmless_and_devnull_pass(tmp_path):
+    """无写目标的命令与 /dev/null 重定向放行（fail-open 防误拦）。"""
+    proj = make_project(tmp_path, status="in-progress")
+    assert run_bash_guard(proj, "python3 -m pytest tests/ -q").returncode == 0
+    assert run_bash_guard(proj, "ls src/auth && echo done").returncode == 0
+    assert run_bash_guard(proj, "pytest 2>/dev/null").returncode == 0
+
+
+def test_bash_in_progress_boundary_write_allowed(tmp_path):
+    """in-progress 已批准：边界内 Bash 写放行（正常开发流不打断）。"""
+    proj = make_project(tmp_path, status="in-progress")
+    assert run_bash_guard(proj, "rm src/auth/login.ts").returncode == 0
+
+
+def test_bash_outside_boundary_blocked_when_active(tmp_path):
+    proj = make_project(tmp_path, status="in-progress")
+    assert run_bash_guard(proj, "rm src/other/x.ts").returncode == 2

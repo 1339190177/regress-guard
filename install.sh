@@ -263,6 +263,15 @@ for e in bg_hooks:
         break
 else:
     bg_hooks.append({"matcher": "Edit|Write|ApplyPatch", "hooks": [boundary_entry]})
+# v1.29 旁路收口：Bash 写目标（rm/mv/tee/重定向/sed -i）同样过边界判定
+for e in bg_hooks:
+    if e.get("matcher") == "Bash":
+        kept = [h for h in e.get("hooks", []) if "boundary_guard" not in json.dumps(h)]
+        e["hooks"] = kept + [dict(boundary_entry,
+                                  statusMessage="regress-guard: 边界检查(Bash)...")]
+        break
+else:
+    bg_hooks.append({"matcher": "Bash", "hooks": [boundary_entry]})
 events["PreToolUse"] = bg_hooks
 
 # PreToolUse(Bash): 执行阀（公理四——不可逆命令需显式令牌 REGRESS_CONFIRM=YES）

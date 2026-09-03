@@ -82,9 +82,15 @@ def _prod_count_path():
     return key
 
 def is_content_free_prod(text):
-    """无信息催促：归一化后 ≤12 字符且以继续类词开头（覆盖"继续攻克，自决策"）。"""
+    """无信息催促：归一化后 ≤12 字符且以继续类词开头（覆盖"继续攻克，自决策"）。
+
+    授权词豁免（病例：2026-09-03 活体误判——"继续，自决策"是批准语不是空催促，
+    连续两次批准触发误报 scout 升级）：含授权/委派语义的短语带实际指令，不算无信息。
+    """
     t = re.sub(r"[\s，。！？,.!?]", "", text).lower()
     if not t or len(t) > 12:
+        return False
+    if re.search(r"自决策|自决|你决定|自主决|自动做|直接做|放手做", t):
         return False
     return t.startswith(("继续", "接着", "go", "ok", "加油", "搞起", "弄完"))
 
