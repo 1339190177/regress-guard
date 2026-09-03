@@ -205,3 +205,36 @@ def test_sentinel_fresh_planning_no_stale_hint(tmp_path, monkeypatch):
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
     out = sh._active_manifest_sentinel()
     assert out and "⏸ R1" in out and "⏰" not in out
+
+
+def test_sentinel_stale_mtime_fallback(tmp_path, monkeypatch):
+    """v1.23.3 田阶：旧模板清单无 created_at（lqgd 全部 5 个实测如此）→ mtime 兜底。"""
+    import os as _os
+    import time as _time
+    sh = _load_heal(tmp_path, monkeypatch)
+    proj = tmp_path / "sproj"
+    (proj / ".regress" / "manifests").mkdir(parents=True, exist_ok=True)
+    mf = proj / ".regress" / "manifests" / "R1.md"
+    mf.write_text(_MF_ACTIVE.format(status="planning", fp="open"), encoding="utf-8")
+    _os.utime(mf, (_time.time() - 40 * 86400,) * 2)  # mtime 拨回 40 天前
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
+    out = sh._active_manifest_sentinel()
+    assert out and "⏰ 已搁置40天" in out
+
+
+def test_backfill_lock_gitignore_idempotent(tmp_path):
+    """v1.23.3 田阶：windwos 项目 4 个 .lock 残留——回填 manifests/.gitignore，幂等不覆盖。"""
+    import importlib.util as _ilu
+    src = _ilu.spec_from_file_location(
+        "sh_gitignore", os.path.join(os.path.dirname(__file__), "..",
+                                     "hooks", "scripts", "self_heal.py"))
+    mod = _ilu.module_from_spec(src)
+    src.loader.exec_module(mod)
+    rg = tmp_path / ".regress"
+    (rg / "manifests").mkdir(parents=True)
+    assert mod.backfill_lock_gitignore(str(rg)) is not None
+    assert (rg / "manifests" / ".gitignore").read_text(encoding="utf-8") == ".*.lock\n"
+    # 幂等：已存在不覆盖
+    (rg / "manifests" / ".gitignore").write_text("自定义内容\n", encoding="utf-8")
+    assert mod.backfill_lock_gitignore(str(rg)) is None
+    assert "自定义内容" in (rg / "manifests" / ".gitignore").read_text(encoding="utf-8")

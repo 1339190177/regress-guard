@@ -246,20 +246,30 @@ def _active_manifest_sentinel():
     from manifest_fields import parse_core, ACTIVE_STATUSES, field
     from manifest_parser import read_frontmatter
 
-    def _stale_suffix(content, status):
+    def _stale_suffix(mf, content, status):
         """长寿可见化（v1.23.2）：planning/verifying 搁置 >30 天标 ⏰。
 
         遗忘的清单不会过期（设计如此——清单是人类的决策物），但僵尸的默认
         状态不该是"神秘禁编"，该是"一眼可见"。只提示，不自动处置。
+        年龄信号：created_at 优先；缺失/不可解析则 mtime 兜底
+        （真实项目实证：旧模板清单普遍无 created_at，如 lqgd 全部 5 个）。
         """
         if status not in ("planning", "verifying"):
             return ""
+        days = None
         created = (field(content, "created_at") or "")[:10]
-        try:
-            from datetime import date
-            days = (date.today() - date.fromisoformat(created)).days
-        except ValueError:
-            return ""
+        if created:
+            try:
+                from datetime import date
+                days = (date.today() - date.fromisoformat(created)).days
+            except ValueError:
+                days = None
+        if days is None:
+            try:
+                import time as _time
+                days = int((_time.time() - os.path.getmtime(mf)) // 86400)
+            except (OSError, ValueError):
+                return ""
         return f" · ⏰ 已搁置{days}天" if days > 30 else ""
 
     lines = []
@@ -287,13 +297,30 @@ def _active_manifest_sentinel():
             extra = {"planning": "待人类批准",
                      "verifying": "验证中"}.get(status, f"{core.get('open_fragiles', 0)} 个脆弱点未锁")
             icon = {"planning": "⏸", "in-progress": "🎯", "verifying": "🔍"}[status]
-            lines.append(f"{icon} {name}（{status} · {extra}{_stale_suffix(content, status)}）")
+            lines.append(f"{icon} {name}（{status} · {extra}{_stale_suffix(mf, content, status)}）")
         if len(lines) >= 3:
             break
     if not lines:
         return None
     return ("【进行中任务】\n" + "\n".join(lines)
             + "\n断点续作：/regress:resume（从 .regress/ 产物层单侧重建现场）")
+
+
+def backfill_lock_gitignore(regress_dir):
+    """长寿（v1.23.3）：manifests/.gitignore 缺失即补（幂等，永不覆盖已有内容）。
+
+    病例：windwos 项目 4 个 .lock 残留——filelock 的 sidecar 空文件无害，
+    但下次 git add .regress 就会进仓库。写在 manifests/ 内部，不碰用户的 .gitignore。
+    """
+    gi = os.path.join(regress_dir, "manifests", ".gitignore")
+    if not os.path.isdir(os.path.dirname(gi)) or os.path.exists(gi):
+        return None
+    try:
+        with open(gi, "w", encoding="utf-8") as f:
+            f.write(".*.lock\n")
+        return "manifests/.gitignore（锁残留不入库）"
+    except (IOError, OSError):
+        return None
 
 
 def check_and_heal():
@@ -379,6 +406,9 @@ def main():
     rg = _current_regress_dir()
     if rg:
         note = backfill_project_readme(rg)
+        if note:
+            healed.append(note)
+        note = backfill_lock_gitignore(rg)
         if note:
             healed.append(note)
 
