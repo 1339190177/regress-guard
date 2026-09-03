@@ -211,7 +211,7 @@ prompt_entry = {
 }
 submit_hooks = events.get("UserPromptSubmit", [])
 submit_hooks = [e for e in submit_hooks if "prompt_intercept" not in json.dumps(e)]
-submit_hooks.append({"matcher": "", "hooks": [prompt_entry]})
+submit_hooks.append({"hooks": [prompt_entry]})  # 全匹配=省略 matcher（空串违反 schema ≥1 字符，会致整份 config 被丢弃）
 events["UserPromptSubmit"] = submit_hooks
 
 # PostToolUseFailure: 失败信号采集
@@ -248,7 +248,7 @@ reflect_entry = {"type": "command", "command": f'python3 "{reflect_path}"',
                  "timeout": 90, "statusMessage": "regress-guard: 反思检查..."}
 stop_hooks = events.get("Stop", [])
 stop_hooks = [h for h in stop_hooks if "reflection_check" not in json.dumps(h)]
-stop_hooks.append({"matcher": "", "hooks": [reflect_entry]})
+stop_hooks.append({"hooks": [reflect_entry]})  # 同上：v1.27.1 修复——空 matcher 曾致全机钩子零装载
 events["Stop"] = stop_hooks
 
 # PreToolUse(Edit|Write|ApplyPatch): 开发边界守卫（检测→拦截：越界编辑在发生前阻断）
