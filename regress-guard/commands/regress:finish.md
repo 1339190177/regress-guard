@@ -84,6 +84,14 @@ git status --porcelain .regress 2>/dev/null
 可以提交（门禁复验后自动标 done）。
 ```
 
+**离场召回（v1.31.1）**：汇总输出后推送 done 事件——离场人类靠它知道"回来收货"：
+
+```bash
+python3 "<插件路径>/hooks/scripts/lib/notify.py" . done --title "🏁 完成 <id>：<需求一句话>" --body "测试 <passed>/<total>｜债务 <debt>｜<残留或干净>"
+```
+
+（一条/任务，频率天然低；干净收尾与 finish_open 二选一触发，不双响。）
+
 ## 自主决策
 
 - 清单已是 done/completed → 报告"已收尾"，只输出债务/漂移检查

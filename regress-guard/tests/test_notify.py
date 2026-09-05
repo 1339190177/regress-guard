@@ -52,6 +52,16 @@ def test_event_toggle_and_master_switch(tmp_path):
     assert nt.notify(str(proj3), "sensory", "t") == 1
 
 
+def test_done_event_default_on_and_toggleable(tmp_path):
+    """done（v1.31.1 离场召回）：存量配置无 done 键默认开；显式关掉则静默。"""
+    nt = _load()
+    stub = _channel_stub(tmp_path, tmp_path / "m6")
+    proj = _mk(tmp_path, {"channels": [stub]})  # events 无 done 键
+    assert nt.notify(str(proj), "done", "🏁 完成 R1") == 1
+    proj2 = _mk(tmp_path, {"channels": [stub], "events": {"done": False}})
+    assert nt.notify(str(proj2), "done", "t") == 0
+
+
 def test_test_event_bypasses_toggles(tmp_path):
     """test 事件忽略事件开关——通道验收专用。"""
     nt = _load()
