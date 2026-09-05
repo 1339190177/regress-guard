@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# v1.32.5 金丝雀：任何调用尝试都先落痕（连 import 崩溃也可见）——定位客户端是否真的调了本钩子
+try:
+    import os as _os, sys as _sys, time as _time, tempfile as _tf
+    with open(_os.path.join(_tf.gettempdir(), "regress-guard-stop-notify.log"), "a") as _f:
+        _f.write(f"{_time.strftime('%m-%d %H:%M:%S')} CANARY argv={_sys.argv[1:3]}\n")
+except Exception:
+    pass
 """stop_notify — 轮末推送（v1.32.2：正常对话也推，用户令）。
 
 病：done 事件只接在 /regress:finish（清单任务收尾），问答/分析/长自主轮不经过
