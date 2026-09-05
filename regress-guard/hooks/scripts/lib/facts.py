@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""facts — 机器事实卡（v1.31 跨项目地层）：追加/刷新去重 + 代谢报表。
+"""facts — 机器事实卡（跨项目地层）v1.32：三层结构。
 
-为什么是它：机器级经验（服务器拓扑/通道/环境坑）沉在单项目地层里别的项目借不到，
-人类被迫人肉跨会话转述（企微任务实证）。单卡 + skill 描述路由 = 消费无感；
-finish 代谢缝调用本库 = 捕获无感。刻意不做 Stop-hook 全自动提炼——质量噪音
-会腐蚀整张卡的信任（可信但过期的事实带权威性撒谎，/opt 旧端口活标本）。
+SKILL.md = 薄索引+路由话（触发时只加载这层，索引每次 record 后机械重建）；
+事实本体按域落 references/<域>.md（按需整文件读）——平台三层加载的正形，
+形状由构造保证，不靠纪律散文/阈值报警维持（调研定稿，见 REGRESS-2026-017）。
 
-铁律：每条事实带日期（=最后一次验证为真的时间）；事实只当线索，
-动手前照旧取证。卡不是审计日志——同键重录以最新表述为准、刷新日期。
+行业对照：Claude Auto Memory=学习时刻自动记（finish 代谢缝）；Cursor 可见面=
+索引可扫可删；Generative Agents=recency 一等公民（索引日期倒序，新近在顶）。
+铁律：事实带日期=最后一次验证为真；只当线索，动手前照旧取证。
+同键（域内标题）重录=刷新日期+以最新表述为准；卡不是审计日志。
+v1.31 单文件卡由重录迁移（仅本机存在过一天）。
 
 用法：
-  facts.py record "<标题>" "<内容>" [域]     # 追加或刷新（去重键=域+标题）
-  facts.py health                            # 条数/最老天数/陈旧(>180d)清单
-卡路径：$RG_FACTS_CARD 或 ~/.zcode/skills/machine-facts/SKILL.md
+  facts.py record "<标题>" "<内容>" [域]
+  facts.py health
+路径：$RG_FACTS_CARD（指 SKILL.md；references/ 在其同级目录，缺省
+~/.zcode/skills/machine-facts/）
 """
 import datetime
 import os
@@ -20,68 +23,107 @@ import re
 import sys
 
 STALE_DAYS = 180
-_HEADING = re.compile(r"^### (\d{4}-\d{2}-\d{2}) · (.+?) · (.+)$")
+_HEADING = re.compile(r"^### (\d{4}-\d{2}-\d{2}) · (.+)$")
 _FRONTMATTER = """---
 name: machine-facts
-description: 涉服务器(VPS/SSH/端口/隧道)、通知通道、本机环境与工具坑(zsh/Debian/浏览器自动化/frp)时先查这张机器事实卡。事实带日期=最后验证为真；只当线索，动手前取证。
+description: 涉服务器(VPS/SSH/端口/隧道/代理)、通知通道、本机环境与工具坑(zsh/Debian/浏览器自动化/frp)或任何"这台机器踩过的坑"时先读——跨项目沉淀、带日期验证过的机器事实。哪怕只是疑似相关，也值得花十秒扫一眼索引。
 ---
 
 # 机器事实卡（跨项目地层）
 
+索引按域分文件，本页只是目录——相关域整文件读 references/<域>.md。
+事实带日期=最后一次验证为真；只当线索，动手前照旧取证。
+
+<!-- index:begin -->
+<!-- index:end -->
 """
 
 
-def card_path():
-    return os.environ.get("RG_FACTS_CARD") or os.path.expanduser(
+def _paths():
+    skill = os.environ.get("RG_FACTS_CARD") or os.path.expanduser(
         "~/.zcode/skills/machine-facts/SKILL.md")
+    return skill, os.path.join(os.path.dirname(skill), "references")
 
 
-def _load():
-    try:
-        with open(card_path(), encoding="utf-8") as f:
-            return f.read()
-    except (IOError, OSError):
-        return ""
+def _ensure(skill):
+    os.makedirs(os.path.dirname(skill), exist_ok=True)
+    if not os.path.isfile(skill) or "<!-- index:begin -->" not in open(
+            skill, encoding="utf-8").read():
+        with open(skill, "w", encoding="utf-8") as f:
+            f.write(_FRONTMATTER)  # v1.31 无标记旧卡一次性归零（事实本体已在重录迁移里）
 
 
-def _save(text):
-    p = card_path()
-    os.makedirs(os.path.dirname(p), exist_ok=True)
-    with open(p, "w", encoding="utf-8") as f:
-        f.write(text)
+def _domain_file(domain, refs_dir):
+    safe = re.sub(r"[^\w\-]+", "_", domain) or "通用"
+    return os.path.join(refs_dir, safe + ".md")
 
 
 def record(title, body, domain="通用", when=None):
-    """同键（域+标题）重录=刷新日期+以最新表述为准；返回 'appended'/'refreshed'。"""
-    text = _load()
-    if not text:
-        text = _FRONTMATTER
+    """同键重录=刷新日期+最新表述；返回 'appended'/'refreshed'；随后重建索引。"""
+    skill, refs = _paths()
+    _ensure(skill)
+    os.makedirs(refs, exist_ok=True)
     day = (when or datetime.date.today()).isoformat()
-    entry = f"### {day} · {domain} · {title}\n{body.strip()}\n\n"
+    df = _domain_file(domain, refs)
+    try:
+        with open(df, encoding="utf-8") as f:
+            text = f.read()
+    except (IOError, OSError):
+        text = f"# {domain}\n"
     lines = text.split("\n")
+    action = "appended"
     for i, ln in enumerate(lines):
         m = _HEADING.match(ln)
-        if m and m.group(2).strip() == domain and m.group(3).strip() == title:
-            # 找到本条结尾（下一个 ### 或文末）
+        if m and m.group(2).strip() == title:
             j = i + 1
             while j < len(lines) and not lines[j].startswith("### "):
                 j += 1
-            new_lines = lines[:i] + [f"### {day} · {domain} · {title}"] \
-                + body.strip().split("\n") + [""] + lines[j:]
-            _save("\n".join(new_lines).rstrip("\n") + "\n")
-            return "refreshed"
-    _save(text.rstrip("\n") + "\n\n" + entry)
-    return "appended"
+            lines = lines[:i] + [f"### {day} · {title}"] + body.strip().split("\n") + [""] + lines[j:]
+            action = "refreshed"
+            break
+    else:
+        lines = text.rstrip("\n").split("\n") + ["", f"### {day} · {title}"] + body.strip().split("\n") + [""]
+    with open(df, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines).rstrip("\n") + "\n")
+    _rebuild_index(skill, refs)
+    return action
+
+
+def _entries(refs):
+    out = []
+    if not os.path.isdir(refs):
+        return out
+    for fn in sorted(os.listdir(refs)):
+        if not fn.endswith(".md"):
+            continue
+        domain = fn[:-3]
+        try:
+            with open(os.path.join(refs, fn), encoding="utf-8") as f:
+                for ln in f:
+                    m = _HEADING.match(ln)
+                    if m:
+                        out.append((m.group(1), domain, m.group(2)))
+        except (IOError, OSError):
+            pass
+    return out
+
+
+def _rebuild_index(skill, refs):
+    entries = sorted(_entries(refs), key=lambda e: (e[0], e[1]), reverse=True)
+    rows = [f"- {d} · [{dom}] {t}（references/{dom}.md）" for d, dom, t in entries]
+    with open(skill, encoding="utf-8") as f:
+        body = f.read()
+    new = re.sub(r"<!-- index:begin -->.*?<!-- index:end -->",
+                 "\n".join(["<!-- index:begin -->"] + rows + ["<!-- index:end -->"]),
+                 body, flags=re.S)
+    with open(skill, "w", encoding="utf-8") as f:
+        f.write(new)
 
 
 def health():
     """返回 dict(count, oldest_days, stale=[(date, domain, title)...])。"""
     today = datetime.date.today()
-    entries = []
-    for ln in _load().split("\n"):
-        m = _HEADING.match(ln)
-        if m:
-            entries.append((m.group(1), m.group(2), m.group(3)))
+    entries = _entries(_paths()[1])
     stale, oldest = [], 0
     for date_s, domain, title in entries:
         try:

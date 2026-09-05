@@ -1,0 +1,81 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "process",
+            "command": "node",
+            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/scripts/launcher.js"],
+            "timeoutMs": 180000,
+            "statusMessage": "regress-guard: 运行测试验证..."
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|ApplyPatch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/read_before_edit_guard.py\" pre",
+            "timeout": 5,
+            "statusMessage": "regress-guard: 先读后改检查..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/read_before_edit_guard.py\" post",
+            "timeout": 5,
+            "statusMessage": "regress-guard: 记录读取..."
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/self_heal.py\"",
+            "timeout": 5,
+            "statusMessage": "regress-guard: 检查完整性..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/reflection_check.py\"",
+            "timeout": 5,
+            "statusMessage": "regress-guard: 反思检查..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/prompt_intercept.py\"",
+            "timeout": 5,
+            "statusMessage": "regress-guard: 需求入口检查..."
+          }
+        ]
+      }
+    ]
+  }
+}
