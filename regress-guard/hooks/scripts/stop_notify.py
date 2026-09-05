@@ -68,7 +68,8 @@ def _log(decision, extra=""):
 def _marker_path():
     import hashlib
     key = hashlib.md5(_project_dir().encode()).hexdigest()[:8]
-    return os.path.join(os.environ.get("TMPDIR", "/tmp"),
+    import tempfile
+    return os.path.join(tempfile.gettempdir(),
                         f"regress-guard-stop-notify-{key}.ts")
 
 
@@ -89,8 +90,9 @@ def _mark():
 
 
 def should_notify(last_prompt, cooled=True):
-    """v1.32.2：任意轮末都推（用户令），冷却是唯一节流。"""
-    return bool(last_prompt and cooled)
+    """v1.32.4 根治：推送与消息文本彻底解耦（图片/空文本轮也响——用户令"根治"）。
+    冷却是唯一节流；last_prompt 仅作摘要装饰，不参与决策。"""
+    return bool(cooled)
 
 
 def main():
@@ -103,7 +105,9 @@ def main():
         _log("SKIP", f"prompt={'有' if lp else '空'}")
         sys.exit(0)
     pd = _project_dir()
-    excerpt = (lp or "")[:24]
+    excerpt = (lp or "").strip()[:24]
+    if not excerpt:
+        excerpt = "[图片或无文本消息]"
     if AUTONOMY_RE.search(lp or ""):
         title, body = f"🏁 阶段完成：{excerpt}", "授权轮已收尾，可下发下一步或回来验收"
     else:
@@ -113,6 +117,7 @@ def main():
         _mark()
         _log("PUSH", title[:40])
     except Exception as e:  # 推送是增强不是依赖
+        _log("ERROR", str(e)[:60])
         print(f"stop_notify: 推送失败（忽略）: {e}", file=sys.stderr)
     sys.exit(0)
 

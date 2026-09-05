@@ -66,6 +66,23 @@ def test_normal_chat_also_pushes(tmp_path, monkeypatch):
     assert "阶段完成" not in out  # 普通轮与授权轮形态可分辨
 
 
+def test_empty_prompt_turn_still_pushes(tmp_path, monkeypatch):
+    """v1.32.4 根治：图片/空文本轮也推（占位标题），决策与文本解耦。"""
+    import tempfile
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))  # gettempdir 有进程级缓存
+    proj, mach = _mk_proj(tmp_path, [_channel_stub(tmp_path, tmp_path / "m4") + " {title} {body}"])
+    monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
+    monkeypatch.setenv("ZCODE_PROJECT_DIR", str(proj))
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    assert sn.should_notify("", cooled=True) is True
+    from prompt_intercept import save_prompt
+    save_prompt("有意义的前一条")
+    save_prompt("")  # 空文本不覆写全局（摘要保留前一条语义由全局守护，占位由标题兜底）
+    _run_main()
+    out = (tmp_path / "m4").read_text(encoding="utf-8")
+    assert "回复完成" in out and "[图片或无文本消息]" in out
+
+
 def test_cooldown_prevents_double_buzz(tmp_path, monkeypatch):
     proj, mach = _mk_proj(tmp_path, [_channel_stub(tmp_path, tmp_path / "m3") + " {title}"])
     monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
