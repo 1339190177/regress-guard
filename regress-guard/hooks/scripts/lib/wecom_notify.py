@@ -28,6 +28,15 @@ import urllib.request
 
 
 def _conf(project_dir):
+    """env 优先（v1.31.4）：notify 层把两层合并后的 wecom 块经
+    RG_NOTIFY_WECOM_JSON 传入——机器级回退对子进程才生效；无 env 回落项目文件。"""
+    raw = os.environ.get("RG_NOTIFY_WECOM_JSON")
+    if raw:
+        try:
+            c = json.loads(raw)
+            return c if isinstance(c, dict) else {}
+        except json.JSONDecodeError:
+            pass
     try:
         with open(os.path.join(project_dir, ".regress", "config.json"),
                   encoding="utf-8") as f:
@@ -110,6 +119,7 @@ def main(argv=None):
         push(c, title, body, api)
     except Exception as e:  # best-effort：不炸调用方
         print(f"wecom_notify: 推送失败（忽略）: {e}", file=sys.stderr)
+        return 2  # 失败不计入 notify 的 ran 计数（rc=0 才算通道跑通）
     return 0
 
 

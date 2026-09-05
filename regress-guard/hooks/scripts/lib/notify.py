@@ -99,18 +99,23 @@ def notify(project_dir, event, title, body=""):
         body = f"🕐 {time.strftime('%m-%d %H:%M')}"
     channels = list(cfg.get("channels") or _default_channels())
     wc = cfg.get("wecom") or {}
+    env = None
     if wc.get("corpid") and wc.get("secret") and wc.get("agentid"):
-        # 企业微信自动第一通道（体验最优：手机先响，机内声音/桌面次之）
+        # 企业微信自动第一通道（体验最优：手机先响，机内声音/桌面次之）。
+        # 合并后的 wecom 块经 env 传给子进程——wecom_notify 自己只读项目级文件，
+        # 不传则机器级回退在子进程失效（2026-09-05 演示项目静默失败病例）。
         lib = os.path.dirname(os.path.abspath(__file__))
         channels.insert(0, 'python3 "%s" "%s" {title} {body}'
                         % (os.path.join(lib, "wecom_notify.py"), project_dir))
+        env = dict(os.environ,
+                   RG_NOTIFY_WECOM_JSON=json.dumps(wc, ensure_ascii=False))
     ran = 0
     for tpl in channels:
         cmd = tpl.format(title=shlex.quote(title), body=shlex.quote(body)) \
             if ("{title}" in tpl or "{body}" in tpl) else tpl
         try:
             r = subprocess.run(cmd, shell=True, timeout=5,
-                               capture_output=True, text=True)
+                               capture_output=True, text=True, env=env)
             if r.returncode == 0:
                 ran += 1
             else:

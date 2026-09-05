@@ -61,6 +61,53 @@ def test_project_name_prefix_and_time_suffix(tmp_path):
     assert "【myproj】🛑 受阻" in (tmp_path / "m8").read_text(encoding="utf-8")
 
 
+def test_wecom_subprocess_receives_merged_conf(tmp_path, monkeypatch):
+    """v1.31.4 回归：裸项目+机器级 wecom → 企微子进程必须真拿到合并配置（API 桩被命中）。
+    病例：2026-09-05 合并只活在父进程，子进程只读项目文件 → 演示项目推送静默失败，
+    而当时测试只断言了合并字典（oracle 宽松断言）。"""
+    import http.server
+    import importlib.util as ilu
+    import threading
+    hits = []
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def _json(self, o):
+            b = json.dumps(o).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(b)))
+            self.end_headers()
+            self.wfile.write(b)
+
+        def do_GET(self):
+            hits.append(self.path)
+            self._json({"errcode": 0, "access_token": "T1", "expires_in": 7200})
+
+        def do_POST(self):
+            hits.append(self.path)
+            self._json({"errcode": 0, "errmsg": "ok"})
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    monkeypatch.setenv("WECOM_API_BASE", f"http://127.0.0.1:{srv.server_port}")
+    monkeypatch.setenv("WECOM_TOKEN_DIR", str(tmp_path / "tk"))
+
+    mach = tmp_path / "machine.json"
+    mach.write_text(json.dumps({"notify": {
+        "wecom": {"corpid": "wwM", "secret": "SM", "agentid": 1}}}), encoding="utf-8")
+    monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
+
+    nt = _load()
+    bare = tmp_path / "bare"  # 项目级无任何 notify 配置
+    (bare / ".regress").mkdir(parents=True, exist_ok=True)
+    assert nt.notify(str(bare), "done", "跨项目") >= 1
+    assert any("corpid=wwM" in h and "gettoken" in h for h in hits), \
+        "企微子进程未拿到机器级合并配置（env 传递失效）"
+    srv.shutdown()
+
+
 def test_machine_fallback_and_keywise_merge(tmp_path, monkeypatch):
     """v1.31.3 两层合并：项目无 notify 块 → 机器级生效；项目按键覆盖（wecom 深合并）。"""
     import importlib
@@ -72,6 +119,7 @@ def test_machine_fallback_and_keywise_merge(tmp_path, monkeypatch):
         "channels": [_channel_stub(tmp_path, tmp_path / "mm") + " {title}"],
     }}), encoding="utf-8")
     monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
+    monkeypatch.setenv("WECOM_API_BASE", "http://127.0.0.1:1")  # 死端口：wecom 秒败 rc=2 不计数
     nt = _load()
 
     # 项目无 notify 块：机器级通道全量生效，name 用机器级
@@ -254,7 +302,7 @@ def test_wecom_proxy_roundtrip(tmp_path, monkeypatch):
         hits.clear()
         monkeypatch.setenv("WECOM_TOKEN_DIR", str(tmp_path / "tk_bad"))
         proj2 = _mk(tmp_path, {"wecom": dict(base, proxy=f"http://u1:bad@127.0.0.1:{px_port}")})
-        assert wn.main([str(proj2), "t", "b"]) == 0  # best-effort：不炸
+        assert wn.main([str(proj2), "t", "b"]) == 2  # best-effort 不炸；rc=2=推送失败不计通道数
         assert not hits
     finally:
         proxy.terminate()
