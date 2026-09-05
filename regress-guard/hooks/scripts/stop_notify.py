@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""stop_notify — 授权门控轮末推送（v1.32 Stop 钩子）。
+
+病：done 事件只接在 /regress:finish（清单任务收尾），问答/分析/长自主轮不经过
+任何推送点——用户离场等待时三度沉默（通道本身健康，双证据复验）。
+
+设计：离开信号=授权语。UserPromptSubmit 已把最后一条用户输入存入状态文件
+（prompt_intercept.load_last_prompt），Stop 时读它：
+- 含授权词（自决策|自决|你决定|自主决|自动做|直接做|放手做）→ 推送
+  done「🏁 阶段完成：<指令摘要>」——授权轮 1:1 一响，手机知道"这轮干完了"
+- 不含 → 静音（活跃对话不被轰炸）
+- 90s 冷却（标记文件）防 finish 仪式推送后立即双响
+
+Stop 钩子无 matcher（v1.27.1 空 matcher 掀翻整机的教训）。stdin 未用但保持读空。
+"""
+import os
+import re
+import sys
+import time
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_LIB_DIR = os.path.join(_HERE, "lib")
+if _LIB_DIR not in sys.path:
+    sys.path.insert(0, _LIB_DIR)
+
+from notify import notify  # noqa: E402
+
+AUTONOMY_RE = re.compile(r"自决策|自决|你决定|自主决|自动做|直接做|放手做")
+COOLDOWN_S = 90
+
+
+def _project_dir():
+    return (os.environ.get("CLAUDE_PROJECT_DIR")
+            or os.environ.get("ZCODE_PROJECT_DIR")
+            or os.getcwd())
+
+
+def _last_prompt():
+    sys.path.insert(0, _HERE)
+    from prompt_intercept import load_last_prompt
+    return load_last_prompt()
+
+
+def _marker_path():
+    import hashlib
+    key = hashlib.md5(_project_dir().encode()).hexdigest()[:8]
+    return os.path.join(os.environ.get("TMPDIR", "/tmp"),
+                        f"regress-guard-stop-notify-{key}.ts")
+
+
+def _cooled():
+    try:
+        age = time.time() - os.path.getmtime(_marker_path())
+        return age > COOLDOWN_S
+    except OSError:
+        return True
+
+
+def _mark():
+    try:
+        with open(_marker_path(), "w") as f:
+            f.write(str(time.time()))
+    except OSError:
+        pass
+
+
+def should_notify(last_prompt, cooled=True):
+    return bool(last_prompt and AUTONOMY_RE.search(last_prompt) and cooled)
+
+
+def main():
+    try:
+        _ = sys.stdin.read()
+    except Exception:
+        pass
+    if not should_notify(_last_prompt(), _cooled()):
+        sys.exit(0)
+    pd = _project_dir()
+    excerpt = (_last_prompt() or "")[:24]
+    try:
+        notify(pd, "done", f"🏁 阶段完成：{excerpt}",
+               "授权轮已收尾，可下发下一步或回来验收")
+        _mark()
+    except Exception as e:  # 推送是增强不是依赖
+        print(f"stop_notify: 推送失败（忽略）: {e}", file=sys.stderr)
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

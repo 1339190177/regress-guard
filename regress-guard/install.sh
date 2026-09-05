@@ -246,9 +246,13 @@ events["SessionStart"] = sc_hooks
 reflect_path = os.path.join(hook_home, "reflection_check.py")
 reflect_entry = {"type": "command", "command": f'python3 "{reflect_path}"',
                  "timeout": 90, "statusMessage": "regress-guard: 反思检查..."}
+# v1.32 授权门控轮末推送：授权语（自决策…）触发的自主轮收尾推手机"阶段完成"
+stopn_path = os.path.join(hook_home, "stop_notify.py")
+stopn_entry = {"type": "command", "command": f'python3 "{stopn_path}"',
+               "timeout": 8, "statusMessage": "regress-guard: 阶段完成推送(授权轮)..."}
 stop_hooks = events.get("Stop", [])
 stop_hooks = [h for h in stop_hooks if "reflection_check" not in json.dumps(h)]
-stop_hooks.append({"hooks": [reflect_entry]})  # 同上：v1.27.1 修复——空 matcher 曾致全机钩子零装载
+stop_hooks.append({"hooks": [reflect_entry, stopn_entry]})  # 同上：v1.27.1 修复——空 matcher 曾致全机钩子零装载
 events["Stop"] = stop_hooks
 
 # PreToolUse(Edit|Write|ApplyPatch): 开发边界守卫（检测→拦截：越界编辑在发生前阻断）
