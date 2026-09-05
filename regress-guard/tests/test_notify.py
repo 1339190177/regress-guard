@@ -37,8 +37,28 @@ def test_channel_runs_with_quoted_placeholders(tmp_path):
     nt = _load()
     proj = _mk(tmp_path, {"channels": [_channel_stub(tmp_path, tmp_path / "m1") + " {title} {body}"]})
     assert nt.notify(str(proj), "plan_approval", "📋 待批准 REGRESS-1", "改动 3 文件") == 1
-    out = (tmp_path / "m1").read_text(encoding="utf-8").strip().split("\n")[-1]
+    out = (tmp_path / "m1").read_text(encoding="utf-8")  # body 带 🕐 换行，全文断言
     assert "待批准 REGRESS-1" in out and "改动 3 文件" in out
+
+
+def test_project_name_prefix_and_time_suffix(tmp_path):
+    """v1.31.2 格式统一：标题带【项目名】（cfg.name 优先于目录名），正文缀 🕐 时间。"""
+    import re as _re
+    nt = _load()
+    proj = _mk(tmp_path, {"name": "会场助手",
+                          "channels": [_channel_stub(tmp_path, tmp_path / "m7") + " {title} {body}"]})
+    nt.notify(str(proj), "done", "🏁 完成 R1", "干净收尾")
+    out = (tmp_path / "m7").read_text(encoding="utf-8")
+    assert "【会场助手】🏁 完成 R1" in out
+    assert _re.search(r"🕐 \d{2}-\d{2} \d{2}:\d{2}", out)
+    # 无 name 配置 → 目录名兜底
+    proj2 = tmp_path / "myproj"
+    (proj2 / ".regress").mkdir(parents=True, exist_ok=True)
+    (proj2 / ".regress" / "config.json").write_text(
+        json.dumps({"notify": {"channels": [_channel_stub(tmp_path, tmp_path / "m8") + " {title} {body}"]}}),
+        encoding="utf-8")
+    nt.notify(str(proj2), "blocked", "🛑 受阻")
+    assert "【myproj】🛑 受阻" in (tmp_path / "m8").read_text(encoding="utf-8")
 
 
 def test_event_toggle_and_master_switch(tmp_path):

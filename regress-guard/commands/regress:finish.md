@@ -90,7 +90,8 @@ git status --porcelain .regress 2>/dev/null
 python3 "<插件路径>/hooks/scripts/lib/notify.py" . done --title "🏁 完成 <id>：<需求一句话>" --body "测试 <passed>/<total>｜债务 <debt>｜<残留或干净>"
 ```
 
-（一条/任务，频率天然低；干净收尾与 finish_open 二选一触发，不双响。）
+（一条/任务，频率天然低；干净收尾与 finish_open 二选一触发，不双响。
+标题只写任务名——【项目名】前缀与 🕐 时间由 notify 层自动注入，v1.31.2。）
 
 ## 自主决策
 

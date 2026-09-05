@@ -25,6 +25,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 
 EVENTS = ("plan_approval", "blocked", "sensory", "finish_open", "done", "test")
 
@@ -56,13 +57,24 @@ def load_conf(project_dir):
 
 
 def notify(project_dir, event, title, body=""):
-    """发通知（best-effort）。返回实际执行的通道数。"""
+    """发通知（best-effort）。返回实际执行的通道数。
+
+    格式统一在层内注入（v1.31.2，用户令"应含项目名/任务名/时间"）：
+    标题加【项目名】前缀（cfg notify.name，缺省目录名）；正文缀 🕐 本地时间。
+    调用方只写任务名——五个事件的推送点分散，约定放调用方必然漏。
+    """
     cfg = load_conf(project_dir)
     if cfg.get("enabled", True) is False:
         return 0
     events = cfg.get("events", {})
     if event != "test" and events and not events.get(event, True):
         return 0
+    pname = cfg.get("name") or os.path.basename(os.path.abspath(project_dir))
+    title = f"【{pname}】{title}"
+    if body:
+        body = f"{body}\n🕐 {time.strftime('%m-%d %H:%M')}"
+    else:
+        body = f"🕐 {time.strftime('%m-%d %H:%M')}"
     channels = list(cfg.get("channels") or _default_channels())
     wc = cfg.get("wecom") or {}
     if wc.get("corpid") and wc.get("secret") and wc.get("agentid"):
