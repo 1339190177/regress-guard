@@ -97,6 +97,15 @@ def push(c, title, body, api):
         headers={"Content-Type": "application/json"})
     with _opener(c).open(req, timeout=10) as r:
         d = json.load(r)
+    # 发送台账（v1.32.6）：所有推送的唯一咽喉——不依赖调用方日志习惯，
+    # 钩子环境 TMPDIR 漂移也不失明（2026-09-05 22:19 推送送达但调用方零痕迹的盲区补口）
+    try:
+        import time as _t
+        with open(os.path.expanduser("~/.zcode/wecom-send.log"), "a") as f:
+            f.write(f"{_t.strftime('%m-%d %H:%M:%S')} errcode={d.get('errcode')} "
+                    f"agent={c.get('agentid')} {title[:50]}\n")
+    except Exception:
+        pass
     if d.get("errcode"):
         raise RuntimeError(f"send {d.get('errcode')}: {d.get('errmsg')}")
 
