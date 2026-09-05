@@ -46,14 +46,36 @@ def _default_channels():
     return ch
 
 
-def load_conf(project_dir):
+def _read_notify_block(path):
     try:
-        with open(os.path.join(project_dir, ".regress", "config.json"),
-                  encoding="utf-8") as f:
-            cfg = json.load(f).get("notify", {})
+        with open(path, encoding="utf-8") as f:
+            cfg = json.load(f)
+        block = cfg.get("notify") if isinstance(cfg, dict) else None
+        return block if isinstance(block, dict) else {}
     except (IOError, OSError, json.JSONDecodeError):
-        cfg = {}
-    return cfg if isinstance(cfg, dict) else {}
+        return {}
+
+
+def machine_conf_path():
+    return os.environ.get("RG_MACHINE_NOTIFY") or os.path.join(
+        os.path.expanduser("~/.zcode"), "regress-notify.json")
+
+
+def load_conf(project_dir):
+    """两层合并（v1.31.3）：机器级 ~/.zcode/regress-notify.json 为底，
+    项目 .regress/config.json 按键覆盖——其他项目零配置即得手机推送。
+    wecom/events 按键深合并（项目可只覆盖 agentid/单个开关），其余浅合并项目胜；
+    项目级只该放差异键（name/事件微调），凭据放机器级一处改处处生效。"""
+    merged = _read_notify_block(machine_conf_path())
+    proj = _read_notify_block(os.path.join(project_dir, ".regress", "config.json"))
+    for k, v in proj.items():
+        if isinstance(v, dict) and isinstance(merged.get(k), dict):
+            sub = dict(merged[k])
+            sub.update(v)
+            merged[k] = sub
+        else:
+            merged[k] = v
+    return merged
 
 
 def notify(project_dir, event, title, body=""):

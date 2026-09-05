@@ -61,6 +61,36 @@ def test_project_name_prefix_and_time_suffix(tmp_path):
     assert "【myproj】🛑 受阻" in (tmp_path / "m8").read_text(encoding="utf-8")
 
 
+def test_machine_fallback_and_keywise_merge(tmp_path, monkeypatch):
+    """v1.31.3 两层合并：项目无 notify 块 → 机器级生效；项目按键覆盖（wecom 深合并）。"""
+    import importlib
+    mach = tmp_path / "machine.json"
+    mach.write_text(json.dumps({"notify": {
+        "name": "机器默认",
+        "events": {"done": True, "blocked": True},
+        "wecom": {"corpid": "wwM", "secret": "SM", "agentid": 1},
+        "channels": [_channel_stub(tmp_path, tmp_path / "mm") + " {title}"],
+    }}), encoding="utf-8")
+    monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
+    nt = _load()
+
+    # 项目无 notify 块：机器级通道全量生效，name 用机器级
+    bare = tmp_path / "bare"
+    (bare / ".regress").mkdir(parents=True, exist_ok=True)
+    assert nt.notify(str(bare), "done", "跨项目零配置") == 1
+    out = (tmp_path / "mm").read_text(encoding="utf-8")
+    assert "【机器默认】跨项目零配置" in out
+
+    # 项目覆盖 name + 单个事件开关；wecom 深合并：agentid 覆盖、corpid 继承
+    proj = _mk(tmp_path, {"name": "会场助手", "events": {"done": False},
+                          "wecom": {"agentid": 9}})
+    c = nt.load_conf(str(proj))
+    assert c["name"] == "会场助手"
+    assert c["events"]["done"] is False and c["events"]["blocked"] is True
+    assert c["wecom"] == {"corpid": "wwM", "secret": "SM", "agentid": 9}
+    assert nt.notify(str(proj), "done", "t") == 0  # 机器开、项目关 → 项目胜
+
+
 def test_event_toggle_and_master_switch(tmp_path):
     nt = _load()
     stub = _channel_stub(tmp_path, tmp_path / "m2")
