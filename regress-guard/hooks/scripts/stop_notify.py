@@ -38,9 +38,31 @@ def _project_dir():
 
 
 def _last_prompt():
+    """v1.32.3：优先读全局接力文件——按项目哈希的路径在钩子进程间目录解析漂移时
+    会读空（三报沉默根因），全局单文件最后写入者生效；回落旧路径保兼容。"""
+    import tempfile
+    g = os.path.join(tempfile.gettempdir(), "regress-guard-last-prompt.global.txt")
+    try:
+        with open(g, encoding="utf-8") as f:
+            t = f.read().strip()
+        if t:
+            return t
+    except OSError:
+        pass
     sys.path.insert(0, _HERE)
     from prompt_intercept import load_last_prompt
     return load_last_prompt()
+
+
+def _log(decision, extra=""):
+    """决策日志（append-only）：下次沉默报告一眼定位断点。"""
+    import tempfile
+    try:
+        with open(os.path.join(tempfile.gettempdir(), "regress-guard-stop-notify.log"), "a") as f:
+            f.write(f"{time.strftime('%m-%d %H:%M:%S')} pd={_project_dir()[-24:]} "
+                    f"cooled={_cooled()} {decision} {extra}\n")
+    except OSError:
+        pass
 
 
 def _marker_path():
@@ -78,6 +100,7 @@ def main():
         pass
     lp = _last_prompt()
     if not should_notify(lp, _cooled()):
+        _log("SKIP", f"prompt={'有' if lp else '空'}")
         sys.exit(0)
     pd = _project_dir()
     excerpt = (lp or "")[:24]
@@ -88,6 +111,7 @@ def main():
     try:
         notify(pd, "done", title, body)
         _mark()
+        _log("PUSH", title[:40])
     except Exception as e:  # 推送是增强不是依赖
         print(f"stop_notify: 推送失败（忽略）: {e}", file=sys.stderr)
     sys.exit(0)
