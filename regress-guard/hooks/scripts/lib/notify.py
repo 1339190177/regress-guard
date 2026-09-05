@@ -27,7 +27,7 @@ import subprocess
 import sys
 import time
 
-EVENTS = ("plan_approval", "blocked", "sensory", "finish_open", "done", "test")
+EVENTS = ("plan_approval", "blocked", "sensory", "finish_open", "done", "progress", "test")
 
 _SND_CANDIDATES = (
     "/usr/share/sounds/alsa/Front_Center.wav",
@@ -124,6 +124,16 @@ def notify(project_dir, event, title, body=""):
         except (OSError, subprocess.SubprocessError) as e:
             print(f"notify: 通道失败（忽略）: {cmd.split()[0]}: {e}",
                   file=sys.stderr)
+    if ran == 0 and channels:
+        # 全通道失败兜底（v1.33 企业级）：手机不通至少本机响一声——
+        # 通道故障期不再完全静默，回来的人从桌面/声音知道出过事
+        for tpl in _default_channels():
+            try:
+                cmd = tpl.format(title=shlex.quote(title), body=shlex.quote(body)) \
+                    if ("{title}" in tpl or "{body}" in tpl) else tpl
+                subprocess.run(cmd, shell=True, timeout=5)
+            except (OSError, subprocess.SubprocessError):
+                pass
     return ran
 
 

@@ -20,6 +20,19 @@
 git commit               ← 门禁自跑测试 + locked 复验，通过自动写 done
 ```
 
+**长任务进度心跳（v1.33 企业级）**：授权自决策任务预计 >30 分钟时，每个阶段边界
+（F 项完成/测试转绿/进入下一段）推一条 `progress`——离场人类看到的是"⏳ 进度：
+F1 完成，进入 F2"，而不是两小时黑箱后一声终响：
+
+```bash
+python3 "<插件路径>/hooks/scripts/lib/notify.py" . progress --title "⏳ 进度 <id>：<阶段一句话>" --body "<下一步是什么>"
+```
+
+**企业级推送覆盖（v1.33）**：决策类=plan_approval/blocked/sensory/finish_open/🦴固化候选；
+进程类=done（收尾）/progress（心跳）/💬每轮回复；元层=链外看门狗
+（systemd timer 每小时体检治理链，死亡时独立报警腿：deploy/watchdog.sh）；
+通道故障=全通道失败时本机声音兜底 + 发送台账（~/.zcode/wecom-send.log）可审计。
+
 ## 智能体通道定界（v1.28.1，实测）
 
 ZCode 智能体（Agent 工具）的子代理**不受 PreToolUse 治理**（边界/先读后改/执行阀

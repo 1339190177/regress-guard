@@ -61,6 +61,16 @@ def test_project_name_prefix_and_time_suffix(tmp_path):
     assert "【myproj】🛑 受阻" in (tmp_path / "m8").read_text(encoding="utf-8")
 
 
+def test_progress_event_default_on_toggleable(tmp_path):
+    """v1.33 长任务心跳：progress 事件存量配置默认开、可显式关。"""
+    nt = _load()
+    stub = _channel_stub(tmp_path, tmp_path / "m9")
+    proj = _mk(tmp_path, {"channels": [stub + " {title}"]})
+    assert nt.notify(str(proj), "progress", "⏳ 进度 R1：F1 完成") == 1
+    proj2 = _mk(tmp_path, {"channels": [stub + " {title}"], "events": {"progress": False}})
+    assert nt.notify(str(proj2), "progress", "t") == 0
+
+
 def test_wecom_subprocess_receives_merged_conf(tmp_path, monkeypatch):
     """v1.31.4 回归：裸项目+机器级 wecom → 企微子进程必须真拿到合并配置（API 桩被命中）。
     病例：2026-09-05 合并只活在父进程，子进程只读项目文件 → 演示项目推送静默失败，
