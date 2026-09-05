@@ -1,0 +1,128 @@
+"""人类介入通知（v1.30）：正负路径——通道参数化/事件开关/best-effort/test 事件。"""
+import json
+import os
+import stat
+import subprocess
+import sys
+
+LIB = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "lib"))
+NOTIFY = os.path.join(LIB, "notify.py")
+
+
+def _load():
+    import importlib.util as ilu
+    spec = ilu.spec_from_file_location("nt", NOTIFY)
+    nt = ilu.module_from_spec(spec)
+    spec.loader.exec_module(nt)
+    return nt
+
+
+def _mk(tmp_path, conf=None):
+    proj = tmp_path / "proj"
+    (proj / ".regress").mkdir(parents=True, exist_ok=True)
+    if conf is not None:
+        (proj / ".regress" / "config.json").write_text(
+            json.dumps({"notify": conf}, ensure_ascii=False), encoding="utf-8")
+    return proj
+
+
+def _channel_stub(tmp_path, marker):
+    stub = tmp_path / "stub.sh"
+    stub.write_text("#!/bin/sh\necho \"$@\" >> %s\n" % marker, encoding="utf-8")
+    stub.chmod(stat.S_IRWXU)
+    return str(stub)
+
+
+def test_channel_runs_with_quoted_placeholders(tmp_path):
+    nt = _load()
+    proj = _mk(tmp_path, {"channels": [_channel_stub(tmp_path, tmp_path / "m1") + " {title} {body}"]})
+    assert nt.notify(str(proj), "plan_approval", "📋 待批准 REGRESS-1", "改动 3 文件") == 1
+    out = (tmp_path / "m1").read_text(encoding="utf-8").strip().split("\n")[-1]
+    assert "待批准 REGRESS-1" in out and "改动 3 文件" in out
+
+
+def test_event_toggle_and_master_switch(tmp_path):
+    nt = _load()
+    stub = _channel_stub(tmp_path, tmp_path / "m2")
+    proj = _mk(tmp_path, {"channels": [stub], "events": {"blocked": False}})
+    assert nt.notify(str(proj), "blocked", "t") == 0
+    proj2 = _mk(tmp_path, {"enabled": False, "channels": [stub]})
+    assert nt.notify(str(proj2), "plan_approval", "t") == 0
+    proj3 = _mk(tmp_path, {"channels": [stub]})
+    assert nt.notify(str(proj3), "sensory", "t") == 1
+
+
+def test_test_event_bypasses_toggles(tmp_path):
+    """test 事件忽略事件开关——通道验收专用。"""
+    nt = _load()
+    stub = _channel_stub(tmp_path, tmp_path / "m5")
+    proj = _mk(tmp_path, {"channels": [stub], "events": {"blocked": False, "sensory": False}})
+    assert nt.notify(str(proj), "test", "🔔 通道测试") == 1
+
+
+def test_failing_channel_never_raises(tmp_path):
+    nt = _load()
+    proj = _mk(tmp_path, {"channels": ["definitely-not-a-command-xyz {title}",
+                                       _channel_stub(tmp_path, tmp_path / "m3")]})
+    ran = nt.notify(str(proj), "finish_open", "t", "b")  # 不抛即过
+    assert ran == 1
+
+
+def test_cli_smoke(tmp_path):
+    proj = _mk(tmp_path, {"channels": [_channel_stub(tmp_path, tmp_path / "m4") + " {title} {body}"]})
+    r = subprocess.run([sys.executable, NOTIFY, str(proj), "blocked",
+                        "--title", "🛑 受阻", "--body", "需要：白名单"],
+                       capture_output=True, text=True, timeout=15)
+    assert r.returncode == 0
+    assert "受阻" in (tmp_path / "m4").read_text(encoding="utf-8")
+
+
+def test_wecom_push_roundtrip(tmp_path, monkeypatch):
+    """企业微信推送全链（桩服务器）：gettoken→send，token 缓存生效，未配置降级。"""
+    import http.server
+    import importlib.util as ilu
+    import threading
+    hits = []
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def _json(self, o):
+            b = json.dumps(o).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(b)))
+            self.end_headers()
+            self.wfile.write(b)
+
+        def do_GET(self):
+            hits.append(("GET", self.path))
+            self._json({"errcode": 0, "access_token": "T1", "expires_in": 7200})
+
+        def do_POST(self):
+            n = int(self.headers.get("Content-Length", 0))
+            hits.append(("POST", self.path + " " + self.rfile.read(n).decode("utf-8")))
+            self._json({"errcode": 0, "errmsg": "ok"})
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    monkeypatch.setenv("WECOM_API_BASE", f"http://127.0.0.1:{srv.server_port}")
+    monkeypatch.setenv("WECOM_TOKEN_DIR", str(tmp_path / "tk"))
+    spec = ilu.spec_from_file_location(
+        "wn", os.path.join(LIB, "wecom_notify.py"))
+    wn = ilu.module_from_spec(spec)
+    spec.loader.exec_module(wn)
+    proj = _mk(tmp_path, {"wecom": {"corpid": "wwX", "secret": "S",
+                                    "agentid": 1000002, "touser": "@all"}})
+    assert wn.main([str(proj), "📋 待批准 R1", "改动 3 文件"]) == 0
+    assert any("gettoken" in h[1] for h in hits)
+    posts = [h for h in hits if h[0] == "POST"]
+    assert posts and "message/send" in posts[0][1] and "待批准 R1" in posts[0][1]
+    # token 已缓存：第二次推送不再 GET
+    hits.clear()
+    wn.main([str(proj), "t2", "b2"])
+    assert not any(h[0] == "GET" for h in hits)
+    # 未配置项目：exit 1 不炸
+    empty = tmp_path / "empty"
+    (empty / ".regress").mkdir(parents=True, exist_ok=True)
+    assert wn.main([str(empty), "t", "b"]) == 1

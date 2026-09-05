@@ -57,7 +57,8 @@ REQUIRED_LIB_FILES = [
     "manifest_parser.py", "git_diff_analyzer.py",
     "test_runner.py", "history.py", "filelock.py", "self_heal.py",
     "cochange_rules.py",
-    "journal.py", "plan_approve.py", "manifest_fields.py", "rules_ledger.py"
+    "journal.py", "plan_approve.py", "manifest_fields.py", "rules_ledger.py",
+    "notify.py", "wecom_notify.py"
 ]
 REQUIRED_COMMANDS = [
     "regress:init", "regress:plan", "regress:track", "regress:verify",

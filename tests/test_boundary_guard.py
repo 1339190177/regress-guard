@@ -378,3 +378,22 @@ def test_bash_in_progress_boundary_write_allowed(tmp_path):
 def test_bash_outside_boundary_blocked_when_active(tmp_path):
     proj = make_project(tmp_path, status="in-progress")
     assert run_bash_guard(proj, "rm src/other/x.ts").returncode == 2
+
+
+# ── v1.30：cd 链跟踪（病例：cd 子目录后相对写目标曾被解析到项目根，首例活体误拦）──
+
+def test_bash_cd_chain_relative_target_resolved(tmp_path):
+    """cd 子目录后的相对写目标按链上目录解析——不再误拦。"""
+    proj = make_project(tmp_path, status="in-progress")
+    assert run_bash_guard(proj, "cd src && rm auth/login.ts").returncode == 0
+    assert run_bash_guard(proj, "cd src && rm other/x.ts").returncode == 2
+
+
+def test_bash_cd_variable_fail_open(tmp_path):
+    proj = make_project(tmp_path, status="planning")
+    assert run_bash_guard(proj, "cd $D && rm x.ts").returncode == 0
+
+
+def test_bash_absolute_target_unaffected(tmp_path):
+    proj = make_project(tmp_path, status="in-progress")
+    assert run_bash_guard(proj, "rm src/auth/login.ts").returncode == 0

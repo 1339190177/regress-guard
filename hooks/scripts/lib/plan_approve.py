@@ -194,6 +194,13 @@ def main():
         journal_append("task_blocked", start_dir=mdir, manifest_id=mid,
                        reason=fields["reason"], need=fields["need"],
                        tried=fields["tried"], unsafe_why=fields["unsafe_why"])
+        # 人类介入通知（v1.30）：受阻即推送——need 在等一个不在屏幕前的人
+        try:
+            from notify import notify as _notify
+            _notify(os.path.dirname(os.path.dirname(mdir)), "blocked",
+                    f"🛑 受阻 {mid}", (fields["need"] or fields["reason"] or "")[:80])
+        except Exception:
+            pass
         print(f"🛑 已受阻：{mid} → blocked（边界守卫将拦编辑，直到解阻）")
         print(f"   阻塞：{fields['reason']}")
         if fields["need"]:

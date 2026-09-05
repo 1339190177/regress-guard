@@ -63,7 +63,7 @@ allowed-tools: Read, Write, Edit, Bash
      '{"manifest_id":"<ID>","vid":"V8","question":"对讲声音清晰无断续？","result":"pass"}'
    ```
    门禁不复跑感官——机器验证"人确认过"这个**事实的存在**（AVS 公理三：人只是传感器，
-   传感器读数入档即证据）
+   传感器读数入档即证据）；提问前先推送通知：`notify.py . sensory --title "🎤 感官终验 <vid>" --body "<问题>"`
 
 **open 状态的清单提交时会被 hook 阻断**——别绕过它，去拿证据或挂牌。
 

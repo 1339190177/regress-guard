@@ -156,20 +156,16 @@ def active_manifests(project_dir):
     return out
 
 
-def extract_write_targets(cmd):
-    """Bash 高置信度写目标（v1.29 旁路收口；病例：rm 删边界内文件零拦截）。
-
-    只认高置信形态，不确定一律漏过——fail-open 防误拦测试命令（2> 重定向不收：
-    stderr 日志类误拦代价高于漏拦；/dev/null 豁免）。
-    """
+def _seg_write_targets(seg):
+    """单段命令的高置信写目标（原始字符串）。"""
     targets = set()
-    for m in re.finditer(r'(?<![0-9])>{1,2}\s*([^\s;|&]+)', cmd):
+    for m in re.finditer(r'(?<![0-9])>{1,2}\s*([^\s;|&]+)', seg):
         targets.add(m.group(1))
-    for m in re.finditer(r'&>{1,2}\s*([^\s;|&]+)', cmd):
+    for m in re.finditer(r'&>{1,2}\s*([^\s;|&]+)', seg):
         targets.add(m.group(1))
     for m in re.finditer(
             r'(?:^|[;|&\s])(rm|rmdir|mv|cp|tee|truncate|touch|install|shred)\s+([^;|&\n]+)',
-            cmd):
+            seg):
         name, rest = m.group(1), m.group(2)
         toks = [t for t in rest.split() if not t.startswith("-")]
         if not toks:
@@ -179,19 +175,52 @@ def extract_write_targets(cmd):
                 targets.add(toks[-1])
         else:
             targets.update(toks)
-    for m in re.finditer(r'(?:^|[;|&\s])sed\s+(?:-[^\s]*i[^\s]*\s+)?(?:-[^\s]*\s+)*([^;|&\n]+)', cmd):
+    for m in re.finditer(r'(?:^|[;|&\s])sed\s+(?:-[^\s]*i[^\s]*\s+)?(?:-[^\s]*\s+)*([^;|&\n]+)', seg):
         toks = [t for t in m.group(1).split() if not t.startswith("-")]
         if toks:
             targets.add(toks[-1])
-    for m in re.finditer(r'\bof=([^\s;|&]+)', cmd):
+    for m in re.finditer(r'\bof=([^\s;|&]+)', seg):
         targets.add(m.group(1))
-    out = set()
-    for t in targets:
-        t = t.strip('\'""')
-        if (not t or t.startswith("$") or t in ("/dev/null", "/dev/stdout", "/dev/stderr")
-                or t.isdigit()):
+    return targets
+
+
+def extract_write_targets(cmd, project_dir):
+    """Bash 高置信度写目标，返回绝对路径（v1.29 旁路收口；v1.30 cd 链跟踪）。
+
+    只认高置信形态，不确定一律漏过——fail-open 防误拦测试命令（2> 不收：
+    stderr 类误拦代价高于漏拦；/dev/null 豁免）。cd 链跟踪（病例 2026-09-03
+    首例活体误拦）：`cd sub && cat > f` 的相对目标曾被解析到项目根——cd 后续
+    段的相对目标按链上目录解析；cd 目标含变量（$）则后续相对目标放弃（fail-open）。
+    """
+    out, seen = [], set()
+    cwd = None
+    cwd_known = True
+    for seg in re.split(r"&&|\|\||;", cmd):
+        seg = seg.strip()
+        m = re.match(r"^cd\s+([^\s;&|]+)", seg)
+        if m:
+            d = m.group(1).strip('\'"')
+            if d.startswith("$") or d == "-":
+                cwd_known = False
+            else:
+                cwd = d if os.path.isabs(d) else os.path.join(cwd or project_dir, d)
             continue
-        out.add(t)
+        for t in _seg_write_targets(seg):
+            t = t.strip('\'"')
+            if (not t or t.startswith("$") or t in ("/dev/null", "/dev/stdout", "/dev/stderr")
+                    or t.isdigit()):
+                continue
+            if os.path.isabs(t):
+                p = t
+            elif cwd_known and cwd:
+                p = os.path.normpath(os.path.join(cwd, t))
+            elif cwd_known:
+                p = os.path.join(project_dir, t)
+            else:
+                continue
+            if p not in seen:
+                seen.add(p)
+                out.append(p)
     return out
 
 
@@ -238,9 +267,12 @@ def main():
     ti = data.get("tool_input", {})
     if not isinstance(ti, dict):
         sys.exit(0)
+    project_dir = find_project_dir()
+    if project_dir is None:
+        sys.exit(0)
     if tool == "Bash":
-        # v1.29 旁路收口：Bash 写目标走与 Edit 相同的边界判定（病例：rm 删边界内文件零拦截）
-        fps = sorted(extract_write_targets(str(ti.get("command") or "")))
+        # v1.29 旁路收口：Bash 写目标走与 Edit 相同的边界判定（v1.30：cd 链跟踪防误拦）
+        fps = extract_write_targets(str(ti.get("command") or ""), project_dir)
         if not fps:
             sys.exit(0)
     else:
@@ -250,9 +282,6 @@ def main():
         fps = [fp]
     via = "（Bash 写目标）" if tool == "Bash" else ""
 
-    project_dir = find_project_dir()
-    if project_dir is None:
-        sys.exit(0)
     if config_disables_boundary(project_dir):
         sys.exit(0)
 
