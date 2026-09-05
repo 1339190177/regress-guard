@@ -52,14 +52,18 @@ def test_autonomy_word_pushes(tmp_path, monkeypatch):
     assert "阶段完成" in out and "自决策" in out
 
 
-def test_normal_chat_stays_silent(tmp_path, monkeypatch):
-    proj, mach = _mk_proj(tmp_path, [_channel_stub(tmp_path, tmp_path / "m2") + " {title}"])
+def test_normal_chat_also_pushes(tmp_path, monkeypatch):
+    """v1.32.2 用户令：正常对话轮末也推（💬 回复完成形态），静音设计废弃。"""
+    proj, mach = _mk_proj(tmp_path, [_channel_stub(tmp_path, tmp_path / "m2") + " {title} {body}"])
     monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
     monkeypatch.setenv("ZCODE_PROJECT_DIR", str(proj))
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
     from prompt_intercept import save_prompt
-    save_prompt("企业微信没有收到推送，到底咋回事？")
+    save_prompt("正常的对话结束，也要发送给人类，通过企业微信")
     _run_main()
-    assert not (tmp_path / "m2").exists()
+    out = (tmp_path / "m2").read_text(encoding="utf-8")
+    assert "回复完成" in out and "正常的对话结束" in out
+    assert "阶段完成" not in out  # 普通轮与授权轮形态可分辨
 
 
 def test_cooldown_prevents_double_buzz(tmp_path, monkeypatch):
