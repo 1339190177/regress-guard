@@ -39,6 +39,28 @@ _APPROVED_BLOCK = re.compile(r"^approved:\s*\n(?:[ \t]+.*\n?)*", re.M)
 _BLOCKED_BLOCK = re.compile(r"^blocked:\s*\n(?:[ \t]+.*\n?)*", re.M)
 _PROVISIONAL_BLOCK = re.compile(r"^provisional:\s*\n(?:[ \t]+.*\n?)*", re.M)
 _BLOCK_KEYS = ("reason", "tried", "unsafe_why", "need", "at")
+_SESSION_LINE = re.compile(r"^session:\s*\S+.*$", re.M)
+
+
+def _stamp_session(content, manifest_dir):
+    """批准/临行/受阻时盖 session 戳（v1.34 会话作用域）。
+
+    身份来源：会话中继（UserPromptSubmit 钩子每轮写的 last-writer-wins 文件）
+    优先，本进程 env 兜底——Bash 工具进程通常无会话 env，靠中继；两会话同项目
+    并发时可能错归属一拍（错向=自己的清单被当他人的，可见可修，顾问预审认可）。
+    """
+    try:
+        from session_relay import read_relay, sid_from_env
+        project_dir = journal._find_project_dir(manifest_dir) or manifest_dir
+        sid = (read_relay(project_dir) or {}).get("sid") or sid_from_env()
+    except Exception:
+        sid = ""
+    if not sid:
+        return content
+    if _SESSION_LINE.search(content):
+        return _SESSION_LINE.sub(f"session: {sid}", content, count=1)
+    return _STATUS_LINE.sub(lambda m: m.group(0) + f"\nsession: {sid}",
+                            content, count=1)
 
 
 def _read(path):
@@ -190,7 +212,7 @@ def main():
             "at": now,
         }
         with open(path, "w", encoding="utf-8") as f:
-            f.write(_set_blocked(content, fields))
+            f.write(_stamp_session(_set_blocked(content, fields), mdir))
         journal_append("task_blocked", start_dir=mdir, manifest_id=mid,
                        reason=fields["reason"], need=fields["need"],
                        tried=fields["tried"], unsafe_why=fields["unsafe_why"])
@@ -223,7 +245,8 @@ def main():
                   "（防代笔：预审必须留下可审计的痕迹）", file=sys.stderr)
             return 1
         with open(path, "w", encoding="utf-8") as f:
-            f.write(_set_provisional(content, now, args.advisor.replace('"', "'")))
+            f.write(_stamp_session(_set_provisional(
+                content, now, args.advisor.replace('"', "'")), mdir))
         journal_append("provisional_start", start_dir=mdir, manifest_id=mid,
                        advisor=args.advisor[:400])
         print(f"🚀 已临行：{mid} → in-progress（否决窗内，直到 done）")
@@ -271,7 +294,7 @@ def main():
     if not note:
         note = "产物直通（人类直接编辑 approved.at）" if human_at else "对话批准转写"
     with open(path, "w", encoding="utf-8") as f:
-        f.write(_apply(content, "in-progress", at, note))
+        f.write(_stamp_session(_apply(content, "in-progress", at, note), mdir))
 
     dirty = _dirty_files(mdir)  # 批准时刻的工作区原点（思想二·基线冻结）
 

@@ -13,10 +13,17 @@ GUARD = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "hooks", "scripts", "pre_commit_guard.py"))
 
 
-def run_guard(tool_command, project_dir, cwd=None):
-    """运行 guard，返回 (exit_code, stderr, stdout)。"""
+def run_guard(tool_command, project_dir, cwd=None, extra_env=None):
+    """运行 guard，返回 (exit_code, stderr, stdout)。
+
+    会话变量默认剥离（v1.34 活体标本：门禁复验在钩子 env 下跑 pytest，
+    CLAUDE/ZCODE_SESSION_ID 泄漏进"无会话"用例→共享语义断言翻车）——
+    需要会话身份的用例经 extra_env 显式注入，密封由构造保证。"""
     env = dict(os.environ)
+    env.pop("CLAUDE_SESSION_ID", None)
+    env.pop("ZCODE_SESSION_ID", None)
     env["CLAUDE_PROJECT_DIR"] = str(project_dir)
+    env.update(extra_env or {})
     inp = json.dumps({"tool_name": "Bash", "tool_input": {"command": tool_command}})
     proc = subprocess.run(
         ["python3", GUARD],
@@ -188,4 +195,74 @@ def test_invented_status_not_active(project):
 def test_active_manifest_blocks_without_runner(project):
     """明确活跃清单 + 无 runner → 阻断（而非旧的终态表误放行/误卡）。"""
     code, err, _ = run_guard("git commit -m x", project)  # project 清单是 in-progress
+    assert code == 2 and ("测试运行器" in err or "未检测到" in err)
+
+
+# ─── 场景：会话作用域（v1.34）────────────────────────────
+
+FOREIGN_SID = "sess-foreign-0001"
+MY_SID = "sess-mine-00002"
+
+
+def _stamp(project, mid, session):
+    """给清单盖 session 戳（模拟 plan_approve 的转写）。"""
+    mf = project / ".regress" / "manifests" / f"{mid}.md"
+    text = mf.read_text()
+    mf.write_text(text.replace("status:", f"session: {session}\nstatus:", 1))
+
+
+def test_foreign_manifest_does_not_block_my_commit(project):
+    """标本1 根治：他人 in-progress 清单不再挡我的提交（不涉文件即放行+警示）。"""
+    _stamp(project, "R1", FOREIGN_SID)
+    code, err, _ = run_guard("git commit -m x", project,
+                             extra_env={"CLAUDE_SESSION_ID": MY_SID})
+    assert code == 0
+    assert "不涉本次提交文件" in err  # emit_warn：放行但留痕
+    assert any(e.get("note") == "foreign_active_manifest_untouched"
+               for e in read_history(project))
+
+
+def test_foreign_manifest_undeclared_files_no_clash(project):
+    """他有清单但没声明这些文件（planned 空）→ staged 文件不算撞，放行。"""
+    _stamp(project, "R1", FOREIGN_SID)
+    (project / "src" / "app.js").write_text("x = 2\n")
+    import subprocess as sp
+    sp.run(["git", "add", "-A"], cwd=str(project), check=True)
+    code, err, _ = run_guard("git commit -m x", project,
+                             extra_env={"CLAUDE_SESSION_ID": MY_SID})
+    assert code == 0  # 空清单无声明文件 → 不构成集成态冲突
+
+
+def test_foreign_clash_with_declared_file_blocks(project):
+    """他清单显式声明 src/app.js，我 staged 同一文件 → 跨会话冲突拦截。"""
+    (project / ".regress" / "manifests" / "R1.md").write_text(
+        "---\nid: R1\nstatus: in-progress\nsession: %s\n"
+        "planned_changes:\n  - id: F1\n    file: src/app.js\n    type: method-logic\n"
+        "actual_changes: []\n---\n" % FOREIGN_SID)
+    (project / "src" / "app.js").write_text("x = 2\n")
+    import subprocess as sp
+    sp.run(["git", "add", "-A"], cwd=str(project), check=True)
+    code, err, _ = run_guard("git commit -m x", project,
+                             extra_env={"CLAUDE_SESSION_ID": MY_SID})
+    assert code == 2 and "跨会话" in err and "src/app.js" in err
+    assert any(e.get("reason") == "cross_session_clash"
+               for e in read_history(project))
+
+
+def test_own_manifest_governs_despite_foreign(project):
+    """我有清单 + 他有清单：按我的清单走（撞他文件才拦）——选择器不再拿别人清单。"""
+    _stamp(project, "R1", FOREIGN_SID)  # R1 是他的
+    (project / ".regress" / "manifests" / "R2.md").write_text(
+        "---\nid: R2\nstatus: in-progress\nsession: %s\nplanned_changes: []\n"
+        "actual_changes: []\n---\n" % MY_SID)
+    code, err, _ = run_guard("git commit -m x", project,
+                             extra_env={"CLAUDE_SESSION_ID": MY_SID})
+    # 选中我的 R2（空清单无脆弱点）→ 走到无 runner 阻断，而不是被 R1 挡
+    assert code == 2 and ("测试运行器" in err or "未检测到" in err)
+
+
+def test_no_session_env_shares_all(project):
+    """env 缺失（老钩子环境）：全部视为 mine——fail-safe 老行为不回退。"""
+    _stamp(project, "R1", FOREIGN_SID)
+    code, err, _ = run_guard("git commit -m x", project)  # 无会话 env
     assert code == 2 and ("测试运行器" in err or "未检测到" in err)

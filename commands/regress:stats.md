@@ -8,7 +8,7 @@ allowed-tools: Read, Bash
 一屏读完治理实况。**只读**——本命令不改任何状态，全部数据来自既有产物。
 观测期仪表盘（病例：v1.26.1 审计时手工统计部署差异，本命令是那次需求现场的工具化）。
 
-## 执行（五个既有 CLI，零新采集）
+## 执行（六个既有 CLI，零新采集）
 
 ```bash
 # 1. 提交观测：通过/绕门禁/覆盖率/技术债
@@ -23,11 +23,20 @@ python3 "<插件路径>/hooks/scripts/lib/rules_ledger.py" . health
 # 4. 钩子活性（链外看门狗）
 python3 "<插件路径>/scripts/check_docs.py" 2>&1 | grep -E "config.file.invalid|空 matcher" || echo "钩子链健康"
 
-# 5. 僵尸清单：planning/verifying 搁置 >30 天（哨兵口径）
+# 5. 机器事实卡：条数/最老/陈旧（机制存活判据：长期零新增=死重可退场）
+python3 "<插件路径>/hooks/scripts/lib/facts.py" health
+
+# 6. 僵尸清单：planning/verifying 搁置 >30 天（哨兵口径）
 grep -l "status: planning\|status: verifying" .regress/manifests/*.md 2>/dev/null | while read f; do
   age=$(( ( $(date +%s) - $(stat -c %Y "$f") ) / 86400 ))
   [ $age -gt 30 ] && echo "⏰ $(basename $f) 已搁置 ${age} 天"
 done; true
+
+# 7. 推送闭环（v1.34）：送达率/待决未决/误报率——告警从广播到可度量可校准
+python3 "<插件路径>/hooks/scripts/lib/notify.py" stats
+
+# 8. 待决裁决：人类说「有用/误报/忽略」后由 agent 记账（对号，见推送正文〔待决#N〕）
+python3 "<插件路径>/hooks/scripts/lib/pending.py" list --pending
 ```
 
 ## 输出格式
@@ -37,6 +46,7 @@ done; true
   门禁：<n_pass> 过 / <n_outside> 绕行（IDE 直提）/ 债 <debt> 笔
   地层：<n_events> 事件 / 跨会话重复失败 <n_sig> 个签名
   规律：<n_rules> 条（🦴 固化候选 <a> / 🍂 降级候选 <b>）
+  事实卡：<n_facts> 条机器事实 / 最老 <age> 天 / 🍂 <n_stale> 条未刷新
   钩子：健康 | ⚠️ <看门狗告警>
   僵尸：<无 | ⏰ 清单×n>
 ```
@@ -46,4 +56,5 @@ done; true
 - **绕行率持续高** → 门禁采用率问题（IDE/终端直提），不是测试问题——先解决提交习惯
 - **债不还** → 赦免权闭环失效的前兆（PHILOSOPHY §11）
 - **规律只涨不落** → 该跑 learn 并修剪降级候选（熵增警戒）
+- **事实卡长期零新增** → 机制死重，摘掉 finish 的机器级分支即退场（机制也要代谢）
 - 全部为零 → 项目刚开始或钩子长期静默——用第 4 项确认链活性

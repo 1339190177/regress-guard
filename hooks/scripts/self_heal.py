@@ -52,13 +52,14 @@ SOURCE_CANDIDATES = [
 REQUIRED_HOOK_FILES = ["launcher.js", "pre_commit_guard.py", "read_before_edit_guard.py",
                        "prompt_intercept.py", "reflection_check.py", "fail_watch.py",
                        "risk_watch.py", "compact_notice.py", "execution_valve.py",
-                       "boundary_guard.py"]
+                       "boundary_guard.py", "stop_notify.py"]
 REQUIRED_LIB_FILES = [
     "manifest_parser.py", "git_diff_analyzer.py",
     "test_runner.py", "history.py", "filelock.py", "self_heal.py",
     "cochange_rules.py",
     "journal.py", "plan_approve.py", "manifest_fields.py", "rules_ledger.py",
-    "notify.py", "wecom_notify.py"
+    "notify.py", "wecom_notify.py", "facts.py",
+    "pending.py", "session_relay.py", "sentinel.py"
 ]
 REQUIRED_COMMANDS = [
     "regress:init", "regress:plan", "regress:track", "regress:verify",

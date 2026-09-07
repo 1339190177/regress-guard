@@ -7,8 +7,10 @@
 
 配置（.regress/config.json）：
   "notify": { "wecom": { "corpid": "ww...", "secret": "...",
-                          "agentid": 1000002, "touser": "@all" } }
+                          "agentid": 1000002, "touser": "@all",
+                          "proxy": "http://user:pass@ip:port" } }
   ——有 wecom 凭据时 notify() 自动把它插为第一通道（手机优先，机内声音/桌面次之）。
+  proxy 可选：出口走固定 IP 中转（企业可信IP 白名单的机器，家宽动态 IP 场景）。
 
 机制：access_token 缓存 $WECOM_TOKEN_DIR（默认 /tmp，key=cropid+secret 哈希），
 过期前 300s 刷新；markdown 消息。best-effort：失败只 stderr、exit 0/1，不抛异常
@@ -26,6 +28,15 @@ import urllib.request
 
 
 def _conf(project_dir):
+    """env 优先（v1.31.4）：notify 层把两层合并后的 wecom 块经
+    RG_NOTIFY_WECOM_JSON 传入——机器级回退对子进程才生效；无 env 回落项目文件。"""
+    raw = os.environ.get("RG_NOTIFY_WECOM_JSON")
+    if raw:
+        try:
+            c = json.loads(raw)
+            return c if isinstance(c, dict) else {}
+        except json.JSONDecodeError:
+            pass
     try:
         with open(os.path.join(project_dir, ".regress", "config.json"),
                   encoding="utf-8") as f:
@@ -40,6 +51,15 @@ def _token_path(c):
     return os.path.join(os.environ.get("WECOM_TOKEN_DIR", "/tmp"), f"wecom_token_{h}.json")
 
 
+def _opener(c):
+    """有 proxy 配置时走固定 IP 中转（可信 IP 白名单），否则直连。"""
+    proxy = c.get("proxy")
+    if proxy:
+        return urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+    return urllib.request.build_opener()
+
+
 def get_token(c, api):
     p = _token_path(c)
     now = time.time()
@@ -51,7 +71,7 @@ def get_token(c, api):
     except (IOError, OSError, json.JSONDecodeError):
         pass
     q = urllib.parse.urlencode({"corpid": c["corpid"], "corpsecret": c["secret"]})
-    with urllib.request.urlopen(f"{api}/gettoken?{q}", timeout=10) as r:
+    with _opener(c).open(f"{api}/gettoken?{q}", timeout=10) as r:
         d = json.load(r)
     if d.get("errcode"):
         raise RuntimeError(f"gettoken {d.get('errcode')}: {d.get('errmsg')}")
@@ -75,8 +95,23 @@ def push(c, title, body, api):
         f"{api}/message/send?access_token={tok}",
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=10) as r:
+    with _opener(c).open(req, timeout=10) as r:
         d = json.load(r)
+    # 发送台账（v1.32.6）：所有推送的唯一咽喉——不依赖调用方日志习惯，
+    # 钩子环境 TMPDIR 漂移也不失明（2026-09-05 22:19 推送送达但调用方零痕迹的盲区补口）。
+    # WECOM_API_BASE 指向桩（测试环境）时不记，防 pytest 噪音污染台账。
+    # v1.34：event= 维度（notify 层经 RG_NOTIFY_EVENT 注入）+ RG_SEND_LEDGER 可重定向（测试）。
+    if not os.environ.get("WECOM_API_BASE"):
+        try:
+            import time as _t
+            ledger = os.path.expanduser(
+                os.environ.get("RG_SEND_LEDGER") or "~/.zcode/wecom-send.log")
+            with open(ledger, "a") as f:
+                f.write(f"{_t.strftime('%m-%d %H:%M:%S')} errcode={d.get('errcode')} "
+                        f"event={os.environ.get('RG_NOTIFY_EVENT') or '-'} "
+                        f"agent={c.get('agentid')} {title[:50]}\n")
+        except Exception:
+            pass
     if d.get("errcode"):
         raise RuntimeError(f"send {d.get('errcode')}: {d.get('errmsg')}")
 
@@ -99,6 +134,7 @@ def main(argv=None):
         push(c, title, body, api)
     except Exception as e:  # best-effort：不炸调用方
         print(f"wecom_notify: 推送失败（忽略）: {e}", file=sys.stderr)
+        return 2  # 失败不计入 notify 的 ran 计数（rc=0 才算通道跑通）
     return 0
 
 

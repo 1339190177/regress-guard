@@ -116,7 +116,24 @@ def main(argv=None):
     if args.cmd == "record":
         record(project_dir, args.sig, args.occurrences)
     else:
-        health(project_dir, args.decay_days, args.promote_hits)
+        import io as _io, contextlib as _cb
+        with _cb.redirect_stdout(_io.StringIO()) as buf:
+            health(project_dir, args.decay_days, args.promote_hits)
+        out = buf.getvalue()
+        print(out, end="")
+        # 固化候选=需要人类批准的决策点（v1.33 企业级）：出现即推送，
+        # 不再只躺在报表里等人跑 stats（conftest 以 RG_NO_NOTIFY 隔离测试）
+        if "固化候选" in out and "固化候选）0" not in out and \
+                not os.environ.get("RG_NO_NOTIFY"):
+            try:
+                sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+                from notify import notify as _notify
+                n = out.count("🦴 固化候选")
+                _notify(project_dir, "plan_approval",
+                        f"🦴 固化候选 ×{n}",
+                        "规律命中≥3 可固化为 skill——需要你批准（/regress:stats 查看详情）")
+            except Exception:
+                pass
     return 0
 
 

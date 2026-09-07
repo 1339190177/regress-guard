@@ -211,6 +211,7 @@ DOC_COVERAGE = {
     "设计取舍": ("docs/WORKFLOW.md",),
     "design_rejected": ("docs/WORKFLOW.md",),
     "代谢": ("docs/WORKFLOW.md",),
+    "机器事实卡": ("docs/WORKFLOW.md",),
 }
 
 

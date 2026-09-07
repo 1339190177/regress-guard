@@ -7,8 +7,12 @@
   1. stdin 解析：是否 git commit？否则 exit 0
   2. 有 .regress/？否则 exit 0
   3. bypass 有效？记日志 + exit 0
-  4. staged 文件都在清单内？否则 exit 2
-  5. 自己跑测试：pass→exit0+标done / fail→exit2 / skip→降级检查status
+  4. 活跃清单按会话归属选择（v1.34）：mine=无戳或戳==本会话（hook env）；
+     env 缺失时全部视为 mine（fail-safe 老行为）。他人清单只在本提交
+     staged 撞其清单文件时拦（跨会话冲突=集成态检查），否则放行+警示——
+     治 2026-09-07 标本1（被他人 in-progress 清单挡住干等）
+  5. staged 文件都在清单内？否则 exit 2
+  6. 自己跑测试：pass→exit0+标done / fail→exit2 / skip→降级检查status
      （5.5 V门禁：open 禁提交；5.6 证据律：locked 门禁复验 verify 命令，
        human_check: 前缀验化石存在性不复跑感官）
 
@@ -28,7 +32,7 @@ LIB_DIR = os.path.join(SCRIPT_DIR, "lib")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
-from manifest_parser import find_active_manifest, get_all_changed_files, get_manifest_status, update_frontmatter, get_fragile_points  # noqa: E402
+from manifest_parser import find_active_manifest, get_all_changed_files, get_manifest_status, update_frontmatter, get_fragile_points, parse_frontmatter  # noqa: E402
 from git_diff_analyzer import get_staged_files, filter_files, find_untracked_changes  # noqa: E402
 from test_runner import run_tests  # noqa: E402
 from history import record  # noqa: E402
@@ -124,6 +128,17 @@ def find_regress_dir():
     return None, None
 
 
+def _session_id():
+    """本钩子进程的会话身份（v1.34 作用域键）。钩子进程带会话 env
+    （活体证据：/tmp/regress-guard-fails-sess_*.jsonl），Bash 工具进程不带——
+    缺失返回 ""：门禁退回共享语义（fail-safe 老行为），不误锁。"""
+    return (
+        os.environ.get("CLAUDE_SESSION_ID")
+        or os.environ.get("ZCODE_SESSION_ID")
+        or ""
+    )
+
+
 def _mark_expected(regress_dir, kind):
     """放行前写标记，供 git 观测钩子区分提交来源（gated/bypass vs 外部直提）。
 
@@ -214,10 +229,9 @@ def main():
 
     manifest = None
     manifest_id = ""
+    my_sid = _session_id()
+    mine, others = [], []  # (path, id)：会话作用域（v1.34）
     for mf_path in manifest_files_on_disk:
-        mdata = get_all_changed_files(mf_path)  # 触发解析
-        # 如果文件能解析（即使返回空列表），parse_frontmatter 不为 None
-        from manifest_parser import parse_frontmatter
         parsed = parse_frontmatter(mf_path)
         if parsed is None:
             # 文件存在但无法解析 frontmatter → 格式损坏
@@ -229,24 +243,72 @@ def main():
             )
         # 语义反转：只有明确活跃 status 才算（开放词表下自造词≠活跃）
         if parsed.get("status") in ("planning", "in-progress", "verifying", "blocked"):
-            manifest = mf_path
-            manifest_id = parsed.get("id", "")
-            break
+            entry = (mf_path, parsed.get("id", ""))
+            m_sid = str(parsed.get("session") or "")
+            (others if my_sid and m_sid and m_sid != my_sid else mine).append(entry)
+
+    def _others_files():
+        """他人活跃清单声明的文件并集（集成态冲突检查的对照面）。"""
+        files = set()
+        for p, _oid in others:
+            files.update(f.replace(os.sep, "/") for f in get_all_changed_files(p))
+        return files
+
+    def _staged_list():
+        # .regress/ 是治理数据（清单/历史/考古地层），不是业务改动，不参与 F3 检查
+        return [s for s in filter_files(get_staged_files(project_dir))
+                if not s.replace(os.sep, "/").startswith(".regress/")]
+
+    if mine:
+        manifest, manifest_id = mine[0]
 
     if not manifest:
-        # 没有活跃清单 → 放行，但要记录（否则 history 永远空）
-        record(regress_dir, "commit_passed", "",
-               runner="none", passed=0, total=0,
-               note="no_active_manifest")
-        _mark_expected(regress_dir, "gated")
-        emit_pass()
+        if others:
+            # 我无清单、他会话有活跃清单：只拦真冲突（staged 撞其清单文件），
+            # 否则放行+警示——他人清单不再挡我的提交（标本1 根治）
+            try:
+                clash = sorted({s.replace(os.sep, "/") for s in _staged_list()}
+                               & _others_files())
+            except Exception as e:
+                record(regress_dir, "error", "", error=f"diff analysis failed: {e}")
+                emit_block(
+                    f"git diff 分析失败：{e}\n\n"
+                    "fail-safe 原则：阻断 commit。请检查 git 状态后重试。"
+                )
+            ids = ", ".join(oid or os.path.basename(p) for p, oid in others[:3])
+            if clash:
+                files_str = "\n  ".join(clash)
+                record(regress_dir, "commit_blocked", "",
+                       reason="cross_session_clash", clash_files=clash,
+                       foreign=ids, session=my_sid)
+                emit_block(
+                    f"commit 被阻断。以下 staged 文件在他会话的活跃清单内"
+                    f"（跨会话文件冲突——各自分支都对，合到一起才现形）：\n"
+                    f"  {files_str}\n\n对方清单：{ids}\n\n"
+                    "· 与该会话串行作业，或让人类仲裁归属\n"
+                    "· 该会话已死？哨兵视图确认后收尾其清单或重盖 session 戳：\n"
+                    "  python3 hooks/scripts/lib/sentinel.py\n"
+                    "· 确要抢收：/regress:bypass <分钟>（限时赦免，赦后记债）"
+                )
+            record(regress_dir, "commit_passed", "",
+                   runner="none", passed=0, total=0,
+                   note="foreign_active_manifest_untouched", foreign=ids)
+            _mark_expected(regress_dir, "gated")
+            emit_warn(
+                f"其他会话有活跃清单（{ids}），但不涉本次提交文件——已放行"
+                "（会话作用域 v1.34：他人清单不再挡你的提交）。")
+        else:
+            # 没有活跃清单 → 放行，但要记录（否则 history 永远空）
+            record(regress_dir, "commit_passed", "",
+                   runner="none", passed=0, total=0,
+                   note="no_active_manifest")
+            _mark_expected(regress_dir, "gated")
+            emit_pass()
 
     # ─── 5. staged 文件在清单内？──────────────────────
     try:
         manifest_files = get_all_changed_files(manifest)
-        # .regress/ 是治理数据（清单/历史/考古地层），不是业务改动，不参与 F3 检查
-        staged = [s for s in filter_files(get_staged_files(project_dir))
-                  if not s.replace(os.sep, "/").startswith(".regress/")]
+        staged = _staged_list()
         untracked = find_untracked_changes(staged, manifest_files)
     except Exception as e:
         record(regress_dir, "error", manifest_id, error=f"diff analysis failed: {e}")
@@ -254,6 +316,26 @@ def main():
             f"git diff 分析失败：{e}\n\n"
             "fail-safe 原则：阻断 commit。请检查 git 状态后重试。"
         )
+
+    # 5.4 跨会话冲突（v1.34）：先于 untracked 检查——否则"不在清单中"的提示
+    # 会误导去 /regress:track 把他人文件认领进我的清单（方向反了）
+    if my_sid and others:
+        clash = sorted({s.replace(os.sep, "/") for s in staged} & _others_files())
+        if clash:
+            files_str = "\n  ".join(clash)
+            ids = ", ".join(oid or os.path.basename(p) for p, oid in others[:3])
+            record(regress_dir, "commit_blocked", manifest_id,
+                   reason="cross_session_clash", clash_files=clash,
+                   foreign=ids, session=my_sid)
+            emit_block(
+                f"commit 被阻断。以下 staged 文件同时在他会话的活跃清单内"
+                f"（跨会话文件冲突——各自分支都对，合到一起才现形）：\n"
+                f"  {files_str}\n\n对方清单：{ids}\n\n"
+                "· 与该会话串行作业，或让人类仲裁归属\n"
+                "· 该会话已死？哨兵视图确认后收尾其清单或重盖 session 戳：\n"
+                "  python3 hooks/scripts/lib/sentinel.py\n"
+                "· 确要抢收：/regress:bypass <分钟>（限时赦免，赦后记债）"
+            )
 
     if untracked:
         files_str = "\n  ".join(untracked)

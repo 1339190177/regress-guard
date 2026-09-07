@@ -52,6 +52,9 @@ python3 "<插件路径>/hooks/scripts/lib/journal.py" . digest
 
 - **digest 非空 / 本次有 rescue 回填 / top_f3 有新共变** → 执行 /regress:learn 的沉淀
   流程（规律入 AGENTS.md 标记块 + `rules_ledger.py . record` 记账），汇报新增规律条数
+- **机器级分支（v1.31）**：沉淀里若有机器味事实（服务器拓扑/通道/环境坑/跨项目工具坑）→
+  `python3 "<插件路径>/hooks/scripts/lib/facts.py" record "<标题>" "<一句话+验证命令>" [域]`
+  （同键重录自动刷新日期；落 ~/.zcode/skills/machine-facts/，跨项目可借，人类无感）
 - 全空 → 报告一行「无可沉淀，代谢跳过」——不硬凑
 - 顺带跑 `rules_ledger.py . health`：命中 ≥3 的稳定规律输出「建议固化 skill」卡片
   （🦴 经人批准后用 skill-creator 固化——**自动固化的错误经验会以技能的形式高速复发**）
@@ -80,6 +83,17 @@ git status --porcelain .regress 2>/dev/null
 
 可以提交（门禁复验后自动标 done）。
 ```
+
+**离场召回（v1.31.1）**：汇总输出后推送 done 事件——离场人类靠它知道"回来收货"：
+
+```bash
+python3 "<插件路径>/hooks/scripts/lib/notify.py" . done --title "🏁 完成 <id>：<需求一句话>" --body "<manifest 的 requirement 原文：任务内容简介>｜测试 <passed>/<total>｜债务 <debt>｜<残留或干净>"
+```
+
+（一条/任务，频率天然低；干净收尾与 finish_open 二选一触发，不双响。
+标题只写任务名——【项目名】前缀与 🕐 时间由 notify 层自动注入，v1.31.2；
+正文首位放任务内容简介（requirement 原文，不另行改写——离场人类回看时知道
+"这任务是干啥的"，不用回来问），v1.31.2 补。）
 
 ## 自主决策
 

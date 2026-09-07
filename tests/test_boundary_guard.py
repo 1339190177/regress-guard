@@ -397,3 +397,66 @@ def test_bash_cd_variable_fail_open(tmp_path):
 def test_bash_absolute_target_unaffected(tmp_path):
     proj = make_project(tmp_path, status="in-progress")
     assert run_bash_guard(proj, "rm src/auth/login.ts").returncode == 0
+
+
+# ─── v1.34：config 常设白名单（020 装机债对称修复）+ 跨会话编辑守卫 ────
+
+def test_config_standing_include_whitelists_machine_paths(tmp_path):
+    """config boundary.include：装机类机级绝对路径的合法出口——不再逼 bypass。
+
+    病例（2026-09-05 020 装机）：boundary.forbidden 一直被读而 include 从不被读，
+    /etc/systemd 装机只能走 5 分钟 bypass 赦免记债。"""
+    proj = make_project(tmp_path)
+    (proj / ".regress" / "config.json").write_text(
+        json.dumps({"boundary": {"include": ["/etc/systemd/system/**"]}}))
+    r = run_guard(proj, "/etc/systemd/system/regress-watchdog.service")
+    assert r.returncode == 0
+
+
+def test_outside_project_without_include_still_blocks(tmp_path):
+    """白名单是出口不是默认：无 config include 时项目外路径照拦（老语义）。"""
+    proj = make_project(tmp_path)
+    r = run_guard(proj, "/etc/systemd/system/x.service")
+    assert r.returncode == 2 and "开发边界" in r.stderr
+
+
+def test_forbidden_wins_over_include(tmp_path):
+    """deny 优先于 allow：同一路径既在 forbidden 又在 include → 拦。"""
+    proj = make_project(tmp_path)
+    (proj / ".regress" / "config.json").write_text(
+        json.dumps({"boundary": {"include": ["/etc/**"],
+                                 "forbidden": ["/etc/shadow"]}}))
+    assert run_guard(proj, "/etc/systemd/x.service").returncode == 0
+    assert run_guard(proj, "/etc/shadow").returncode == 2
+
+
+def _stamp_manifest(proj, mid, session):
+    mf = proj / ".regress" / "manifests" / f"{mid}.md"
+    mf.write_text(mf.read_text().replace(
+        "status:", f"session: {session}\nstatus:", 1))
+
+
+def test_cross_session_edit_blocked(tmp_path):
+    """标本5 活体编辑竞态：文件在他会话活跃清单边界内 → 拦+对焦提示。"""
+    proj = make_project(tmp_path)  # R1 in-progress 覆盖 src/auth/**
+    _stamp_manifest(proj, "R1", "sess-foreign-0001")
+    r = run_guard(proj, proj / "src/auth/login.ts",
+                  extra_env={"CLAUDE_SESSION_ID": "sess-mine-00002"})
+    assert r.returncode == 2 and "跨会话" in r.stderr and "sentinel" in r.stderr
+
+
+def test_own_session_edit_unaffected(tmp_path):
+    """戳==本会话：老行为不变（in-progress 边界内放行）。"""
+    proj = make_project(tmp_path)
+    _stamp_manifest(proj, "R1", "sess-mine-00002")
+    r = run_guard(proj, proj / "src/auth/login.ts",
+                  extra_env={"CLAUDE_SESSION_ID": "sess-mine-00002"})
+    assert r.returncode == 0
+
+
+def test_unstamped_manifest_stays_shared(tmp_path):
+    """无戳清单=共享语义（老清单不受会话作用域影响）。"""
+    proj = make_project(tmp_path)
+    r = run_guard(proj, proj / "src/auth/login.ts",
+                  extra_env={"CLAUDE_SESSION_ID": "sess-mine-00002"})
+    assert r.returncode == 0

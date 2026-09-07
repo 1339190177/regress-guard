@@ -64,9 +64,15 @@ def load_last_prompt():
 
 
 def save_prompt(text):
-    """保存当前输入（供下次比对）。"""
+    """保存当前输入（供下次比对）。同时写全局接力文件（v1.32.3）：
+    stop_notify 经它读最后输入——按项目哈希隔离在钩子进程间目录解析漂移时会
+    读空导致推送永远静默（2026-09-05 三报沉默根因），全局单文件最后写入者生效。
+    v1.32.4：空文本也如实写入（推送决策已与文本解耦，空值让占位标题生效）。"""
     try:
-        with open(_state_path(), "w", encoding="utf-8") as f:
+        with open(_state_path(), "w") as f:
+            f.write(text[:500])
+        with open(os.path.join(tempfile.gettempdir(),
+                               "regress-guard-last-prompt.global.txt"), "w") as f:
             f.write(text[:500])
     except (IOError, OSError):
         pass
@@ -262,6 +268,16 @@ def main():
         data = json.loads(raw)
     except json.JSONDecodeError:
         sys.exit(0)
+
+    # 会话中继（v1.34 会话作用域）：本钩子进程带会话 env（Bash 工具进程不带——
+    # agent 侧无法自证身份），每轮把「当前在本项目说话的会话」落中继文件，
+    # 供 plan_approve 盖 session 戳。早于 "/" 命令早退：命令轮也是本会话的轮。
+    try:
+        from session_relay import write_relay
+        write_relay(os.environ.get("CLAUDE_PROJECT_DIR")
+                    or os.environ.get("ZCODE_PROJECT_DIR") or os.getcwd())
+    except Exception:
+        pass
 
     # UserPromptSubmit 的 match value 是 prompt 文本
     prompt_text = ""

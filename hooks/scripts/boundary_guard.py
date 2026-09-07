@@ -100,6 +100,34 @@ def forbidden_globs(project_dir):
     return []
 
 
+def boundary_include(project_dir):
+    """config 级常设白名单（v1.34，020 装机债根因）：boundary.forbidden 一直
+    被读而 include 从不被读——不对称陷阱。装机类机级绝对路径
+    （如 /etc/systemd/system/**）的合法出口，不再逼 bypass（赦免记债）。
+    path_matches 对绝对路径本就对称匹配，缺的只是读它的人。"""
+    v = (_load_config(project_dir).get("boundary") or {}).get("include")
+    if v is None:
+        return []
+    if isinstance(v, list) and all(isinstance(x, str) for x in v):
+        return v
+    print("REGRESS-GUARD: ⚠️ config boundary.include 形状错误（应为字符串数组），"
+          "常设白名单未生效", file=sys.stderr)
+    return []
+
+
+def _manifest_session(manifest_path):
+    """清单的 session 戳（v1.34）——只认 frontmatter；无戳/读不到返回 ""
+    （共享语义：老清单不受会话作用域影响）。"""
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            content = f.read()
+    except (IOError, OSError):
+        return ""
+    fm_text = content.split("---", 2)[1] if content.startswith("---") else ""
+    m = re.search(r"^session:\s*[\"']?([^\s\"'\n]+)", fm_text, re.M)
+    return m.group(1) if m else ""
+
+
 def parse_boundary(manifest_path):
     """从清单 frontmatter 提取边界：显式 include 通配 或 精确文件集。
 
@@ -290,6 +318,9 @@ def main():
         sys.exit(0)
 
     forb = forbidden_globs(project_dir)
+    stand_include = boundary_include(project_dir)  # v1.34 常设白名单
+    my_sid = (os.environ.get("CLAUDE_SESSION_ID")
+              or os.environ.get("ZCODE_SESSION_ID") or "")
     manifests = active_manifests(project_dir)
     boundaries = []
     for mf in manifests:
@@ -325,13 +356,40 @@ def main():
             )
             sys.exit(2)
 
-        matched = [(mf, mid, status, appr)
+        # ─── 1.5 常设白名单（v1.34）：config boundary.include——装机类机级
+        #      路径的合法出口。forbidden 先于 include（deny 优先于 allow）。
+        if stand_include and path_matches(fp_rel, stand_include, []):
+            continue
+
+        matched = [(mf, mid, status, appr, _manifest_session(mf))
                    for mf, patterns, exact, mid, status, appr in boundaries
                    if path_matches(fp_rel, patterns, exact)]
-        if any(editable(status, appr) for _, _, status, appr in matched):
+        # ─── 1.6 跨会话编辑守卫（v1.34，标本5 活体编辑竞态）：文件在他会话
+        #      活跃清单边界内——冲突只在集成态现形，编辑时就对焦比提交后
+        #      回滚便宜。无戳清单不受影响（共享语义）。
+        if my_sid:
+            foreign = [m for m in matched if m[4] and m[4] != my_sid]
+            own = [m for m in matched if not m[4] or m[4] == my_sid]
+            if foreign:
+                f_ids = ", ".join(f"{mid or os.path.basename(mf)}（{sid[:8]}…）"
+                                  for mf, mid, _, _, sid in foreign[:3])
+                both = "（你的清单也声明了此文件——双方都计划了它，真冲突）" if own else ""
+                print(
+                    f"REGRESS-GUARD: 🔀 跨会话作业中\n"
+                    f"  {fp_rel}{via}\n"
+                    f"  在他会话的活跃清单边界内：{f_ids}{both}\n\n"
+                    f"  多会话的冲突只在集成点现形——现在对焦比事后回滚便宜。\n"
+                    f"  · 哨兵视图看全局归属：python3 hooks/scripts/lib/sentinel.py\n"
+                    f"  · 与该会话串行作业，或让人类仲裁文件归属\n"
+                    f"  · 该会话已死？收尾其清单或重盖 session 戳后再动此文件\n"
+                    f"  · 确要并行抢改 → /regress:bypass <分钟>（限时赦免，赦后记债）",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+        if any(editable(status, appr) for _, _, status, appr, _ in matched):
             continue  # 已批准（status 翻转 或 approved.at 产物直通）
         if matched:
-            blocked_hits = [(mf, mid) for mf, mid, status, _ in matched
+            blocked_hits = [(mf, mid) for mf, mid, status, _, _ in matched
                             if status == "blocked"]
             if blocked_hits:
                 # 命中受阻清单：受阻是合法的停止状态，编辑被拦直到解阻
@@ -343,7 +401,7 @@ def main():
                 ids = ", ".join(mid or os.path.basename(mf) for mf, mid in blocked_hits[:3])
                 extra = ""
                 planning_ids = [mid or os.path.basename(mf)
-                                for mf, mid, status, _ in matched if status == "planning"]
+                                for mf, mid, status, _, _ in matched if status == "planning"]
                 if planning_ids:
                     extra = f"\n  （另有待批准清单：{', '.join(planning_ids[:3])}）"
                 print(
@@ -360,7 +418,8 @@ def main():
                 )
                 sys.exit(2)
             # 只命中待批准（planning）清单：计划审批的机器强制——批准前拦编辑
-            ids = ", ".join(mid or os.path.basename(mf) for mf, mid, _, _ in matched[:3])
+            ids = ", ".join(mid or os.path.basename(mf)
+                            for mf, mid, _, _, _ in matched[:3])
             print(
                 f"REGRESS-GUARD: ⏸ 计划待批准\n"
                 f"  {fp_rel}{via}\n"
