@@ -334,3 +334,25 @@ def test_provisional_without_review_fossil_rejected(tmp_path):
     # 清单保持 planning（未被放行）
     content = (proj / ".regress" / "manifests" / "R1.md").read_text(encoding="utf-8")
     assert "status: planning" in content
+
+
+# ─── P0-3：批准自动回流待决（评审批次一） ─────────────────
+
+def test_approve_auto_resolves_pending(tmp_path, monkeypatch):
+    """批准 = 人类对 plan_approval 待决的裁决 → 同 ref 待决自动 resolve。"""
+    import importlib.util as ilu
+    ledger = tmp_path / "p.jsonl"
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(ledger))
+    spec = ilu.spec_from_file_location(
+        "pd8", os.path.join(os.path.dirname(SCRIPT), "pending.py"))
+    pd = ilu.module_from_spec(spec)
+    spec.loader.exec_module(pd)
+    pd.add("X", "plan_approval", "📋 待批准 R1", ref="R1")
+    pd.add("X", "plan_approval", "📋 待批准 R2", ref="R2")
+
+    proj = make_proj(tmp_path)
+    r = run_approve(proj)
+    assert r.returncode == 0
+    assert "自动回流 1 条待决" in r.stdout
+    s = pd.stats()
+    assert s["pending"] == 1 and s["resolved"]["useful"] == 1

@@ -15,6 +15,11 @@ PROJ = os.path.abspath(os.path.join(LIB, ".."))  # 插件根（动态推导，�
 
 def run_valve(command, env_extra=None):
     env = dict(os.environ)
+    # 密封（评审批次一活体标本）：门禁复验在钩子 env 下跑 pytest，
+    # CLAUDE/ZCODE_PROJECT_DIR 指向真实工作区会抢在测试自设目录前被读——
+    # 两个都显式覆盖，项目定位不由宿主环境决定
+    env.pop("CLAUDE_PROJECT_DIR", None)
+    env.pop("ZCODE_PROJECT_DIR", None)
     env.update(env_extra or {})
     inp = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
     proc = subprocess.run(
@@ -100,3 +105,16 @@ def test_main_ignores_non_bash():
     proc = subprocess.run(["python3", VALVE], input=inp, capture_output=True,
                           text=True, env=env, timeout=10)
     assert proc.returncode == 0
+
+
+# ─── P0-1c：非 dict 载荷 fail-closed（评审批次一） ─────────
+
+def test_nondict_payload_blocks():
+    """顶层非 dict JSON（字符串/数组）→ exit 2 阻断。
+
+    旧行为：data.get 抛 AttributeError → exit 1 = 放行，与阀门语义相反
+    （2026-09-08 评审 P0 活体路径）。"""
+    for raw in ('"just a string"', "[1, 2, 3]"):
+        proc = subprocess.run(["python3", VALVE], input=raw,
+                              capture_output=True, text=True, timeout=10)
+        assert proc.returncode == 2, f"{raw} 应阻断，得 {proc.returncode}"

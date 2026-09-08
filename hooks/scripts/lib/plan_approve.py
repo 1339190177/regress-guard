@@ -63,6 +63,20 @@ def _stamp_session(content, manifest_dir):
                             content, count=1)
 
 
+def _resolve_pending(mid):
+    """P0-3 回流接线（评审批次一）：批准/取消/解阻 = 人类对该清单相关
+    待决推送的事实裁决（useful）——自动 resolve 同 ref 的未决记录，
+    闭环不再依赖人手工清账（旧记录无 ref 时按标题词边界唯一命中兜底）。
+    best-effort：台账故障不影响转写主流程。"""
+    if not mid:
+        return 0
+    try:
+        from pending import resolve_by_ref
+        return resolve_by_ref(mid)
+    except Exception:
+        return 0
+
+
 def _read(path):
     with open(path, encoding="utf-8") as f:
         return f.read()
@@ -265,6 +279,9 @@ def main():
         journal_append("task_unblocked", start_dir=mdir, manifest_id=mid,
                        resolution=(args.resolution or args.note)[:400])
         print(f"✅ 已解阻：{mid} → in-progress（blocked 块保留 resolved 记录）")
+        n = _resolve_pending(mid)
+        if n:
+            print(f"🔄 已自动回流 {n} 条待决（blocked 推送的裁决=阻塞已解除）")
         return 0
 
     if args.cancel:
@@ -282,6 +299,9 @@ def main():
         else:
             journal_append("plan_cancelled", start_dir=mdir, manifest_id=mid, note=note)
             print(f"🗑️ 已取消：{mid} → cancelled（归档不实施，已入考古地层）")
+        n = _resolve_pending(mid)
+        if n:
+            print(f"🔄 已自动回流 {n} 条待决（否决也是裁决）")
         return 0
 
     if status != "planning":
@@ -304,6 +324,9 @@ def main():
                        approved_at=at, note=note, drift=drift or "none",
                        dirty_count=len(dirty), dirty_files=dirty, **dfields)
     print(f"✅ 已批准：{mid} → in-progress（approved.at={at}）")
+    n = _resolve_pending(mid)
+    if n:
+        print(f"🔄 已自动回流 {n} 条待决（plan_approval 推送的裁决=已批准）")
     if dirty:
         print(f"📸 基线快照：{len(dirty)} 个未提交脏文件已入地层（此为工作区原点，"
               f"后续新脏文件对照此原点识别）")

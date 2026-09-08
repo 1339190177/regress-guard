@@ -266,3 +266,30 @@ def test_no_session_env_shares_all(project):
     _stamp(project, "R1", FOREIGN_SID)
     code, err, _ = run_guard("git commit -m x", project)  # 无会话 env
     assert code == 2 and ("测试运行器" in err or "未检测到" in err)
+
+
+# ─── P0-1：fail-closed 行为锁（评审批次一） ──────────────
+
+def test_non_utf8_manifest_blocks(project):
+    """非 UTF-8 清单 → 阻断（不崩溃放行）。
+
+    旧行为：UnicodeDecodeError 穿透无保护循环 → exit 1 = 放行
+    （2026-09-08 评审 P0 活体路径）。修复后 errors="replace" 读入：
+    替换字符若废掉关键字段 → 解析失败分支阻断；若只是注解位脏 →
+    清单照常激活走正常门禁流（本用例 status 行完好 → no runner 阻断）。
+    断言锁的是 fail-closed 契约：绝不 exit 0/1。"""
+    (project / ".regress" / "manifests" / "R1.md").write_bytes(
+        b"---\nid: R1\nstatus: in-progress\nnote: \xff\xfe\n---\nbody")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2, f"非 UTF-8 清单必须阻断（exit 2），得 {code}"
+
+
+def test_garbage_yaml_manifest_blocks(project):
+    """坏 YAML（手写 fallback 也拿不到任何字段）→ 阻断。
+
+    旧行为：fallback 返回 {} 非 None → 判"无活跃清单"静默放行，
+    与 fail-safe 注释方向相反。"""
+    (project / ".regress" / "manifests" / "R1.md").write_text(
+        "---\n: : : 乱写一气\n!@#$ 没有 id 也没有 status\n---\nbody")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2

@@ -544,4 +544,15 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception:
+        # 门禁 fail-closed（评审批次一 P0-1a，2026-09-08 评审活体）：
+        # 未预期异常 = 状态未知 = 阻断。旧行为 exit 1 会被钩子框架当
+        # "非阻断错误"处理 → fail-safe 门禁翻成 fail-open 静默放行
+        # （触发例：非 UTF-8 清单的 UnicodeDecodeError 穿透无保护循环）
+        print(f"REGRESS-GUARD: 门禁未预期异常，fail-safe 阻断（修好后重试）:\n"
+              f"{traceback.format_exc()[-600:]}", file=sys.stderr)
+        sys.exit(2)

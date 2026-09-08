@@ -18,9 +18,18 @@ except ImportError:
 
 
 def parse_frontmatter(filepath):
-    """解析 Markdown 文件的 YAML frontmatter，返回 dict。"""
+    """解析 Markdown 文件的 YAML frontmatter，返回 dict。
+
+    fail-safe 语义（评审批次一 P0-1b）：
+    - 读文件 errors="replace"——非 UTF-8 清单不再让 UnicodeDecodeError 穿透
+      到门禁主流程翻成 exit 1（放行）；替换字符解析出的假 status 不在活跃
+      词表里，走"无活跃清单"路径，由门禁顶层兜底与调用方校验把关
+    - 手写 fallback 的结果若连 id 和 status 都没有，视同解析失败返回 None
+      ——坏 YAML 清单必须交阻断（pre_commit_guard 的 None 分支），
+      不能静默混成"无活跃清单"放行（2026-09-08 评审 P0 活体路径）
+    """
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
     except (IOError, OSError):
         return None
@@ -41,10 +50,15 @@ def parse_frontmatter(filepath):
             data = yaml.safe_load(yaml_text)
             if isinstance(data, dict):
                 return data
+            if data is not None:  # YAML 顶层是列表/标量 = 坏清单
+                return None
         except yaml.YAMLError:
             pass  # fallback 到手写
 
-    return _parse_fallback(yaml_text)
+    fallback = _parse_fallback(yaml_text)
+    if not fallback.get("id") and not fallback.get("status"):
+        return None  # 手写解析也拿不到任何字段 → 解析失败，交阻断
+    return fallback
 
 
 def read_frontmatter(filepath, line_cap=200):

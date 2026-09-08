@@ -165,3 +165,46 @@ def test_parse_jest_coverage_missing(tmp_path):
     """无覆盖率文件时 coverage_pct 为 None，不崩溃。"""
     result = _parse_jest("", 0, project_dir=str(tmp_path))
     assert result.get("coverage_pct") is None
+
+
+# ─── P0-4：嵌套仓探测（评审批次一） ─────────────────────
+
+def test_detect_nested_subrepo(tmp_path):
+    """.regress 在根、pytest.ini+tests/ 在子仓 → 探测到 pytest 且 cwd 指子仓。
+
+    治"17 份清单 0 份 hook 标 done"：嵌套布局下旧探测永远 none。"""
+    from test_runner import _detect
+    root = tmp_path / "workspace"
+    sub = root / "regress-guard"
+    (root / ".regress").mkdir(parents=True)
+    sub.mkdir(parents=True)
+    (sub / "pytest.ini").write_text("[pytest]\n")
+    (sub / "tests").mkdir()
+    (sub / "tests" / "test_x.py").write_text("def test_x(): pass\n")
+    runner, cmd, cwd = _detect(str(root))
+    assert runner == "pytest"
+    assert cwd == str(sub)
+
+
+def test_detect_skips_dependency_dirs(tmp_path):
+    """marker 与测试文件不同在的子目录（纯依赖/样例）不误判（顾问补强）。"""
+    from test_runner import _detect
+    root = tmp_path / "workspace"
+    (root / ".regress").mkdir(parents=True)
+    vend = root / "vendor-sample"
+    vend.mkdir()
+    (vend / "pytest.ini").write_text("[pytest]\n")  # 只有 marker，无测试文件
+    (vend / "raw.py").write_text("x = 1\n")
+    runner, cmd, cwd = _detect(str(root))
+    assert runner is None
+
+
+def test_hermetic_env_strips_host_identity(monkeypatch):
+    """门禁跑测试剥宿主身份变量（三连标本源头收口），其余继承。"""
+    from test_runner import hermetic_env
+    monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-x")
+    monkeypatch.setenv("ZCODE_PROJECT_DIR", "/host/proj")
+    monkeypatch.setenv("PATH", os.environ.get("PATH", ""))
+    env = hermetic_env()
+    assert "CLAUDE_SESSION_ID" not in env and "ZCODE_PROJECT_DIR" not in env
+    assert "PATH" in env

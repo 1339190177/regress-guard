@@ -147,6 +147,12 @@ def main():
     except json.JSONDecodeError:
         sys.exit(0)
 
+    # 灾难级命令阀 fail-closed（评审批次一 P0-1c）：顶层非 dict 载荷
+    # 旧代码 data.get 直接 AttributeError → exit 1 = 放行，与阀门语义相反
+    # （tool_input 非 dict 由下方 isinstance 判断兜住，无需强转）
+    if not isinstance(data, dict):
+        sys.exit(2)
+
     if data.get("tool_name", "") != "Bash":
         sys.exit(0)
     ti = data.get("tool_input", {})

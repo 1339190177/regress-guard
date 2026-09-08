@@ -18,8 +18,9 @@ import subprocess
 import re
 
 
-def detect_runner(project_dir):
-    """探测项目的测试运行器。返回 (runner_name, test_cmd) 或 (None, None)。"""
+def _detect_in(project_dir):
+    """单目录探测（原 detect_runner 主体，P0-4 抽出复用）。"""
+    # Node.js / Jest
     # Node.js / Jest
     pkg = os.path.join(project_dir, "package.json")
     if os.path.exists(pkg):
@@ -70,6 +71,67 @@ def detect_runner(project_dir):
     return (None, None)
 
 
+def detect_runner(project_dir):
+    """探测项目的测试运行器。返回 (runner_name, test_cmd) 或 (None, None)。
+
+    向后兼容 2 元组（既有调用方/测试）；嵌套仓探测与 cwd 判定走 _detect。"""
+    runner, cmd, _cwd = _detect(project_dir)
+    return runner, cmd
+
+
+# 宿主身份变量（评审批次一三连标本的源头收口）：门禁在钩子 env 里跑测试，
+# CLAUDE/ZCODE 的会话号与项目目录泄漏进测试子进程——测试本就不该感知宿主身份
+# （实测三族泄漏：会话名文件错配 / 项目目录抢跑 / 钩子链 env 污染）。
+# 剥这四个，其余照常继承。
+_HOST_IDENTITY_VARS = ("CLAUDE_SESSION_ID", "ZCODE_SESSION_ID",
+                       "CLAUDE_PROJECT_DIR", "ZCODE_PROJECT_DIR")
+
+
+def hermetic_env():
+    env = dict(os.environ)
+    for k in _HOST_IDENTITY_VARS:
+        env.pop(k, None)
+    return env
+
+
+_SKIP_DIRS = {".git", ".regress", "node_modules", "venv", ".venv",
+              "__pycache__", "docs", "dist", "build"}
+
+
+def _looks_like_tests(d):
+    """子目录像不像测试现场（P0-4 顾问补强：marker 必须与测试文件同时在场，
+    防误扫依赖/样例目录选错 cwd）。"""
+    if os.path.isdir(os.path.join(d, "tests")):
+        return True
+    try:
+        return any(f.startswith("test_") or f.endswith("_test.py")
+                   or f == "conftest.py" for f in os.listdir(d))
+    except (IOError, OSError):
+        return False
+
+
+def _detect(project_dir):
+    """探测（runner, cmd, cwd）：project_dir 优先；找不到再扫一层子目录
+    （嵌套仓布局：.regress 在工作区根、代码+pytest.ini 在子仓——评审批次一
+    P0-4，治"17 份清单 0 份 hook 标 done"的根因）。子目录命中需 marker 与
+    测试文件同在。"""
+    runner, cmd = _detect_in(project_dir)
+    if runner:
+        return runner, cmd, project_dir
+    try:
+        subs = sorted(os.listdir(project_dir))
+    except (IOError, OSError):
+        subs = []
+    for name in subs:
+        sub = os.path.join(project_dir, name)
+        if not os.path.isdir(sub) or name in _SKIP_DIRS or name.startswith("."):
+            continue
+        runner, cmd = _detect_in(sub)
+        if runner and _looks_like_tests(sub):
+            return runner, cmd, sub
+    return None, None, project_dir
+
+
 def run_tests(project_dir, timeout=120):
     """运行测试，返回结果 dict。
 
@@ -83,7 +145,7 @@ def run_tests(project_dir, timeout=120):
             "raw_snippet": str  # 失败时的输出片段
         }
     """
-    runner, cmd = detect_runner(project_dir)
+    runner, cmd, rcwd = _detect(project_dir)
 
     if runner is None:
         return {
@@ -99,7 +161,8 @@ def run_tests(project_dir, timeout=120):
         proc = subprocess.run(
             cmd,
             capture_output=True, text=True,
-            cwd=project_dir, timeout=timeout
+            cwd=rcwd, timeout=timeout,
+            env=hermetic_env(),
         )
         output = proc.stdout + proc.stderr
         exit_code = proc.returncode

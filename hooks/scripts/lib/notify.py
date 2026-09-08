@@ -82,12 +82,14 @@ def load_conf(project_dir):
     return merged
 
 
-def notify(project_dir, event, title, body=""):
+def notify(project_dir, event, title, body="", source_id=""):
     """发通知（best-effort）。返回实际执行的通道数。
 
     格式统一在层内注入（v1.31.2，用户令"应含项目名/任务名/时间"）：
     标题加【项目名】前缀（cfg notify.name，缺省目录名）；正文缀 🕐 本地时间。
     调用方只写任务名——五个事件的推送点分散，约定放调用方必然漏。
+    source_id（P0-3 回流接线）：清单 id——入待决台账的 ref 字段，
+    plan_approve 批准/取消时按它精确自动 resolve。
     """
     cfg = load_conf(project_dir)
     if cfg.get("enabled", True) is False:
@@ -102,7 +104,7 @@ def notify(project_dir, event, title, body=""):
         # 台账记决策不记送达——决策点真实存在（计划在等批准），通道失败也留账。
         try:
             from pending import add as _padd
-            body += f"\n〔待决#{_padd(pname, event, title)}〕处理后回「有用/误报/忽略」"
+            body += f"\n〔待决#{_padd(pname, event, title, ref=source_id)}〕处理后回「有用/误报/忽略」"
         except Exception:
             pass
     if body:
@@ -197,13 +199,15 @@ def main(argv=None):
     ap.add_argument("event", choices=EVENTS)
     ap.add_argument("--title", required=True)
     ap.add_argument("--body", default="")
+    ap.add_argument("--ref", default="",
+                    help="来源清单 id（P0-3 回流接线：批准/取消时自动 resolve 同 ref 待决）")
     args = ap.parse_args(argv)
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from journal import _find_project_dir  # 项目定位单一来源
     project_dir = _find_project_dir(args.project_dir)
     if not project_dir:
         return 0  # 未接入项目：静默（通知是增强不是依赖）
-    notify(project_dir, args.event, args.title, args.body)
+    notify(project_dir, args.event, args.title, args.body, source_id=args.ref)
     return 0
 
 

@@ -20,6 +20,16 @@ import risk_watch  # noqa: E402
 import reflection_check  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _no_session_env(monkeypatch):
+    """密封（评审批次一活体标本×3）：门禁复验在钩子 env 下跑 pytest，
+    CLAUDE/ZCODE_SESSION_ID 让被测代码去找 env 会话名的 fails 文件——
+    而本文件 _mk_fails 按老约定写 "default" 名。剥掉会话 env，
+    测试与 standalone 跑法同构。"""
+    monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
+    monkeypatch.delenv("ZCODE_SESSION_ID", raising=False)
+
+
 @pytest.fixture
 def isolated_tmp(monkeypatch, tmp_path):
     monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))

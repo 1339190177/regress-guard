@@ -120,3 +120,45 @@ def test_stats_dashboard_parses_ledger(tmp_path, monkeypatch, capsys):
     assert "4 条" in out and "75%" in out
     assert "done" in out and "旧格式" in out
     assert "未决 1" in out and "感官终验" in out
+
+
+# ─── P0-3：结构化 ref 回流（评审批次一） ─────────────────
+
+def test_resolve_by_ref_exact_and_legacy_fallback(tmp_path, monkeypatch):
+    """ref 精确匹配必中；无 ref 的旧记录按标题词边界唯一命中才兜底。"""
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "p.jsonl"))
+    pd = _load(PENDING, "pd5")
+    pd.add("X", "plan_approval", "📋 待批准 REGRESS-2026-099", ref="REGRESS-2026-099")
+    pd.add("X", "plan_approval", "📋 待批准 REGRESS-2026-100", ref="REGRESS-2026-100")
+    pd.add("X", "blocked", "🛑 受阻 REGRESS-9")  # 旧格式无 ref，标题含 REGRESS-9
+    assert pd.resolve_by_ref("REGRESS-2026-099") == 1
+    s = pd.stats()
+    assert s["pending"] == 2  # 只回流了精确那条
+    # 词边界：REGRESS-9 不误吃 REGRESS-2026-099（已决的不在未决池）
+    assert pd.resolve_by_ref("REGRESS-9") == 1
+    s = pd.stats()
+    assert s["pending"] == 1 and s["resolved"]["useful"] == 2
+
+
+def test_resolve_by_ref_no_ambig_no_hit(tmp_path, monkeypatch):
+    """空 ref 不动；多条标题都含目标 id 时不兜底（防误匹配）。"""
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "p.jsonl"))
+    pd = _load(PENDING, "pd6")
+    assert pd.resolve_by_ref("") == 0
+    pd.add("X", "blocked", "🛑 受阻 R1 复查")
+    pd.add("X", "blocked", "🛑 受阻 R1 再看")
+    assert pd.resolve_by_ref("R1") == 0  # 两条都命中标题=多义，不动
+    assert pd.stats()["pending"] == 2
+
+
+def test_notify_source_id_flows_into_ref(tmp_path, monkeypatch):
+    """notify(--ref/source_id) → 待决记录带 ref 字段（plan_approve 自动回流的数据前提）。"""
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "p.jsonl"))
+    nt = _load(NOTIFY, "nt5")
+    proj = _mk_proj(tmp_path, [_stub_channel(tmp_path, tmp_path / "m") + " {title}"])
+    nt.notify(str(proj), "plan_approval", "📋 待批准", "x",
+              source_id="REGRESS-2026-024")
+    pd = _load(PENDING, "pd7")
+    recs = pd._load()[0]
+    assert recs[1]["ref"] == "REGRESS-2026-024"
+    assert pd.resolve_by_ref("REGRESS-2026-024") == 1

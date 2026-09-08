@@ -79,6 +79,7 @@ cp "${PLUGIN_ROOT}/hooks/scripts/risk_watch.py" "${HOOK_HOME}/"
 cp "${PLUGIN_ROOT}/hooks/scripts/compact_notice.py" "${HOOK_HOME}/"
 cp "${PLUGIN_ROOT}/hooks/scripts/execution_valve.py" "${HOOK_HOME}/"
 cp "${PLUGIN_ROOT}/hooks/scripts/boundary_guard.py" "${HOOK_HOME}/"
+cp "${PLUGIN_ROOT}/hooks/scripts/stop_notify.py" "${HOOK_HOME}/"  # P0-2(评审2026-023)：注册了却从不拷贝——安装到自愈前每轮 Stop 报文件不存在
 cp "${PLUGIN_ROOT}/hooks/scripts/self_heal.py" "${HOOK_HOME}/lib/"
 cp "${PLUGIN_ROOT}/hooks/scripts/lib/"*.py "${HOOK_HOME}/lib/"
 mkdir -p "${HOOK_HOME}/templates"

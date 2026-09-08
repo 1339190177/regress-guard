@@ -63,12 +63,16 @@ def _load():
     return adds, resolves
 
 
-def add(project, event, title):
-    """落一条待决记录，返回分配的 id（notify 层预分配进推送正文〔待决#N〕）。"""
+def add(project, event, title, ref=""):
+    """落一条待决记录，返回分配的 id（notify 层预分配进推送正文〔待决#N〕）。
+
+    ref（P0-3 回流接线，评审批次一）：结构化来源标识（清单 id）——
+    plan_approve 批准/取消时按它精确 resolve，不靠标题猜。"""
     adds = _load()[0]
     nid = (max(adds) if adds else 0) + 1
     _append({"id": nid, "ts": _now(), "project": str(project)[:60],
-             "event": str(event)[:20], "title": str(title)[:80]})
+             "event": str(event)[:20], "title": str(title)[:80],
+             "ref": str(ref)[:60]})
     return nid
 
 
@@ -78,6 +82,27 @@ def resolve(pid, outcome):
         raise ValueError(f"outcome 必须是 {'/'.join(OUTCOMES)}")
     _append({"resolve_id": int(pid), "ts": _now(), "outcome": outcome})
     return True
+
+
+def resolve_by_ref(ref, outcome="useful"):
+    """按结构化 ref 精确回流（P0-3）：resolve 该 ref 的全部未决记录，
+    返回条数。兜底：无 ref 字段的旧记录按标题词边界唯一命中才处理
+    （顾问补强：标题匹配只作唯一命中兜底，防误匹配）。"""
+    import re as _re
+    if not ref:
+        return 0
+    adds, resolves = _load()
+    open_ids = [k for k in sorted(adds) if k not in resolves]
+    hit_ref = [k for k in open_ids if adds[k].get("ref") == ref]
+    legacy = [k for k in open_ids if not adds[k].get("ref")]
+    pat = _re.compile(r"(?<![A-Za-z0-9-])" + _re.escape(ref) + r"(?![A-Za-z0-9-])")
+    title_hits = [k for k in legacy if pat.search(adds[k].get("title", ""))]
+    if len(title_hits) == 1:  # 唯一命中才兜底，多义不动
+        hit_ref.append(title_hits[0])
+    for k in hit_ref:
+        _append({"resolve_id": int(k), "ts": _now(), "outcome": outcome,
+                 "via": "auto(ref)"})
+    return len(hit_ref)
 
 
 def pending_records():
