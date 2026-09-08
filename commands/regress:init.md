@@ -68,6 +68,22 @@ cp "<插件路径>/templates/regress-dir-readme.md" .regress/README.md
 cp "<插件路径>/templates/product-context.md" .regress/product-context.md
 ```
 
+创建 `.regress/product-arch.md`（v1.35 模块卡片——产品存量与架构连接点同卡：
+每模块一卡 = 完成度|能力|依赖方向|契约|缺口|验证路径。AI 扫代码起草初版
+（每个可辨认的模块一张卡），人类校对；缺失才补、永不覆盖）：
+
+```bash
+cp "<插件路径>/templates/product-arch.md" .regress/product-arch.md
+```
+
+创建 `.regress/adr/` 目录（v1.35 架构决策记录——重大选型必落
+`adr/NNNN-短标题.md`，模板 `templates/adr.md`；decisions.md 记"决定"，
+ADR 记"为什么这么定"的完整备选与红线）：
+
+```bash
+mkdir -p .regress/adr
+```
+
 创建决策日志 `.regress/decisions.md`（公理二：认知物质化——决策链刻在文件里，
 新会话/新人不靠记忆，读文件）：
 

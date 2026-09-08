@@ -161,6 +161,26 @@ planning ──批准/临行──→ in-progress ──→ verifying ──门�
 - 断点续作：`/regress:resume` 一句话重建现场
 - 机器级经验：finish 代谢缝自动落机器事实卡（v1.31，见下节）
 
+## 产品+架构层（v1.35：治"跑通即终点"）
+
+对话式开发的产品功能深度/广度瑕疵有四个结构性根因：计划从单一视角推导
+（无角色枚举/无伴侣功能/无竞品对照）、首版即终版（无 DoD 状态完备性）、
+AI 看不见渲染结果（代码审查发现不了空态尴尬）、架构盲区（无连接点地图、
+选型理由随对话蒸发）。四个机制对四因：
+
+| 机制 | 挂点 | 机器强制 |
+|------|------|---------|
+| 广度矩阵（角色×任务+伴侣10项+竞品，每行配验证路径） | plan 4.9 → 清单「广度矩阵」节 | 卡片行 + 伴侣留空=没想过 |
+| DoD 状态完备性（空/错/载真渲染看过） | plan 脆弱点 kind=product → verify | **open 挡提交**（搭脆弱点既有强制） |
+| DoD 自检+弹性打磨 | finish 步骤 2.5 | 缺口三选一（修/挂牌/进卡片），不许蒸发 |
+| 模块卡片（完成度/能力/依赖/契约/缺口/验证路径） | init 生成 → finish 回写 | 验证路径走不通的卡=过期卡 |
+| ADR（context/options/decision/红线） | plan 4.10 → `.regress/adr/` | 红线=grep 类 verify 进 arch 脆弱点 |
+
+知识层配套（装机 Skill，流程层仍以上表为准）：brainstorming/writing-plans/
+TDD/systematic-debugging/verification-before-completion/executing-plans
+（superpowers 六件）、frontend-design（Anthropic）、office-hours（YC）、
+ui-ux-pro-max。
+
 ## 机器事实卡（v1.32：跨项目地层，三层结构）
 
 机器级经验（服务器拓扑/通道/环境坑/跨项目工具坑）不属于任何项目——沉在单项目地层里
