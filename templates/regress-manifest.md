@@ -42,7 +42,9 @@ fragile_points:        # 公理一：穷举致使失败的关键脆弱点，逐�
     description: "{{FRAGILE_DESCRIPTION}}"
     verify: "{{VERIFY_COMMAND}}"   # 可执行命令，/regress:verify 跑它拿证据
     rescue: "{{RESCUE_COMMAND}}"   # 可选：verify 失败/见典型报错时先敲这个（自救）
-    status: open       # open=未挂牌(禁提交) / locked=verify已通过 / flagged=带病挂牌
+    # status 行禁带行内注释（P1#12 病例：行尾 # 让 open 检测恒不中=公理一静默失效）
+    # 流转：open=未挂牌(禁提交) / locked=verify已通过 / flagged=带病挂牌
+    status: open
 adr: ""                # 关联 ADR（v1.35）：重大选型必填 .regress/adr/NNN-标题.md 路径，小改动留空
 test_results: {}
 created_at: "{{DATE}}"

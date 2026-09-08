@@ -321,6 +321,10 @@ python3 "<插件路径>/hooks/scripts/lib/journal.py" . add plan_advisor_review 
 
 ## 步骤 6：实施
 
+批准后进入开发。**长任务心跳（P1#13）**：每完成一个阶段边界推 progress
+（notify.py . progress，标题「⏳ 清单id·阶段n」正文一句）——
+授权自主推进期间人不看屏也知道走到哪。
+
 批准后进入开发。实施期间边界守卫/文件指纹/漂移检测/意图复述照常工作；
 完成走 /regress:track → commit 门禁（自跑测试+脆弱点复验）。
 

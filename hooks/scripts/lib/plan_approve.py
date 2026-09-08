@@ -110,21 +110,27 @@ def _drift_info(fm_text, manifest_dir):
 
 
 def _apply(content, new_status, at, note):
-    """重写 frontmatter：status 行 + approved 块。at=None 表示只改状态（取消）。"""
+    """重写 frontmatter：status 行 + approved 块。at=None 表示只改状态（取消）。
+
+    P1#7：repl 走 lambda——re.sub 对普通替换串做转义处理，note 里的
+    `C:\\docs` / `\\1` 会触发 re.error: bad escape（评审实测可清空清单）。"""
     content = _APPROVED_BLOCK.sub("", content)
     repl = f"status: {new_status}"
     if at is not None:
         repl += f'\napproved:\n  at: "{at}"\n  note: "{note}"'
-    return _STATUS_LINE.sub(repl, content, count=1)
+    return _STATUS_LINE.sub(lambda _: repl, content, count=1)
 
 
 def _set_blocked(content, fields):
-    """status→blocked + blocked 四问块重建（approved 块不动）。"""
+    """status→blocked + blocked 四问块重建（approved 块不动）。
+
+    四问文本来自 --reason/--tried/--unsafe/--need（用户输入）→ lambda 替换
+    防转义炸（同 P1#7）。"""
     content = _BLOCKED_BLOCK.sub("", content)
     block = "blocked:"
     for k in _BLOCK_KEYS:
         block += f'\n  {k}: "{fields.get(k, "")}"'
-    return _STATUS_LINE.sub(f"status: blocked\n{block}", content, count=1)
+    return _STATUS_LINE.sub(lambda _: f"status: blocked\n{block}", content, count=1)
 
 
 def _append_resolved(content, resolved_at, resolution):
@@ -140,10 +146,10 @@ def _append_resolved(content, resolved_at, resolution):
 
 def _set_provisional(content, at, advisor):
     """临行（伪全自动）：status→in-progress + provisional 块。顾问有否决权无批准权——
-    临行的执行授权来自人类事前预授权，顾问预审只是安全网。"""
+    临行的执行授权来自人类事前预授权，顾问预审只是安全网。advisor 文本 lambda 替换（P1#7）。"""
     content = _PROVISIONAL_BLOCK.sub("", content)
     block = f'provisional:\n  at: "{at}"\n  advisor: "{advisor}"'
-    return _STATUS_LINE.sub(f"status: in-progress\n{block}", content, count=1)
+    return _STATUS_LINE.sub(lambda _: f"status: in-progress\n{block}", content, count=1)
 
 
 def _dirty_files(manifest_dir, cap=20):
@@ -225,8 +231,9 @@ def main():
             "need": args.need.replace('"', "'"),
             "at": now,
         }
+        new_content = _stamp_session(_set_blocked(content, fields), mdir)  # P1#7：先算后写
         with open(path, "w", encoding="utf-8") as f:
-            f.write(_stamp_session(_set_blocked(content, fields), mdir))
+            f.write(new_content)
         journal_append("task_blocked", start_dir=mdir, manifest_id=mid,
                        reason=fields["reason"], need=fields["need"],
                        tried=fields["tried"], unsafe_why=fields["unsafe_why"])
@@ -258,9 +265,10 @@ def main():
                   "plan_advisor_review '{\"manifest_id\":\"..\",\"verdict\":\"..\",\"summary\":\"..\"}'"
                   "（防代笔：预审必须留下可审计的痕迹）", file=sys.stderr)
             return 1
+        new_content = _stamp_session(_set_provisional(  # P1#7：先算后写
+            content, now, args.advisor.replace('"', "'")), mdir)
         with open(path, "w", encoding="utf-8") as f:
-            f.write(_stamp_session(_set_provisional(
-                content, now, args.advisor.replace('"', "'")), mdir))
+            f.write(new_content)
         journal_append("provisional_start", start_dir=mdir, manifest_id=mid,
                        advisor=args.advisor[:400])
         print(f"🚀 已临行：{mid} → in-progress（否决窗内，直到 done）")
@@ -292,8 +300,9 @@ def main():
             print(f"plan_approve: 无需取消（当前 status={status}；"
                   f"只有待批准或临行中的计划可取消，正式任务走受阻/完成）", file=sys.stderr)
             return 1
+        new_content = _apply(content, "cancelled", None, None)  # P1#7：先算后写
         with open(path, "w", encoding="utf-8") as f:
-            f.write(_apply(content, "cancelled", None, None))
+            f.write(new_content)
         if _already_journaled("plan_cancelled", mid, mdir):
             print(f"🗑️ 已取消：{mid} → cancelled（地层已有此事件，不重复埋）")
         else:
@@ -313,8 +322,9 @@ def main():
     at = human_at or datetime.now().isoformat(timespec="seconds")
     if not note:
         note = "产物直通（人类直接编辑 approved.at）" if human_at else "对话批准转写"
+    new_content = _stamp_session(_apply(content, "in-progress", at, note), mdir)  # P1#7：先算后写
     with open(path, "w", encoding="utf-8") as f:
-        f.write(_stamp_session(_apply(content, "in-progress", at, note), mdir))
+        f.write(new_content)
 
     dirty = _dirty_files(mdir)  # 批准时刻的工作区原点（思想二·基线冻结）
 

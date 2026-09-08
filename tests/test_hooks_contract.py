@@ -50,3 +50,23 @@ def test_stop_entry_no_matcher():
     """Stop 事件无 matcher 键（v1.34 已修，防回归）。"""
     for e in _events().get("Stop", []):
         assert "matcher" not in e
+
+
+# ─── P1#6：卸载零残留契约（评审批次二） ────────────────────
+
+def test_uninstall_covers_all_commands():
+    """命令删除清单与 REQUIRED_COMMANDS 同源（漏一条=死文件）。"""
+    UN = os.path.abspath(os.path.join(os.path.dirname(HOOKS), "..", "uninstall.sh"))
+    src = open(UN, encoding="utf-8").read()
+    for cmd in ("regress:resume", "regress:finish", "regress:stats",
+                "regress:init", "regress:update"):
+        assert cmd in src, f"uninstall.sh 漏删 {cmd}"
+
+
+def test_uninstall_filters_all_guard_scripts():
+    """统一过滤覆盖全部守卫脚本名（漏一个=卸载后死钩子）。"""
+    UN = os.path.abspath(os.path.join(os.path.dirname(HOOKS), "..", "uninstall.sh"))
+    src = open(UN, encoding="utf-8").read()
+    for name in ("stop_notify", "boundary_guard", "execution_valve",
+                 "fail_watch", "risk_watch", "compact_notice", "prompt_intercept"):
+        assert name in src, f"uninstall 过滤漏 {name}"

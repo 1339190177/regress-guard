@@ -356,3 +356,18 @@ def test_approve_auto_resolves_pending(tmp_path, monkeypatch):
     assert "自动回流 1 条待决" in r.stdout
     s = pd.stats()
     assert s["pending"] == 1 and s["resolved"]["useful"] == 1
+
+
+# ─── P1#7：bad escape 不清空清单（评审批次二） ─────────────
+
+def test_bad_escape_note_keeps_manifest(tmp_path):
+    """附言含反斜杠序列（C:\docs、\1）→ 批准成功且清单完好。
+
+    旧行为：re.sub 对替换串做转义处理 → re.error 在 write 实参里炸，
+    而文件已先被 open(w) 截断——清单 0 字节。"""
+    proj = make_proj(tmp_path)
+    r = run_approve(proj, "--note", "修复 C:\\docs\\1 路径")
+    assert r.returncode == 0
+    content = (proj / ".regress" / "manifests" / "R1.md").read_text(encoding="utf-8")
+    assert "status: in-progress" in content and len(content) > 50  # 没被清空
+    assert "C:\\docs" in content  # 附言字面落盘

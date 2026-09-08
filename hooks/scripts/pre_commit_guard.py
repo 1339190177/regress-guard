@@ -41,7 +41,20 @@ from history import record  # noqa: E402
 def emit_pass():
     sys.exit(0)
 
+# blocked 推送的上下文（P1#5）：main 定位项目/清单后回填——record 只留本机痕，
+# 手机才是人所在的屏。评审病例：history 6 个 blocked 事件期间 wecom 台账 0 条
+_NOTIFY_STATE = {"project_dir": None, "manifest_id": ""}
+
+
 def emit_block(msg):
+    if _NOTIFY_STATE["project_dir"] and not os.environ.get("RG_NO_NOTIFY"):
+        try:
+            from notify import notify as _notify
+            _notify(_NOTIFY_STATE["project_dir"], "blocked",
+                    f"⛔ 提交被拦 {_NOTIFY_STATE['manifest_id']}".replace("  ", " "),
+                    msg.split("\n")[0][:100])
+        except Exception:
+            pass  # 推送是增强不是依赖
     print(f"REGRESS-GUARD: {msg}", file=sys.stderr)
     sys.exit(2)
 
@@ -173,6 +186,7 @@ def main():
     project_dir, regress_dir = find_regress_dir()
     if not regress_dir:
         emit_pass()  # 未接入的项目（找不到 .regress/）
+    _NOTIFY_STATE["project_dir"] = project_dir  # blocked 推送上下文（P1#5）
 
     # 读配置 — fail-safe：config 损坏时用最严格默认（阻断）
     config = {}
@@ -261,6 +275,7 @@ def main():
 
     if mine:
         manifest, manifest_id = mine[0]
+        _NOTIFY_STATE["manifest_id"] = manifest_id  # blocked 推送带清单号
 
     if not manifest:
         if others:
@@ -499,9 +514,7 @@ def main():
         mstatus = get_manifest_status(manifest)
         # 注：能走到这里说明清单是明确活跃的（planning/in-progress/verifying），
         # 否则 main() 早就以 no_active_manifest 放行了
-        record(regress_dir, "commit_blocked", manifest_id,
-               reason="no_test_runner", runner=runner, manifest_status=mstatus)
-        # 非终态 → 记录阻断事件 + 提示
+        # （P1#11 去重：旧行为连记两条同毫秒 record——stats 的比率全体翻倍）
         record(regress_dir, "commit_blocked", manifest_id,
                reason="no_test_runner", runner=runner, manifest_status=mstatus)
         msg = (

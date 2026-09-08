@@ -20,8 +20,8 @@ python3 "<插件路径>/hooks/scripts/lib/journal.py" . digest
 # 3. 规律账本：固化候选 🦴 / 降级候选 🍂
 python3 "<插件路径>/hooks/scripts/lib/rules_ledger.py" . health
 
-# 4. 钩子活性（链外看门狗）
-python3 "<插件路径>/scripts/check_docs.py" 2>&1 | grep -E "config.file.invalid|空 matcher" || echo "钩子链健康"
+# 4. 钩子活性（链外看门狗；P1#14 双路径：用户级装机在 regress-guard-docs，插件模式在插件根）
+{ python3 ~/.zcode/regress-guard-docs/check_docs.py 2>/dev/null || python3 "<插件路径>/scripts/check_docs.py"; } 2>&1 | grep -E "config.file.invalid|空 matcher" || echo "钩子链健康"
 
 # 5. 机器事实卡：条数/最老/陈旧（机制存活判据：长期零新增=死重可退场）
 python3 "<插件路径>/hooks/scripts/lib/facts.py" health

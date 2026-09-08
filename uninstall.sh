@@ -38,8 +38,8 @@ for skill in regression-planning characterization-testing change-impact-analysis
     fi
 done
 
-# ─── 2. 删除 commands ─────────────────────────────────
-for cmd in regress:init regress:plan regress:track regress:verify regress:quick regress:bypass regress:learn regress:evolve regress:trace regress:install regress:uninstall regress:update; do
+# ─── 2. 删除 commands（与 self_heal REQUIRED_COMMANDS 同源，P1#6 补 resume/finish/stats）───
+for cmd in regress:init regress:plan regress:track regress:verify regress:quick regress:bypass regress:learn regress:evolve regress:trace regress:resume regress:finish regress:stats regress:install regress:uninstall regress:update; do
     f="${ZCODE_HOME}/commands/${cmd}.md"
     if [ -f "$f" ]; then
         rm "$f"
@@ -68,77 +68,29 @@ except Exception:
 hooks = config.get("hooks", {})
 events = hooks.get("events", {})
 
-# 从 PreToolUse 移除 regress-guard 的 hook（commit guard + 先读后改）
-pretool = events.get("PreToolUse", [])
-cleaned = []
-for entry in pretool:
-    hooks_list = entry.get("hooks", [])
-    filtered = [h for h in hooks_list
-                 if not any("regress-guard" in str(a) or "launcher.js" in str(a)
-                            for a in h.get("args", []))
-                 and "read_before_edit" not in str(h.get("command", ""))]
-    if filtered:
-        cleaned.append({**entry, "hooks": filtered})
-if cleaned:
-    events["PreToolUse"] = cleaned
-else:
-    events.pop("PreToolUse", None)
+# P1#6 统一清理：所有事件、所有条目——凡 command/args 里带 regress-guard 痕迹的
+# hook 一律摘除（旧实现按脚本名逐事件过滤：Stop 只滤 reflection_check 漏掉
+# stop_notify、PreToolUse 漏 boundary_guard/execution_valve、PostToolUseFailure
+# 与 SessionStart(compact) 完全不清——卸载后 6 条死钩子指已删目录，每次工具调用报错）
+def _is_ours(h):
+    blob = str(h.get("command", "")) + " " + str(h.get("args", []))
+    return ("regress-guard" in blob or "launcher.js" in blob
+            or any(s in blob for s in (
+                "read_before_edit", "prompt_intercept", "reflection_check",
+                "self_heal", "boundary_guard", "execution_valve",
+                "fail_watch", "risk_watch", "compact_notice", "stop_notify",
+                "pre_commit_guard")))
 
-# 从 PostToolUse 移除 先读后改
-posttool = events.get("PostToolUse", [])
-post_cleaned = []
-for entry in posttool:
-    hooks_list = entry.get("hooks", [])
-    filtered = [h for h in hooks_list
-                 if "read_before_edit" not in str(h.get("command", ""))]
-    if filtered:
-        post_cleaned.append({**entry, "hooks": filtered})
-if post_cleaned:
-    events["PostToolUse"] = post_cleaned
-else:
-    events.pop("PostToolUse", None)
-
-# 从 UserPromptSubmit 移除 需求入口检查
-submit = events.get("UserPromptSubmit", [])
-submit_cleaned = []
-for entry in submit:
-    hooks_list = entry.get("hooks", [])
-    filtered = [h for h in hooks_list
-                 if "prompt_intercept" not in str(h.get("command", ""))]
-    if filtered:
-        submit_cleaned.append({**entry, "hooks": filtered})
-if submit_cleaned:
-    events["UserPromptSubmit"] = submit_cleaned
-else:
-    events.pop("UserPromptSubmit", None)
-
-# 从 Stop 移除 反思检查
-stop = events.get("Stop", [])
-stop_cleaned = []
-for entry in stop:
-    hooks_list = entry.get("hooks", [])
-    filtered = [h for h in hooks_list
-                 if "reflection_check" not in str(h.get("command", ""))]
-    if filtered:
-        stop_cleaned.append({**entry, "hooks": filtered})
-if stop_cleaned:
-    events["Stop"] = stop_cleaned
-else:
-    events.pop("Stop", None)
-
-# 从 SessionStart 移除 regress-guard 的自愈 hook
-session = events.get("SessionStart", [])
-session_cleaned = []
-for entry in session:
-    hooks_list = entry.get("hooks", [])
-    filtered = [h for h in hooks_list
-                 if "self_heal" not in str(h.get("command", ""))]
-    if filtered:
-        session_cleaned.append({**entry, "hooks": filtered})
-if session_cleaned:
-    events["SessionStart"] = session_cleaned
-else:
-    events.pop("SessionStart", None)
+for ev in list(events):
+    cleaned = []
+    for entry in events[ev]:
+        filtered = [h for h in entry.get("hooks", []) if not _is_ours(h)]
+        if filtered:
+            cleaned.append({**entry, "hooks": filtered})
+    if cleaned:
+        events[ev] = cleaned
+    else:
+        events.pop(ev, None)
 
 if not events:
     hooks.pop("events", None)

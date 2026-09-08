@@ -9,8 +9,9 @@
   占位符会被 shlex.quote 后替换（模板里不要再加引号）；无占位符的命令原样跑
   （声音类）。默认自动探测：notify-send 在装则桌面通知；aplay+wav 在则提示音
   （声音出口由系统音频层决定——蓝牙耳机连着即走蓝牙）。
-- 事件 = notify.events 四类开关（plan_approval/blocked/sensory/finish_open），
-  默认全开；notify.enabled=false 一刀关。
+- 事件 = notify.events 开关（plan_approval/blocked/sensory/finish_open/done/
+  progress，默认全开）；test 事件是**手动验收通道**（`notify.py . test` 全链
+  验收用，豁免开关）——不是自动发送点。notify.enabled=false 一刀关。
 - 纪律：best-effort——任一通道失败只 stderr 一行，绝不非零退出（通知是增强，
   不是依赖；不许让通知故障阻塞主流程）。
 
@@ -127,7 +128,10 @@ def notify(project_dir, event, title, body="", source_id=""):
         cmd = tpl.format(title=shlex.quote(title), body=shlex.quote(body)) \
             if ("{title}" in tpl or "{body}" in tpl) else tpl
         try:
-            r = subprocess.run(cmd, shell=True, timeout=5,
+            # P1#8 超时预算：wecom 内层 4s×2(gettoken+push)+余量 → 12s；
+            # 其他通道保持 5s（旧行为 5s 处决 2×10s 内层=结构性永远失败）
+            tmo = 12 if "wecom_notify" in tpl else 5
+            r = subprocess.run(cmd, shell=True, timeout=tmo,
                                capture_output=True, text=True, env=env)
             if r.returncode == 0:
                 ran += 1

@@ -161,17 +161,20 @@ def _auto_consult(question, ferry_body):
         f"【卡点】{question}\n\n【客观数据】\n{ferry_body}"
     )
     answer, truncated = None, False
+    # P1#9 尝试戳先行：发起前就写冷却——顾问进程 hang 时**每个 Stop 不再重等
+    # 1805s**（单次深度等待是设计，重复等待才是病；顾问预审定论：超时本身保留）。
+    # 失败也进冷却 = 失败的自动咨询 3 分钟内不重试（Stops 连发场景不雪崩）。
+    try:
+        with open(cool_path, "w", encoding="utf-8") as f:
+            f.write(str(now))
+    except (IOError, OSError):
+        pass
     got = _consult_post_once(url, token, prompt, AUTO_CONSULT_TIMEOUT_S)
     if got is not None:
         answer, finish = got
         truncated = finish == "length"
     if not answer or len(answer) < 10:
         return None
-    try:
-        with open(cool_path, "w", encoding="utf-8") as f:
-            f.write(str(now))
-    except (IOError, OSError):
-        pass
     if truncated:
         answer += "\n（注：顾问意见疑似被 max_tokens 截断，仅采纳已完整表述的部分）"
     return answer

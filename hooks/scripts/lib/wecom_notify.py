@@ -71,7 +71,7 @@ def get_token(c, api):
     except (IOError, OSError, json.JSONDecodeError):
         pass
     q = urllib.parse.urlencode({"corpid": c["corpid"], "corpsecret": c["secret"]})
-    with _opener(c).open(f"{api}/gettoken?{q}", timeout=10) as r:
+    with _opener(c).open(f"{api}/gettoken?{q}", timeout=4) as r:  # P1#8：内层预算 4s×2，父进程 12s 兜住
         d = json.load(r)
     if d.get("errcode"):
         raise RuntimeError(f"gettoken {d.get('errcode')}: {d.get('errmsg')}")
@@ -95,7 +95,7 @@ def push(c, title, body, api):
         f"{api}/message/send?access_token={tok}",
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json"})
-    with _opener(c).open(req, timeout=10) as r:
+    with _opener(c).open(req, timeout=4) as r:  # P1#8
         d = json.load(r)
     # 发送台账（v1.32.6）：所有推送的唯一咽喉——不依赖调用方日志习惯，
     # 钩子环境 TMPDIR 漂移也不失明（2026-09-05 22:19 推送送达但调用方零痕迹的盲区补口）。

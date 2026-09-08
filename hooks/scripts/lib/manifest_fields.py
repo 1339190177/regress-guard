@@ -15,7 +15,7 @@ STATUS_RE = re.compile(
     re.M)
 ACTIVE_STATUS_RE = re.compile(r"status:\s*(planning|in-progress|verifying|blocked)")
 ACTIVE_STATUSES = ("planning", "in-progress", "verifying", "blocked")
-_OPEN_FP_RE = re.compile(r"^\s+status:\s*open\s*$", re.M)
+_OPEN_FP_RE = re.compile(r"^\s+status:\s*open\s*(?:#.*)?$", re.M)  # P1#12：容忍行尾注释（旧模板带注释的清单 open 检测不再恒不中）
 
 
 def frontmatter(content):

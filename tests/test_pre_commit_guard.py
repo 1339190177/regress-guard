@@ -293,3 +293,22 @@ def test_garbage_yaml_manifest_blocks(project):
         "---\n: : : 乱写一气\n!@#$ 没有 id 也没有 status\n---\nbody")
     code, err, _ = run_guard("git commit -m x", project)
     assert code == 2
+
+
+# ─── P1#5：blocked 推送接线（评审批次二） ─────────────────
+
+def test_blocked_pushes_via_configured_channel(project, tmp_path):
+    """门禁阻断 → notify blocked 事件真发出（评审病例：history 6 个 blocked
+    期间 wecom 台账 0 条——record 只留本机痕，通道才是人所在的屏）。"""
+    import stat as _stat
+    stub = tmp_path / "stub.sh"
+    marker = tmp_path / "blocked-marker"
+    stub.write_text("#!/bin/sh\necho \"$@\" >> " + str(marker) + "\n", encoding="utf-8")
+    stub.chmod(_stat.S_IRWXU)
+    (project / ".regress" / "config.json").write_text(
+        json.dumps({"notify": {"channels": [str(stub) + " {title}"]}}),
+        encoding="utf-8")
+    code, err, _ = run_guard("git commit -m x", project)  # no-runner 阻断路径
+    assert code == 2
+    out = marker.read_text(encoding="utf-8")
+    assert "提交被拦" in out and "R1" in out  # 带清单号的 blocked 推送落标

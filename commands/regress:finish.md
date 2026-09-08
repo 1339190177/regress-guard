@@ -114,6 +114,13 @@ python3 "<插件路径>/hooks/scripts/lib/notify.py" . done --title "🏁 完成
 
 ## 自主决策
 
+长任务心跳（P1#13 接线）：授权自主推进的任务，每完成一个阶段边界（单个 F 落地/
+半小时过半）推送一次——人不在屏前也看得见进度，治"两小时黑箱"：
+
+```bash
+python3 "<插件路径>/hooks/scripts/lib/notify.py" . progress --title "⏳ 清单id·阶段n" --body "本阶段一句：动了什么/下一阶段"
+```
+
 - 清单已是 done/completed → 报告"已收尾"，只输出债务/漂移检查
 - 测试全绿但用户不在场 → 报告就绪状态并停，不代答 open 的处置
 - 小改动收不了尾（无清单）→ 提示下次走 /regress:quick 或先 /regress:plan
