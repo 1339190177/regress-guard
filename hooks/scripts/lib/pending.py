@@ -67,12 +67,15 @@ def add(project, event, title, ref=""):
     """落一条待决记录，返回分配的 id（notify 层预分配进推送正文〔待决#N〕）。
 
     ref（P0-3 回流接线，评审批次一）：结构化来源标识（清单 id）——
-    plan_approve 批准/取消时按它精确 resolve，不靠标题猜。"""
-    adds = _load()[0]
-    nid = (max(adds) if adds else 0) + 1
-    _append({"id": nid, "ts": _now(), "project": str(project)[:60],
-             "event": str(event)[:20], "title": str(title)[:80],
-             "ref": str(ref)[:60]})
+    plan_approve 批准/取消时按它精确 resolve，不靠标题猜。
+    P2#21：max+1 分配加 flock——两会话同推不再拿到同 id（重放去重吞记录）。"""
+    from filelock import file_lock
+    with file_lock(_path()):
+        adds = _load()[0]
+        nid = (max(adds) if adds else 0) + 1
+        _append({"id": nid, "ts": _now(), "project": str(project)[:60],
+                 "event": str(event)[:20], "title": str(title)[:80],
+                 "ref": str(ref)[:60]})
     return nid
 
 

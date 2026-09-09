@@ -226,11 +226,17 @@ def main():
             _mark_expected(regress_dir, "bypass")
             emit_warn(f"bypass 模式生效（到期: {bypass_until}），已记审计日志。事后请补回归。")
         else:
-            # 过期 → 清除 bypass_until
+            # 过期 → 清除 bypass_until（P2#16：filelock+原子写——无锁读改写会
+            # 丢并发会话刚写入的新 bypass，写一半崩溃留下半截 JSON=每次提交
+            # 都命中"配置损坏 fail-safe 阻断"的 DoS）
             config.pop("bypass_until", None)
             try:
-                with open(config_file, "w", encoding="utf-8") as f:
-                    json.dump(config, f, indent=2)
+                from filelock import file_lock
+                tmp = config_file + ".tmp"
+                with file_lock(config_file):
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        json.dump(config, f, indent=2)
+                    os.replace(tmp, config_file)
             except OSError:
                 pass  # 清除失败不阻断（下次会再试清除）
 
@@ -512,6 +518,18 @@ def main():
     elif status == "skip":
         # 无测试运行器 → 活跃清单存在但缺 runner：这仍需人工确认，阻断
         mstatus = get_manifest_status(manifest)
+        # quick 豁免（v1.37，P1#19）：mode: quick = 机器判据达标的小改动
+        # （≤3文件/纯内部/无环境变更），runner 缺失 warn 放行留痕——
+        # 塌方曲线的修复方向是"豁免留痕可审计"，不是"伪装 full 被绕过"
+        # 顾问防线：豁免本身过机器校验——清单实际文件数 >3 则豁免不成立
+        _mp = parse_frontmatter(manifest) or {}
+        _quick_files = len(get_all_changed_files(manifest))
+        if str(_mp.get("mode") or "") == "quick" and _quick_files <= 3:
+            record(regress_dir, "commit_passed", manifest_id,
+                   runner=runner, passed=0, total=0,
+                   note="quick_no_runner_exempt", files=_quick_files)
+            _mark_expected(regress_dir, "gated")
+            emit_warn(f"quick 模式清单无测试运行器（mode: quick 豁免，已留痕 history）。")
         # 注：能走到这里说明清单是明确活跃的（planning/in-progress/verifying），
         # 否则 main() 早就以 no_active_manifest 放行了
         # （P1#11 去重：旧行为连记两条同毫秒 record——stats 的比率全体翻倍）

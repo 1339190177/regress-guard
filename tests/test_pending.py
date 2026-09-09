@@ -162,3 +162,25 @@ def test_notify_source_id_flows_into_ref(tmp_path, monkeypatch):
     recs = pd._load()[0]
     assert recs[1]["ref"] == "REGRESS-2026-024"
     assert pd.resolve_by_ref("REGRESS-2026-024") == 1
+
+
+# ─── P2#20：坏通道模板只跳过自身（批次三） ─────────────────
+
+def test_bad_channel_template_isolated(tmp_path):
+    """模板含 awk 花括号（format 抛 KeyError）不再废掉后续通道。"""
+    nt = _load(NOTIFY, "nt-iso")
+    import stat as _stat
+    stub = tmp_path / "stub.sh"
+    marker = tmp_path / "iso-marker"
+    stub.write_text("#!/bin/sh\necho ok >> " + str(marker) + "\n", encoding="utf-8")
+    stub.chmod(_stat.S_IRWXU)
+    proj = tmp_path / "proj"
+    (proj / ".regress").mkdir(parents=True)
+    (proj / ".regress" / "config.json").write_text(json.dumps(
+        {"notify": {"channels": [
+            "awk '{print}' /nope",               # 坏模板：花括号炸 format
+            str(stub) + " {title} {body}",       # 好通道必须仍然跑到
+        ]}}, ensure_ascii=False), encoding="utf-8")
+    ran = nt.notify(str(proj), "done", "隔离验证", "x")
+    assert ran >= 1
+    assert marker.exists()

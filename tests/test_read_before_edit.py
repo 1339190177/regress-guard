@@ -11,7 +11,21 @@ sys.path.insert(0, LIB)
 GUARD = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
                      "read_before_edit_guard.py")
 GUARD = os.path.abspath(GUARD)
-STATE_FILE = os.path.join(tempfile.gettempdir(), "regress-guard-read-counter.json")
+import read_before_edit_guard  # noqa: E402  状态路径单一来源
+
+
+def _state_file_for(session_id):
+    """按目标会话算状态文件路径（P2#17 后路径含会话哈希——pytest 进程自身
+    没有会话 env，直接调 get_state_path 会算到 default 的文件=清错对象）。"""
+    old = os.environ.get("CLAUDE_SESSION_ID")
+    os.environ["CLAUDE_SESSION_ID"] = session_id
+    try:
+        return read_before_edit_guard.get_state_path()
+    finally:
+        if old is None:
+            os.environ.pop("CLAUDE_SESSION_ID", None)
+        else:
+            os.environ["CLAUDE_SESSION_ID"] = old
 
 
 def run_guard(mode, tool_name, file_path, session_id="test-unit", project_dir=None):
@@ -29,12 +43,13 @@ def run_guard(mode, tool_name, file_path, session_id="test-unit", project_dir=No
 
 
 def cleanup(session_id="test-unit"):
-    """清理测试状态。"""
+    """清理测试状态（按目标会话的文件清，不再是旧全局文件）。"""
+    state_file = _state_file_for(session_id)
     try:
-        with open(STATE_FILE, encoding="utf-8") as f:
+        with open(state_file, encoding="utf-8") as f:
             state = json.load(f)
         state.pop(session_id, None)
-        with open(STATE_FILE, "w", encoding="utf-8") as f:
+        with open(state_file, "w", encoding="utf-8") as f:
             json.dump(state, f)
     except (IOError, json.JSONDecodeError):
         pass

@@ -22,6 +22,8 @@ import sys
 import os
 import json
 import tempfile
+
+DEFAULT_RATIO = 3
 from datetime import datetime
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -44,7 +46,14 @@ def _fingerprint(fp):
 
 
 def get_state_path():
-    return os.path.join(tempfile.gettempdir(), "regress-guard-read-counter.json")
+    # P2#17：按会话分文件——全会话共享单文件在并行钩子/两会话下互相丢计数
+    # （既有误锁也有漏拦），旧全局文件留给兼容读取
+    sid = (os.environ.get("CLAUDE_SESSION_ID")
+           or os.environ.get("ZCODE_SESSION_ID") or "default")
+    import hashlib as _h
+    key = _h.md5(sid.encode()).hexdigest()[:8]
+    return os.path.join(tempfile.gettempdir(),
+                        f"regress-guard-read-counter-{key}.json")
 
 
 def load_state():
@@ -105,11 +114,11 @@ def main():
             break
         search_dir = parent
 
-    ratio = 2
+    ratio = DEFAULT_RATIO  # P2#25：单一常量（旧代码无 config 缺省 2、有 config 缺省 3、docstring 写 3——三处打架）
     if config_path:
         try:
             with open(config_path, encoding="utf-8") as f:
-                ratio = json.load(f).get("read_before_edit_ratio", 3)
+                ratio = json.load(f).get("read_before_edit_ratio", DEFAULT_RATIO)
         except (IOError, json.JSONDecodeError):
             pass
 

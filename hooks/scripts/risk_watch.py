@@ -213,10 +213,13 @@ def _recent(path, window_min):
     cutoff = datetime.now() - timedelta(minutes=window_min)
     recent = [e for e in events if _within(e, cutoff)]
     if len(recent) < len(events):  # 顺手截掉过期，防无限增长
+        # P2#22：temp+os.replace 原子截断（与 fail_watch 同病同修）
         try:
-            with open(path, "w", encoding="utf-8") as f:
+            tmp = path + ".trim.tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
                 for e in recent:
                     f.write(json.dumps(e, ensure_ascii=False) + "\n")
+            os.replace(tmp, path)
         except (IOError, OSError):
             pass
     return recent

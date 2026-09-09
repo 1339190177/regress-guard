@@ -371,3 +371,35 @@ def test_bad_escape_note_keeps_manifest(tmp_path):
     content = (proj / ".regress" / "manifests" / "R1.md").read_text(encoding="utf-8")
     assert "status: in-progress" in content and len(content) > 50  # 没被清空
     assert "C:\\docs" in content  # 附言字面落盘
+
+
+# ─── P2#26：漂移检查 repo: 声明（批次三） ──────────────────
+
+def test_drift_repo_field_selects_repo(tmp_path):
+    """清单声明 repo: 时用产物仓比对，不再撞外层仓（假警报 da7482b 病例）。"""
+    import importlib.util as ilu
+    import subprocess as sp
+    # 造两个嵌套 git 仓：外层 workspace + 内层 product
+    ws = tmp_path / "ws"
+    prod = ws / "product"
+    (prod).mkdir(parents=True)
+    for d in (ws, prod):
+        sp.run(["git", "init", "-q"], cwd=str(d), check=True)
+        sp.run(["git", "config", "user.email", "t@t"], cwd=str(d), check=True)
+        sp.run(["git", "config", "user.name", "t"], cwd=str(d), check=True)
+    sp.run(["git", "-C", str(prod), "commit", "-q", "--allow-empty", "-m", "p1"], check=True)
+    base = sp.run(["git", "-C", str(prod), "rev-parse", "--short", "HEAD"],
+                  capture_output=True, text=True).stdout.strip()
+    # .regress 在外层（跨仓布局），清单声明 repo: product
+    mdir = ws / ".regress" / "manifests"
+    mdir.mkdir(parents=True)
+    mf = mdir / "R1.md"
+    mf.write_text(f"---\nid: R1\nstatus: planning\nbase_head: {base}\nrepo: product\n---\nb\n",
+                  encoding="utf-8")
+    sp.run(["git", "-C", str(prod), "commit", "-q", "--allow-empty", "-m", "p2"], check=True)
+    spec = ilu.spec_from_file_location("pa9", SCRIPT)
+    pa = ilu.module_from_spec(spec)
+    spec.loader.exec_module(pa)
+    fm = pa.frontmatter(mf.read_text(encoding="utf-8"))
+    drift, fields = pa._drift_info(fm, str(mdir))
+    assert "1 个新提交" in drift and fields.get("commits_behind") == 1

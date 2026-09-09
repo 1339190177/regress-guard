@@ -103,11 +103,15 @@ def recent_failures(window_min=10):
         if ts is not None and ts >= cutoff:
             recent.append(e)
     # 顺手清理过期文件内容（超过窗口的截掉，防无限增长）
+    # P2#22：temp+os.replace 原子截断——旧 open("w") 与并发 append 交错时
+    # 新失败事件被静默删掉，反思层低估失败数、卡死检测漏报
     if len(recent) < len(events):
         try:
-            with open(path, "w", encoding="utf-8") as f:
+            tmp = path + ".trim.tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
                 for e in recent:
                     f.write(json.dumps(e, ensure_ascii=False) + "\n")
+            os.replace(tmp, path)
         except (IOError, OSError):
             pass
     return recent

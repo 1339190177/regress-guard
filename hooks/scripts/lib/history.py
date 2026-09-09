@@ -64,10 +64,12 @@ def record(regress_dir, event, manifest_id="", **details):
 def _maybe_archive(regress_dir, history_path, max_events=500):
     """history 超过 max_events 时，把旧事件移到 archive 文件。
 
-    保留最近 max_events 条在 history.jsonl（热数据），
-    旧的追加到 history-archive.jsonl（冷数据）。
+    P2#18：先按大小短路（≈80B/行估）——旧实现每次 record() 都全量
+    readlines 判归档，门禁热路径 O(n²)；不足阈值一行都不读。
     """
     try:
+        if os.path.getsize(history_path) < max_events * 80:
+            return  # 快路径：体积远未到阈值，不可能超条数
         with open(history_path, encoding="utf-8") as f:
             lines = f.readlines()
         if len(lines) <= max_events:

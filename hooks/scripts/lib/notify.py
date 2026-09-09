@@ -125,9 +125,11 @@ def notify(project_dir, event, title, body="", source_id=""):
         env["RG_NOTIFY_WECOM_JSON"] = json.dumps(wc, ensure_ascii=False)
     ran = 0
     for tpl in channels:
-        cmd = tpl.format(title=shlex.quote(title), body=shlex.quote(body)) \
-            if ("{title}" in tpl or "{body}" in tpl) else tpl
+        # P2#20：format 进逐通道 try——坏模板（如 awk 花括号）只跳过自身，
+        # 不再废掉全部通道含企微（评审实测 KeyError 中断整个循环）
         try:
+            cmd = tpl.format(title=shlex.quote(title), body=shlex.quote(body)) \
+                if ("{title}" in tpl or "{body}" in tpl) else tpl
             # P1#8 超时预算：wecom 内层 4s×2(gettoken+push)+余量 → 12s；
             # 其他通道保持 5s（旧行为 5s 处决 2×10s 内层=结构性永远失败）
             tmo = 12 if "wecom_notify" in tpl else 5

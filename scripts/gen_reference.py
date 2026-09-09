@@ -40,11 +40,16 @@ def _commands():
 
 
 def _hook_registrations():
-    """从 install.sh 的注册段数 matcher 条目（单一来源：装机脚本）。"""
+    """P2#32 真派生：从 hooks.json 数事件条目（插件模式单一来源；旧实现
+    grep install.sh 的 matcher 关键字把 e.get("matcher") 比较语句也计入，
+    README 带错误数字还被 check_docs 背书）。"""
     try:
-        src = open(os.path.join(ROOT, "install.sh"), encoding="utf-8").read()
-        return len(re.findall(r'"matcher"', src))
-    except (IOError, OSError):
+        import json as _json
+        h = _json.load(open(os.path.join(ROOT, "hooks", "hooks.json"),
+                            encoding="utf-8"))
+        ev = h.get("hooks") or h
+        return sum(len(entries) for entries in ev.values())
+    except (IOError, OSError, ValueError):
         return 0
 
 

@@ -136,15 +136,22 @@ def do_upgrade(source):
 
     # hook scripts + lib：全量拷贝（v1.26.1——目录本身是单一来源，清单只做缺失检测；
     # 旧实现按过时清单半量拷贝，升级机拿到陈旧 boundary_guard/缺失 rules_ledger）
+    # P2#23：原子替换（copy→tmp+os.replace）——就地截断写在升级窗口内可能让
+    # 新起的钩子进程读到半截源码 SyntaxError→门禁崩溃即放行
+    def _atomic_copy(src, dst):
+        tmp = dst + ".heal.tmp"
+        shutil.copy2(src, tmp)
+        os.replace(tmp, dst)
+
     scripts_dir = os.path.join(source, "hooks", "scripts")
     for f in sorted(os.listdir(scripts_dir)):
         if f.endswith((".py", ".js")) and f != "self_heal.py":
-            shutil.copy2(os.path.join(scripts_dir, f), os.path.join(HOOK_HOME, f))
+            _atomic_copy(os.path.join(scripts_dir, f), os.path.join(HOOK_HOME, f))
             upgraded.append(f"hook:{f}")
     lib_dir = os.path.join(scripts_dir, "lib")
     for f in sorted(os.listdir(lib_dir)):
         if f.endswith(".py"):
-            shutil.copy2(os.path.join(lib_dir, f), os.path.join(HOOK_HOME, "lib", f))
+            _atomic_copy(os.path.join(lib_dir, f), os.path.join(HOOK_HOME, "lib", f))
             upgraded.append(f"lib:{f}")
 
     # templates：全部部署（init 的 cp 引用 <插件路径>/templates/，缺文件即断链）
@@ -409,6 +416,29 @@ def check_and_heal():
     return issues, healed
 
 
+def _gc_tmp_state(max_age_days=7):
+    """P2#27：/tmp 状态文件 GC——评审实测 5 天积 238 个（last-prompt×80+、
+    stop-notify 戳×58、read-counter 等）。死会话的状态文件永不清理。
+    SessionStart 顺手扫，>7 天即删；失败静默（GC 是卫生不是依赖）。"""
+    import tempfile, time, glob as _g
+    try:
+        cutoff = time.time() - max_age_days * 86400
+        base = tempfile.gettempdir()
+        n = 0
+        for p in _g.glob(os.path.join(base, "regress-guard-*")):
+            try:
+                if os.path.getmtime(p) < cutoff:
+                    os.remove(p)
+                    n += 1
+            except OSError:
+                pass
+        if n:
+            return f"gc:{n}"
+    except Exception:
+        pass
+    return None
+
+
 def main():
     # 快速检查：如果连 hook_home 都不存在，说明根本没装过，跳过
     if not os.path.isdir(HOOK_HOME):
@@ -417,6 +447,9 @@ def main():
         return
 
     issues, healed = check_and_heal()
+    gc_note = _gc_tmp_state()
+    if gc_note:
+        healed.append(gc_note)
 
     # 老项目自动升级：零号入口缺失即补（幂等，永不覆盖已定制内容）
     rg = _current_regress_dir()

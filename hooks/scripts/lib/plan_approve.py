@@ -94,15 +94,25 @@ def _git(manifest_dir, *args):
 
 
 def _drift_info(fm_text, manifest_dir):
-    """计划基线 vs 当前 HEAD。返回 (可读描述, 附加入地层的字段)。"""
+    """计划基线 vs 当前 HEAD。返回 (可读描述, 附加入地层的字段)。
+
+    P2#26 仓错配（评审活体：假警报 da7482b）：.regress 向上找 git 会撞到
+    外层仓（工作区本身是 git 仓），拿别仓 HEAD 比对。清单 frontmatter 可选
+    `repo:`（相对 .regress 父目录的路径）显式声明产物仓——显式优于聪明。"""
     base = field(fm_text, "base_head")
     if not base or "{{" in base:  # 模板占位符未填 = 无基线
         return "", {}
-    cur = _git(manifest_dir, "rev-parse", "--short", "HEAD")
+    repo = field(fm_text, "repo")
+    if repo:  # repo: 相对 .regress 父目录（项目根）的产物仓路径
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(manifest_dir)))
+        git_dir = os.path.join(project_root, repo)
+    else:
+        git_dir = manifest_dir
+    cur = _git(git_dir, "rev-parse", "--short", "HEAD")
     if not cur or cur == base:
         return "", {}
     fields = {"base_head": base, "current_head": cur}
-    n = _git(manifest_dir, "rev-list", "--count", f"{base}..HEAD")
+    n = _git(git_dir, "rev-list", "--count", f"{base}..HEAD")
     if n.isdigit():
         fields["commits_behind"] = int(n)
     cnt = fields.get("commits_behind", "?")
