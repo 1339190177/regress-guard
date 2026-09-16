@@ -189,3 +189,18 @@ def test_advisor_adoption_empty(tmp_path):
     proj = _adoption_proj(tmp_path, [])
     r = advisor_adoption(proj)
     assert r["total"] == 0 and r["rate"] is None
+
+
+def test_journal_stats_fields(tmp_path):
+    """B6 测量仪器：字段齐全，空账本不炸。"""
+    import sys as _sys
+    _sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..",
+                                     "hooks", "scripts", "lib"))
+    from journal import journal_stats
+    proj = _adoption_proj(tmp_path, [{"kind": "tool_fail", "sig": "x"}])
+    r = journal_stats(proj)
+    assert r["events"] == 1 and r["by_kind"].get("tool_fail") == 1
+    assert "digest_ms" in r and "file_bytes" in r
+    empty = _adoption_proj(tmp_path / "e2", [])
+    r2 = journal_stats(empty)
+    assert r2["events"] == 0 and r2["file_bytes"] == 0

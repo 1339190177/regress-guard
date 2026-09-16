@@ -113,6 +113,25 @@ def journal_digest(project_dir, top=8):
     ]
 
 
+def journal_stats(project_dir):
+    """规模测量仪器（v1.50，B6——先测 n 再谈 O(n) 优化，顾问纪律）。
+
+    决策规则：digest_ms > 500 或 events > 50000 才立项滚动索引；
+    读数不过线不优化——YAGNI 用数据说。"""
+    import time
+    from collections import Counter
+    t0 = time.perf_counter()
+    events = load_journal(project_dir)
+    journal_digest(project_dir)
+    ms = round((time.perf_counter() - t0) * 1000, 1)
+    path = journal_path(project_dir)
+    size = os.path.getsize(path) if os.path.exists(path) else 0
+    return {"events": len(events), "by_kind": dict(Counter(
+                str(e.get("kind")) for e in events)),
+            "file_bytes": size, "digest_ms": ms,
+            "optimize_threshold": "digest_ms>500 或 events>50000 才立项"}
+
+
 def advisor_adoption(project_dir):
     """顾问采纳率（v1.49，B4——给裁判装评分器，GEPA 精神：judge 也要被评分）。
 
@@ -150,6 +169,8 @@ if __name__ == "__main__":
             sys.exit(2)
         print(json.dumps({"ok": journal_append(sys.argv[3], start_dir=_d, **_fields)},
                          ensure_ascii=False))
+    elif _cmd == "stats":
+        print(json.dumps(journal_stats(_d), ensure_ascii=False, indent=2))
     elif _cmd == "adoption":
         print(json.dumps(advisor_adoption(_d), ensure_ascii=False, indent=2))
     else:
