@@ -59,7 +59,8 @@ REQUIRED_LIB_FILES = [
     "cochange_rules.py",
     "journal.py", "plan_approve.py", "manifest_fields.py", "rules_ledger.py",
     "notify.py", "wecom_notify.py", "facts.py",
-    "pending.py", "session_relay.py", "sentinel.py", "scan_check.py"
+    "pending.py", "session_relay.py", "sentinel.py", "scan_check.py",
+    "secret_scan.py"
 ]
 REQUIRED_COMMANDS = [
     "regress:init", "regress:plan", "regress:track", "regress:verify",

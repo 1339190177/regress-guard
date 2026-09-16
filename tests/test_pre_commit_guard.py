@@ -516,3 +516,61 @@ def test_no_trigger_keys_absent_legal(project):
     _stage(project, "src/app.js", "x = 2\n")
     code, err, _ = run_guard("git commit -m x", project)
     assert "self_review" not in err and "缺 rollback" not in err
+
+
+# ─── v1.42 供应链层（REGRESS-2026-031：secrets 门禁 + deps 审计）─────
+
+def test_secret_leak_blocks(project):
+    """staged 新增行含 AWS key 样串 → 拦（值运行时拼接，源码无完整字面量）。"""
+    _write_manifest(project, _M_FULL)
+    _stage(project, "src/env.js", "key = '" + "AKIA" + "ABCDEFGHIJKLMNOP" + "'\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "密钥泄漏" in err
+    assert any(e.get("reason") == "secret_leak" for e in read_history(project))
+
+
+def test_secret_clean_passes_rule(project):
+    _write_manifest(project, _M_FULL)
+    _stage(project, "src/app.js", "const x = 1;\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert "密钥泄漏" not in err
+
+
+def test_deps_vulnerable_blocks_via_stub(project, tmp_path):
+    """npm audit 桩报 high → 拦（解析 --json 漏洞计数，不信 exit code）。"""
+    import stat as _stat
+    _write_manifest(project, _M_FULL)
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    npm = bindir / "npm"
+    npm.write_text('#!/bin/sh\necho \'{"metadata":{"vulnerabilities":'
+                   '{"high":2,"critical":1,"total":3}}}\'\n', encoding="utf-8")
+    npm.chmod(_stat.S_IRWXU)
+    _stage(project, "package-lock.json", '{"lockfileVersion": 3}\n')
+    code, err, _ = run_guard("git commit -m x", project, extra_env={
+        "PATH": f"{bindir}:{os.environ['PATH']}"})
+    assert code == 2 and "已知漏洞" in err
+    assert any(e.get("reason") == "deps_vulnerable" for e in read_history(project))
+
+
+def test_deps_infra_fail_warns_and_passes_rule(project):
+    """工具缺失（RG_NPM_CMD 指向不存在）→ infra fail-open：warn+留痕，不拦。"""
+    _write_manifest(project, _M_FULL)
+    _stage(project, "package-lock.json", '{"lockfileVersion": 3}\n')
+    code, err, _ = run_guard("git commit -m x", project, extra_env={
+        "RG_NPM_CMD": "/nonexistent/npm-audit-probe"})
+    assert "已知漏洞" not in err
+    assert "npm audit 未完成" in err
+    assert any(e.get("note") == "deps_audit_infra_fail"
+               for e in read_history(project))
+
+
+def test_supply_chain_secrets_disabled(project):
+    """降级通道：config supply_chain.secrets=false → 泄漏串放行本规则。"""
+    (project / ".regress" / "config.json").write_text(
+        json.dumps({"strict": True, "supply_chain": {"secrets": False}}),
+        encoding="utf-8")
+    _write_manifest(project, _M_FULL)
+    _stage(project, "src/env.js", "key = '" + "AKIA" + "ABCDEFGHIJKLMNOP" + "'\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert "密钥泄漏" not in err

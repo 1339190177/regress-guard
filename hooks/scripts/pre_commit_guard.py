@@ -465,6 +465,70 @@ def main():
             "（不适用=键不出现即合法；本清单触发了，键必须在——防空转）"
         )
 
+    # ─── 4.7 供应链（v1.42：门禁只验测试不够，还要验安全）───
+    # secrets：gitleaks-lite 扫 staged 新增行（历史密钥是全仓审计工具的职责）
+    # deps：锁文件 staged 才触发 npm audit --json（顾问修正：解析漏洞计数，
+    #       exit code 不可信）——infra 失败 fail-open（warn+留痕），
+    #       findings fail-closed（high/critical 才拦）
+    _sc_cfg = config.get("supply_chain") or {}
+    if _sc_cfg.get("secrets", True):
+        try:
+            from secret_scan import scan_added_lines
+            _hits = scan_added_lines(_diff_text,
+                                     allowlist=_sc_cfg.get("allowlist") or ())
+        except Exception:
+            _hits = []
+        if _hits:
+            record(regress_dir, "commit_blocked", manifest_id,
+                   reason="secret_leak",
+                   hits=[list(h[:3]) for h in _hits[:5]])
+            _hit_str = "\n".join(f"  · {n} {f}:{ln} {s}" for n, f, ln, s in _hits[:5])
+            emit_block(
+                f"staged 新增行疑似密钥泄漏（v1.42 供应链层）：<id {manifest_id}>\n\n"
+                f"{_hit_str}\n\n"
+                "· 真密钥：撤销轮换（进了 git 历史就算删了也已泄漏），用 env/凭据库\n"
+                "· 文档示例/教学串：config supply_chain.allowlist 加值\n"
+                "· 确要提交：/regress:bypass <分钟>（限时赦免+审计留痕）"
+            )
+
+    if _sc_cfg.get("deps", True):
+        _lock_bases = ("package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+                       "poetry.lock", "go.sum", "Cargo.lock")
+        # 原始 staged（不经 filter_files——它会滤 .md/test/锁类"噪音"，锁恰是本规则的靶）
+        _locks = [s for s in get_staged_files(project_dir)
+                  if os.path.basename(s) in _lock_bases
+                  or s.replace(os.sep, "/").startswith("requirements")]
+        if any(os.path.basename(l) == "package-lock.json" for l in _locks):
+            import subprocess as _sp3
+            _tmo = float(os.environ.get("RG_AUDIT_TIMEOUT_S", "60"))
+            try:
+                _ar = _sp3.run(
+                    [os.environ.get("RG_NPM_CMD", "npm"), "audit", "--json",
+                     "--package-lock-only"],
+                    cwd=project_dir, capture_output=True, text=True, timeout=_tmo)
+                _vulns = ((json.loads(_ar.stdout or "{}").get("metadata") or {})
+                          .get("vulnerabilities") or {})
+                _hi = int(_vulns.get("high", 0)) + int(_vulns.get("critical", 0))
+                if _hi > 0:
+                    record(regress_dir, "commit_blocked", manifest_id,
+                           reason="deps_vulnerable", high=_hi,
+                           total=_vulns.get("total", 0))
+                    emit_block(
+                        f"依赖存在 { _hi } 个 high/critical 已知漏洞"
+                        f"（v1.42 供应链层）：<id {manifest_id}>\n\n"
+                        f"npm audit 汇总：{json.dumps(_vulns, ensure_ascii=False)}\n"
+                        "· npm audit 逐条看影响路径，升级或豁免有据后重试\n"
+                        "· 误报/暂不修：config supply_chain.deps=false（降级要写明理由）"
+                    )
+            except Exception as _e:  # 工具缺/超时/JSON 坏/网络败（SystemExit 不受捕）
+                record(regress_dir, "commit_warned", manifest_id,
+                       note="deps_audit_infra_fail", error=str(_e)[:80])
+                print(f"REGRESS-GUARD (warning): npm audit 未完成（{_e.__class__.__name__}）"
+                      "——infra fail-open 放行，findings 才 fail-closed", file=sys.stderr)
+        elif _locks:
+            print(f"REGRESS-GUARD (warning): 锁文件变更（{os.path.basename(_locks[0])}）"
+                  "但该生态审计器 v1 未接入（仅 npm）——建议人工审计", file=sys.stderr)
+
     # ─── 5. staged 文件在清单内？──────────────────────
     try:
         manifest_files = get_all_changed_files(manifest)

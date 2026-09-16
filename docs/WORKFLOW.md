@@ -228,6 +228,16 @@ ui-ux-pro-max。
 默认在逃逸面失效），不接解释（self_review 不触发不填）**；校准看机器代理
 （revert 实际率/计划外对上 F3 率），不看填无比例；恒零键删除不措辞。
 
+## 供应链层（v1.42：门禁只验测试不够，还要验安全）
+
+业界用三个真实 CVE 论证 hook 治理必要性（Endor Labs）——本层补密钥与依赖两面：
+
+| 机制 | 机器强制 |
+|------|---------|
+| secret_scan（gitleaks-lite 零依赖） | 扫 staged **新增行**（历史密钥是全仓审计工具的职责）：高精度模式（AKIA/ghp_/私钥块/xox/AIza/sk-）不豁免任何路径——真密钥漏在测试里也是漏；通用 key=value 对 tests/ 与 *.md 豁免；命中 → **拦**（bypass 唯一出口）；文档示例串内置允许表 |
+| 依赖审计（best-effort） | 锁文件 staged 才触发 `npm audit --json --package-lock-only`（解析漏洞计数只认 high/critical，不信 exit code——顾问修正）；**infra fail-open**（工具缺/超时/网络败 → warn+留痕），**findings fail-closed**（高危才拦）；非 npm 锁 v1 提示人工审计 |
+| 降级 | `supply_chain.secrets/deps=false`（沿用 strict 降级先例）；`supply_chain.allowlist` 项目级追加 |
+
 ## 机器事实卡（v1.32：跨项目地层，三层结构）
 
 机器级经验（服务器拓扑/通道/环境坑/跨项目工具坑）不属于任何项目——沉在单项目地层里
