@@ -184,3 +184,92 @@ def test_bad_channel_template_isolated(tmp_path):
     ran = nt.notify(str(proj), "done", "隔离验证", "x")
     assert ran >= 1
     assert marker.exists()
+
+
+# ─── v1.38：blocked 合并（同键窗口折叠）+ list 结局显示 ──────
+
+def test_blocked_coalesces_same_key_within_window(tmp_path, monkeypatch):
+    """四象限①：同项目+ref+指纹，窗口内第二次 → 不发不重记，折叠旁路行+1。"""
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "p.jsonl"))
+    nt = _load(NOTIFY, "nt-c1")
+    marker = tmp_path / "m"
+    proj = _mk_proj(tmp_path, [_stub_channel(tmp_path, marker) + " {title} {body}"])
+    assert nt.notify(str(proj), "blocked", "⛔ 拦 R1", "同因甲", source_id="R1") == 1
+    assert nt.notify(str(proj), "blocked", "⛔ 拦 R1", "同因甲", source_id="R1") == 0
+    pd = _load(PENDING, "pd-c1")
+    assert len(pd._load()[0]) == 1          # 没有第二条待决
+    assert pd.count_merged() == 1           # 折叠量被旁路记账（校准数据）
+    out = marker.read_text(encoding="utf-8")
+    assert out.count("〔待决#") == 1        # 通道只跑了一次
+
+
+def test_blocked_different_cause_or_ref_pushes(tmp_path, monkeypatch):
+    """四象限②：指纹或 ref 任一不同 → 不同决策点，照常推（顾问修正：
+    同清单不同原因的拦截不能互相折叠丢信息）。"""
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "p.jsonl"))
+    nt = _load(NOTIFY, "nt-c2")
+    marker = tmp_path / "m"
+    proj = _mk_proj(tmp_path, [_stub_channel(tmp_path, marker) + " {title}"])
+    nt.notify(str(proj), "blocked", "拦 R1", "因甲", source_id="R1")
+    nt.notify(str(proj), "blocked", "拦 R1", "因乙", source_id="R1")  # 同清单不同因
+    nt.notify(str(proj), "blocked", "拦 R2", "因甲", source_id="R2")  # 不同清单
+    pd = _load(PENDING, "pd-c2")
+    assert len(pd._load()[0]) == 3 and pd.count_merged() == 0
+
+
+def test_blocked_repush_after_resolve_or_expiry(tmp_path, monkeypatch):
+    """四象限③④：裁决回流=窗口重置；锚点超窗=重推（「该推没推」对称病）。"""
+    import datetime
+    import hashlib
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "p.jsonl"))
+    nt = _load(NOTIFY, "nt-c3")
+    marker = tmp_path / "m"
+    proj = _mk_proj(tmp_path, [_stub_channel(tmp_path, marker) + " {title}"])
+    nt.notify(str(proj), "blocked", "拦 R1", "因甲", source_id="R1")
+    pd = _load(PENDING, "pd-c3")
+    pd.resolve(1, "useful")
+    nt.notify(str(proj), "blocked", "拦 R1", "因甲", source_id="R1")  # 已决→重推
+    assert len(pd._load()[0]) == 2
+    # 锚点过期：手写 40 分钟前的锚点（fp=body sha1 前 8 位，钉住指纹契约）→ 重推
+    fp = hashlib.sha1("因乙".encode("utf-8")).hexdigest()[:8]
+    old = (datetime.datetime.now() - datetime.timedelta(minutes=40)
+           ).isoformat(timespec="seconds")
+    with open(tmp_path / "p.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"id": 99, "ts": old, "project": "proj",
+                            "event": "blocked", "title": "x", "ref": "R2",
+                            "fp": fp}, ensure_ascii=False) + "\n")
+    nt.notify(str(proj), "blocked", "拦 R2", "因乙", source_id="R2")
+    # 行1已决 + 行2 + 过期锚99 + 新推100——过期锚点不折叠（新行落地=真推了）
+    assert len(pd._load()[0]) == 4 and pd.count_merged() == 0
+
+
+def test_list_shows_outcomes_and_caps_resolved(tmp_path, monkeypatch, capsys):
+    """结局可见（v1.38 病例：18 行全 ⏳ 因为判定查错对象）：未决在前带 ⏳、
+    已决带 ✔有用/误报/忽略；已决只列最近 5 条防刷屏。"""
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "p.jsonl"))
+    pd = _load(PENDING, "pd-l")
+    for i in range(7):
+        pd.add("P", "blocked", f"t{i}")
+    for i in range(1, 6):
+        pd.resolve(i, "useful")
+    pd.resolve(6, "fp")
+    pd.main(["list"])
+    out = capsys.readouterr().out
+    assert "#7 ⏳" in out and "#6 ✔误报" in out and "#5 ✔有用" in out
+    assert "另有 1 笔已裁决" in out          # 已决 6 条只列 5，第 1 条收进省略行
+    pd.main(["list", "--pending"])
+    out2 = capsys.readouterr().out
+    assert "#7" in out2 and "✔" not in out2  # --pending 只看未决
+
+
+def test_newest_open_matches_triple_key(tmp_path, monkeypatch):
+    """newest_open 三维键：project+ref+fp 缺一不可；已决不参与。"""
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "p.jsonl"))
+    pd = _load(PENDING, "pd-no")
+    pd.add("P", "blocked", "t", ref="R1", fp="aa")
+    assert pd.newest_open("P", "R1", "aa")["id"] == 1
+    assert pd.newest_open("P", "R1", "bb") is None       # 指纹不同
+    assert pd.newest_open("P", "R2", "aa") is None       # ref 不同
+    assert pd.newest_open("Q", "R1", "aa") is None       # 项目不同
+    pd.resolve(1, "ignored")
+    assert pd.newest_open("P", "R1", "aa") is None       # 已决=窗口重置

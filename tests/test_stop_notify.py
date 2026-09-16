@@ -95,3 +95,40 @@ def test_cooldown_prevents_double_buzz(tmp_path, monkeypatch):
     _run_main()
     assert not (tmp_path / "m3").exists()  # 冷却期内不双响
     assert sn.should_notify("继续，放手做", cooled=False) is False
+
+
+def test_round_push_uses_chat_event_not_done(tmp_path, monkeypatch):
+    """v1.38：轮末提醒是独立 chat 事件——不再冒充 done 污染发送台账统计
+    （病例：done×375 几乎全是轮末提醒，真 done 仅 3 次）。"""
+    stub = tmp_path / "env-stub.sh"
+    marker = tmp_path / "mev"
+    stub.write_text("#!/bin/sh\necho \"$RG_NOTIFY_EVENT\" >> %s\n" % marker,
+                    encoding="utf-8")
+    stub.chmod(stat.S_IRWXU)
+    proj, mach = _mk_proj(tmp_path, [str(stub)])
+    monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
+    monkeypatch.setenv("ZCODE_PROJECT_DIR", str(proj))
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    from prompt_intercept import save_prompt
+    save_prompt("普通一轮")
+    _run_main()
+    assert (tmp_path / "mev").read_text(encoding="utf-8").strip() == "chat"
+
+
+def test_chat_event_togglable_without_touching_done(tmp_path, monkeypatch):
+    """chat 是独立事件开关——关轮末提醒不影响 done/progress（治冒充的善后：
+    用户此前想只关轮末提醒只能连 done 一起关）。"""
+    marker = tmp_path / "mchat"
+    mach = tmp_path / "machine.json"
+    mach.write_text(json.dumps({"notify": {
+        "channels": [_channel_stub(tmp_path, marker) + " {title}"],
+        "events": {"chat": False, "done": True}}}), encoding="utf-8")
+    proj = tmp_path / "proj"
+    (proj / ".regress").mkdir(parents=True)
+    monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
+    monkeypatch.setenv("ZCODE_PROJECT_DIR", str(proj))
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    from prompt_intercept import save_prompt
+    save_prompt("安静些")
+    _run_main()
+    assert not marker.exists()  # chat 关 → 轮末不响

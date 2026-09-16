@@ -16,8 +16,9 @@ v1.32.2：018 的"正常对话静音"设计被用户推翻——离场人类的�
 设计：UserPromptSubmit 已把最后一条用户输入存入状态文件
 （prompt_intercept.load_last_prompt），Stop 时读它：
 - 含授权词（自决策|自决|你决定|自主决|自动做|直接做|放手做）→
-  done「🏁 阶段完成：<指令摘要>」
-- 不含 → done「💬 回复完成：<指令摘要>」
+  chat「🏁 阶段完成：<指令摘要>」
+- 不含 → chat「💬 回复完成：<指令摘要>」（v1.38 起独立 chat 事件，
+  曾冒充 done 把发送台账刷成 done×375——真 done 只有 3 次）
 - 90s 冷却（标记文件）防 finish 仪式推送后立即双响
 
 Stop 钩子无 matcher（v1.27.1 空 matcher 掀翻整机的教训）。stdin 未用但保持读空。
@@ -120,7 +121,7 @@ def main():
     else:
         title, body = f"💬 回复完成：{excerpt}", "本轮对话已收尾，可继续追问或离场"
     try:
-        notify(pd, "done", title, body)
+        notify(pd, "chat", title, body)  # v1.38：独立 chat 事件，不再冒充 done 污染统计
         _mark()
         _log("PUSH", title[:40])
     except Exception as e:  # 推送是增强不是依赖

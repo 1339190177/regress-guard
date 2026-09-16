@@ -52,7 +52,8 @@ def emit_block(msg):
             from notify import notify as _notify
             _notify(_NOTIFY_STATE["project_dir"], "blocked",
                     f"⛔ 提交被拦 {_NOTIFY_STATE['manifest_id']}".replace("  ", " "),
-                    msg.split("\n")[0][:100])
+                    msg.split("\n")[0][:100],
+                    source_id=_NOTIFY_STATE["manifest_id"])  # v1.38：合并键/自动回流的 ref
         except Exception:
             pass  # 推送是增强不是依赖
     print(f"REGRESS-GUARD: {msg}", file=sys.stderr)

@@ -96,7 +96,11 @@ worktree 是**物理隔离**；不开 worktree、多会话直接并行同一仓�
 python3 hooks/scripts/lib/notify.py stats   # 送达率 + event 分布 + 待决/误报率
 ```
 
-发送台账（~/.zcode/wecom-send.log）v1.34 起带 event= 维度。
+发送台账（~/.zcode/wecom-send.log）v1.34 起带 event= 维度；轮末提醒 v1.38
+起是独立 `chat` 事件（曾冒充 done——台账 done×375 几乎全是轮末提醒，真 done
+仅 3 次）。blocked 推送按「项目+清单 ref+拦截原因指纹」合并（v1.38）：同键
+未决 30 分钟窗口内折叠不重发、不重记账，只追加旁路行进 stats（治了多少轰炸
+要看得见）——病例：另一项目同清单 6 分钟 6 连推，主动制造 alert fatigue。
 
 ## Fast 模式（个人/小改动）
 

@@ -29,10 +29,16 @@ import subprocess
 import sys
 import time
 
-EVENTS = ("plan_approval", "blocked", "sensory", "finish_open", "done", "progress", "test")
+EVENTS = ("plan_approval", "blocked", "sensory", "finish_open", "done",
+          "progress", "chat", "test")
 # 决策型事件（v1.34 推送闭环）：送出即落待决台账，人类 outcome 回流成误报率——
 # 广播升级为闭环（collar 启示：误报标注反过来校准告警策略本身，防 alert fatigue）
 DECISION_EVENTS = ("plan_approval", "blocked", "sensory", "finish_open")
+# chat（v1.38）：轮末提醒独立事件——stop_notify 曾冒充 done，发送台账 done×375
+# 几乎全是轮末提醒（真 done 仅 3 次），统计失真；拆开后 done 恢复纯净语义
+# blocked 合并窗口（v1.38 降噪）：同键未决 30 分钟内折叠不重发（病例：同清单
+# 6 分钟 6 连推主动制造 alert fatigue，污染误报率校准）
+BLOCKED_COALESCE_S = 30 * 60
 
 _SND_CANDIDATES = (
     "/usr/share/sounds/alsa/Front_Center.wav",
@@ -101,11 +107,36 @@ def notify(project_dir, event, title, body="", source_id=""):
     pname = cfg.get("name") or os.path.basename(os.path.abspath(project_dir))
     title = f"【{pname}】{title}"
     if event in DECISION_EVENTS:
+        # v1.38 blocked 合并（降噪，顾问指纹修正）：同「项目+ref+原因指纹」未决
+        # 且窗口内 → 折叠（不重发不重记账不刷新窗口——持续失败最多每 30 分钟
+        # 重推一次；首推即使通道失败也是锚点：台账记决策不记送达）。
+        # 已知边界：窗口内提交成功后同因再拦仍被折叠（首推已告知，最多延迟
+        # 半小时重提）；查账异常则照旧发送（合并是增强不是依赖）。
+        fp = ""
+        if event == "blocked":
+            import datetime as _dt
+            import hashlib as _hl
+            fp = _hl.sha1(body.encode("utf-8", "ignore")).hexdigest()[:8]
+            try:
+                from pending import merge_note, newest_open
+                prev = newest_open(pname, source_id, fp)
+                if prev:
+                    age = (_dt.datetime.now()
+                           - _dt.datetime.fromisoformat(prev["ts"])
+                           ).total_seconds()
+                    if age < BLOCKED_COALESCE_S:
+                        merge_note(prev["id"])
+                        print(f"notify: blocked 推送合并（同键 "
+                              f"{int(age // 60)} 分钟内已推，待决#{prev['id']}）",
+                              file=sys.stderr)
+                        return 0
+            except Exception:
+                pass
         # 预分配待决号进正文（v1.34）：人类裁决时对着号说话，agent 记 pending。
         # 台账记决策不记送达——决策点真实存在（计划在等批准），通道失败也留账。
         try:
             from pending import add as _padd
-            body += f"\n〔待决#{_padd(pname, event, title, ref=source_id)}〕处理后回「有用/误报/忽略」"
+            body += f"\n〔待决#{_padd(pname, event, title, ref=source_id, fp=fp)}〕处理后回「有用/误报/忽略」"
         except Exception:
             pass
     if body:
@@ -191,6 +222,8 @@ def _stats():
     print(f"待决闭环：未决 {s['pending']}（最老 {s['oldest_pending'] or '—'}）｜"
           f"裁决 有用{s['resolved']['useful']}/误报{s['resolved']['fp']}/"
           f"忽略{s['resolved']['ignored']}｜误报率 {fp}")
+    if s.get("merged"):
+        print(f"blocked 折叠：{s['merged']} 次（同键 30 分钟窗口内降噪）")
     for e in s["open"][-5:]:
         print(f"  ⏳ #{e['id']} {e['ts'][:16]} [{e['event']}] {e['title'][:40]}")
 
