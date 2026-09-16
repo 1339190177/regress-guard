@@ -221,6 +221,23 @@ def _active_by_session(manifests_dir, sid):
     return native, planning
 
 
+def _receipt(mid, n=0):
+    """additionalContext 回执（v1.52，B10 试验位 default-off）。
+
+    PostToolUse 对 additionalContext 的支持未证——错键=整段输出被弃且
+    run 标 failed（zcode-guide pitfalls #8）。默认静默；活体原生批准时
+    RG_PLAN_BRIDGE_RECEIPT=1 开一次验 schema，证活后可转默认。"""
+    if os.environ.get("RG_PLAN_BRIDGE_RECEIPT") != "1":
+        return
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": f"📋 原生计划已转录为清单 {mid}"
+                                 f"（via:native-plan-bridge，边界尽力提取 {n} 文件）"
+                                 f"——边界守卫与提交门禁已对该任务激活",
+        }}, ensure_ascii=False))
+
+
 def do_post(project_dir, data, sid):
     import datetime
     manifests_dir = os.path.join(project_dir, ".regress", "manifests")
@@ -248,6 +265,7 @@ def do_post(project_dir, data, sid):
             journal_append("plan_refined", start_dir=project_dir,
                            manifest_id=mid, via="native-plan-bridge",
                            plan_hash=sha)
+        _receipt(mid, len(paths))
         return
     if planning:
         path, fm, content = planning
@@ -268,6 +286,7 @@ def do_post(project_dir, data, sid):
             journal_append("plan_approved", start_dir=project_dir,
                            manifest_id=mid, via="native-plan-bridge",
                            plan_hash=sha, note="dual-track: 盖章既有 planning 清单")
+        _receipt(mid)
         return
     mid, stem = next_id_and_name(manifests_dir, title)
     paths = extract_paths(plan)
@@ -277,6 +296,7 @@ def do_post(project_dir, data, sid):
     if journal_append:
         journal_append("plan_approved", start_dir=project_dir, manifest_id=mid,
                        via="native-plan-bridge", plan_hash=sha)
+    _receipt(mid, len(paths))
 
 
 def _fossil(project_dir, plan, sid, kind="design_rejected"):

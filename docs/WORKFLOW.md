@@ -103,6 +103,9 @@ ExitPlanMode(计划原文) ──批准──→ PostToolUse → 转录+盖章�
   载荷语义未证，failure 事件与 response 特征双保险）
 - 注册漂移：脚本在而 config.json 未注册时 self_heal 警示（不自动改用户配置），
   修复出口=重跑 install.sh；钩子未生效时 AI 按契约条款 1 补转录（幂等无害）
+- **回执试验位（v1.52）**：`RG_PLAN_BRIDGE_RECEIPT=1` 时转录成功向对话注入一行
+  additionalContext（agent 和人都看得见桥在工作）——default-off：PostToolUse
+  对该键的支持未证，活体原生批准时开一次验 schema，证活再转默认
 
 ## 推送闭环（v1.34：广播 → 可度量可校准）
 

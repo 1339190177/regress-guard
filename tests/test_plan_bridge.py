@@ -186,3 +186,21 @@ def test_next_id_preserves_project_format(tmp_path):
         "---\nid: REGRESS-005\nstatus: done\n---\nx", encoding="utf-8")
     mid2, _ = pb.next_id_and_name(mdir2, "t")
     assert mid2 == "REGRESS-006"
+
+
+def test_bridge_receipt_opt_in(tmp_path, monkeypatch, capsys):
+    """B10 回执试验位：env=1 → 恰一行合法 JSON 含清单号；未设 → stdout 空。"""
+    proj = _proj(tmp_path)
+    _env(monkeypatch, proj)
+    pb = _load()
+    _run(pb, PAYLOAD1)
+    assert capsys.readouterr().out == ""          # default-off 静默
+    monkeypatch.setenv("RG_PLAN_BRIDGE_RECEIPT", "1")
+    _run(pb, {"tool_name": "ExitPlanMode",
+              "tool_input": {"plan": "# 桥测试计划\n改 src/z.py"}})  # 修订走更新分支
+    out = capsys.readouterr().out.strip().splitlines()
+    assert len(out) == 1
+    import json as _json
+    payload = _json.loads(out[0])
+    ctx = payload["hookSpecificOutput"]["additionalContext"]
+    assert "REGRESS-" in ctx and "via:native-plan-bridge" in ctx
