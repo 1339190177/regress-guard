@@ -74,3 +74,31 @@ def test_not_initialized_project(tmp_path):
     """未接入项目：exit 1 + stderr 提示，不炸。"""
     r = _run(tmp_path / "nope", "health")
     assert r.returncode == 1 and "未找到" in r.stderr
+
+
+# ─── v1.48 版本链接（B3 迷你 Pareto 记忆） ────────────────
+
+def test_superseded_rule_not_decay_candidate(tmp_path, capsys):
+    """被取代规律过气=预期：不进降级候选，单列已取代节。"""
+    import sys as _sys
+    _sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..",
+                                     "hooks", "scripts", "lib"))
+    from rules_ledger import record, supersede, health
+    record(str(tmp_path), "旧规律签名A", 3)
+    supersede(str(tmp_path), "旧规律签名A", "新规律签名B")
+    r = health(str(tmp_path), decay_days=-1)  # -1 → 当天也算超期
+    out = capsys.readouterr().out
+    assert r["stale"] == [] or all("旧规律签名A" not in str(e.get("sig", ""))
+                                   for e in r["stale"])
+    assert "已取代" in out and "旧规律签名A"[:20] in out.replace("「", "")
+
+
+def test_unlinked_rule_decay_unchanged(tmp_path):
+    """无链接的规律照旧参与衰变（行为不变）。"""
+    import sys as _sys
+    _sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..",
+                                     "hooks", "scripts", "lib"))
+    from rules_ledger import record, health
+    record(str(tmp_path), "独立规律C", 1)
+    r = health(str(tmp_path), decay_days=-1)
+    assert any("独立规律C" in str(e.get("sig", "")) for e in r["stale"])

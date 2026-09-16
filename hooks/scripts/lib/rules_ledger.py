@@ -74,14 +74,40 @@ def _days_since(iso):
         return 0
 
 
+def supersede(project_dir, old_sig, new_sig):
+    """版本链接（v1.48，B3 迷你 Pareto 记忆）：learn 重写规律时把旧版链到新版。
+
+    旧规律过气是**预期**不是病——被取代条目从降级候选摘出、health 单列。
+    回滚信号判据（影子，账本有货前不启用）：新条目衰变 ≥2 周期 且 旧条目
+    曾稳定 ≥2 周期 且 总命中下降，才提示回滚（顾问三条件防早停误回滚）。"""
+    data = load(project_dir)
+    ok = hashlib.sha1(old_sig.encode("utf-8")).hexdigest()[:12]
+    nk = hashlib.sha1(new_sig.encode("utf-8")).hexdigest()[:12]
+    sup = data.get("_superseded")
+    if not isinstance(sup, dict):
+        sup = {}
+    sup[ok] = {"by": nk, "ts": date.today().isoformat(),
+               "old_sig": old_sig[:60]}
+    data["_superseded"] = sup
+    _save(project_dir, data)
+    print(f"🔗 已链接：旧「{old_sig[:40]}」→ 新「{new_sig[:40]}」")
+    return True
+
+
 def health(project_dir, decay_days=DEFAULT_DECAY_DAYS, promote_hits=PROMOTE_HITS):
     """规律健康：降级候选（>decay_days 零命中）+ 固化候选（hits≥promote_hits 且未腐化）。
 
     降级候选只提示人工修剪；固化候选只建议（人批准后经 skill-creator 固化为宿主 skill）。
     """
     data = load(project_dir)
-    entries = sorted(data.values(), key=lambda e: -int(e.get("hits", 0)))
-    stale = [e for e in entries if _days_since(e.get("last_hit", "")) > decay_days]
+    entries = sorted((e for k, e in data.items()
+                      if k != "_superseded" and isinstance(e, dict)
+                      and e.get("sig")), key=lambda e: -int(e.get("hits", 0)))
+    sup_map = data.get("_superseded") if isinstance(data.get("_superseded"), dict) else {}
+    sup_sigs = {str(v.get("old_sig", "")) for v in sup_map.values()}
+    stale = [e for e in entries
+             if _days_since(e.get("last_hit", "")) > decay_days
+             and e["sig"] not in sup_sigs]  # 被取代规律过气=预期，非降级候选
     stale_keys = {id(e) for e in stale}
     promotable = [e for e in entries
                   if id(e) not in stale_keys and int(e.get("hits", 0)) >= promote_hits]
@@ -93,6 +119,10 @@ def health(project_dir, decay_days=DEFAULT_DECAY_DAYS, promote_hits=PROMOTE_HITS
     for e in stale:
         print(f"  🍂 降级候选 last_hit={e.get('last_hit')} 「{e['sig'][:50]}」"
               f"（提示人工修剪——本工具永不自动删）")
+    if sup_map:
+        for v in list(sup_map.values())[:5]:
+            print(f"  🔗 已取代 {v.get('ts')} 「{str(v.get('old_sig', ''))[:40]}」"
+                  f"→ 新版（过气=预期，不算降级候选）")
     if not entries:
         print("  （空账本——learn 沉淀规律时自动记账）")
     return {"total": len(entries), "promotable": promotable, "stale": stale}
@@ -105,6 +135,9 @@ def main(argv=None):
     r = sub.add_parser("record", help="沉淀/再检出记账")
     r.add_argument("--sig", required=True, help="失败签名（规律的唯一键）")
     r.add_argument("--occurrences", type=int, default=0, help="累计出现次数（跨会话）")
+    su = sub.add_parser("supersede", help="版本链接：旧规律被新版取代")
+    su.add_argument("--old", required=True)
+    su.add_argument("--new", required=True)
     h = sub.add_parser("health", help="规律健康：降级候选 + 固化候选")
     h.add_argument("--decay-days", type=int, default=DEFAULT_DECAY_DAYS)
     h.add_argument("--promote-hits", type=int, default=PROMOTE_HITS)
@@ -115,6 +148,8 @@ def main(argv=None):
         return 1
     if args.cmd == "record":
         record(project_dir, args.sig, args.occurrences)
+    elif args.cmd == "supersede":
+        supersede(project_dir, args.old, args.new)
     else:
         import io as _io, contextlib as _cb
         with _cb.redirect_stdout(_io.StringIO()) as buf:
