@@ -94,3 +94,31 @@ def test_install_copies_every_hook_script():
             continue
         assert f'cp "${{PLUGIN_ROOT}}/hooks/scripts/{n}"' in src, \
             f"install.sh 未拷贝 {n}（stop_notify 病例重犯）"
+
+
+def test_install_registers_every_hooks_json_script():
+    """install.sh 注册面覆盖 hooks.json 全部脚本（v1.43，自迭代 B5）。
+
+    与 cp 清单测试互补的另一方向：cp 清单管"文件到不到"，本测试管
+    "config.json 里挂不挂"——插件模式有、脚本安装模式无的 P0-2 漂移，
+    在测试期被拦而不是装机后靠会话报错发现。
+    判据：脚本名须出现在 install.sh 的注册段（Python heredoc 内），
+    裸 cp 行不算注册。launcher.js 走 process 入口（"launcher.js" 字样）。"""
+    import re
+    INS = os.path.abspath(os.path.join(os.path.dirname(HOOKS), "..", "install.sh"))
+    src = open(INS, encoding="utf-8").read()
+    # 注册段=操作 events 的 heredoc（按内容特征定位：split("PYEOF") 会被
+    # 注释里的 PYEOF 字样骗到，part 序号不稳定——实测注释提到 PYEOF 一次）
+    parts = src.split("PYEOF")
+    pyeof = next((p for p in parts if "events.get(" in p), src)
+    names = set()
+    for entries in _events().values():
+        for e in entries:
+            for h in e.get("hooks", []):
+                for m in re.finditer(r"([\w-]+\.(?:py|js))",
+                                     str(h.get("command", ""))):
+                    names.add(m.group(1))
+    for n in sorted(names):
+        stem = n.rsplit(".", 1)[0]
+        assert stem in pyeof, \
+            f"install.sh 注册段未出现 {stem}——脚本模式装完钩子不生效（P0-2 族）"
