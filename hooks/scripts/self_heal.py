@@ -52,7 +52,7 @@ SOURCE_CANDIDATES = [
 REQUIRED_HOOK_FILES = ["launcher.js", "pre_commit_guard.py", "read_before_edit_guard.py",
                        "prompt_intercept.py", "reflection_check.py", "fail_watch.py",
                        "risk_watch.py", "compact_notice.py", "execution_valve.py",
-                       "boundary_guard.py", "stop_notify.py"]
+                       "boundary_guard.py", "stop_notify.py", "plan_bridge.py"]
 REQUIRED_LIB_FILES = [
     "manifest_parser.py", "git_diff_analyzer.py",
     "test_runner.py", "history.py", "filelock.py", "self_heal.py",
@@ -439,6 +439,23 @@ def _gc_tmp_state(max_age_days=7):
     return None
 
 
+def check_bridge_registration():
+    """v1.39 注册漂移警示（REGRESS-2026-028）：plan_bridge.py 文件在而
+    config.json 无桥注册——自愈只搬脚本不改编用户配置（红线），漂移只警示，
+    修复出口是重跑 install.sh。警示走 stderr（ZCode log 可见），不打断启动。"""
+    try:
+        if not os.path.exists(os.path.join(HOOK_HOME, "plan_bridge.py")):
+            return
+        with open(CONFIG_FILE, encoding="utf-8") as f:
+            cfg = json.load(f)
+        blob = json.dumps(cfg.get("hooks", {}).get("events", {}))
+        if "plan_bridge" not in blob:
+            print("REGRESS-GUARD: ⚠️ 计划桥脚本已就位但 config.json 未注册——"
+                  "重跑 install.sh 激活原生计划模式转录", file=sys.stderr)
+    except Exception:
+        pass  # 警示是增强不是依赖
+
+
 def main():
     # 快速检查：如果连 hook_home 都不存在，说明根本没装过，跳过
     if not os.path.isdir(HOOK_HOME):
@@ -450,6 +467,7 @@ def main():
     gc_note = _gc_tmp_state()
     if gc_note:
         healed.append(gc_note)
+    check_bridge_registration()
 
     # 老项目自动升级：零号入口缺失即补（幂等，永不覆盖已定制内容）
     rg = _current_regress_dir()

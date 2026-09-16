@@ -80,6 +80,7 @@ cp "${PLUGIN_ROOT}/hooks/scripts/compact_notice.py" "${HOOK_HOME}/"
 cp "${PLUGIN_ROOT}/hooks/scripts/execution_valve.py" "${HOOK_HOME}/"
 cp "${PLUGIN_ROOT}/hooks/scripts/boundary_guard.py" "${HOOK_HOME}/"
 cp "${PLUGIN_ROOT}/hooks/scripts/stop_notify.py" "${HOOK_HOME}/"  # P0-2(评审2026-023)：注册了却从不拷贝——安装到自愈前每轮 Stop 报文件不存在
+cp "${PLUGIN_ROOT}/hooks/scripts/plan_bridge.py" "${HOOK_HOME}/"  # v1.39 原生计划桥（同族教训预防）
 cp "${PLUGIN_ROOT}/hooks/scripts/self_heal.py" "${HOOK_HOME}/lib/"
 cp "${PLUGIN_ROOT}/hooks/scripts/lib/"*.py "${HOOK_HOME}/lib/"
 mkdir -p "${HOOK_HOME}/templates"
@@ -297,6 +298,22 @@ else:
     pt_hooks.append({"matcher": "Bash", "hooks": [valve_entry]})
 events["PreToolUse"] = pt_hooks
 
+# v1.39 原生计划模式桥（REGRESS-2026-028）：ExitPlanMode 批准转录 / 拒绝化石。
+# 单钩子原子；注册漂移由 self_heal 警示（不自动改用户 config）。
+bridge_path = os.path.join(hook_home, "plan_bridge.py")
+bridge_post = {"type": "command", "command": f'python3 "{bridge_path}" post',
+               "timeout": 5, "statusMessage": "regress-guard: 原生计划转录..."}
+bridge_fail = {"type": "command", "command": f'python3 "{bridge_path}" fail',
+               "timeout": 5, "statusMessage": "regress-guard: 拒绝计划化石..."}
+pb_hooks = events.get("PostToolUse", [])
+pb_hooks = [e for e in pb_hooks if "plan_bridge" not in json.dumps(e)]
+pb_hooks.append({"matcher": "ExitPlanMode", "hooks": [bridge_post]})
+events["PostToolUse"] = pb_hooks
+fb_hooks = events.get("PostToolUseFailure", [])
+fb_hooks = [e for e in fb_hooks if "plan_bridge" not in json.dumps(e)]
+fb_hooks.append({"matcher": "ExitPlanMode", "hooks": [bridge_fail]})
+events["PostToolUseFailure"] = fb_hooks
+
 config["hooks"]["events"] = events
 
 # 写回
@@ -333,7 +350,7 @@ CONTRACT = f"""{CONTRACT_START}
 ## 回归契约
 
 0. **先读后改**：改代码前至少读 2 个相关文件（hook 强制；读后被外部改过的文件指纹不匹配，hook 会拦）
-1. **需求解析优先**：从代码推断上下文、检测歧义、自决消歧；计划（planning 状态）须人类批准后才实施——批准前边界守卫拦编辑，不认同就继续对话完善；批准走 lib/plan_approve.py（approved 落产物+漂移检查），人类也可直接填清单 approved.at（产物直通）；断点续作用 /regress:resume 从产物层重建现场
+1. **需求解析优先**：从代码推断上下文、检测歧义、自决消歧；计划（planning 状态）须人类批准后才实施——批准前边界守卫拦编辑，不认同就继续对话完善；批准走 lib/plan_approve.py（approved 落产物+漂移检查），人类也可直接填清单 approved.at（产物直通）；**原生计划模式批准由 plan_bridge 钩子自动转录（钩子未生效时 AI 补转录，幂等）**；断点续作用 /regress:resume 从产物层重建现场
 2. 开发完跑 /regress:track 发现 F3，直接回写
 3. 提交时 hook 自跑测试，被拦后自己修；**脆弱点 open 状态的清单禁止提交**（先 verify 拿证据转 locked，或显式 flagged 挂牌）
 4. 紧急用 /regress:bypass <分钟> 临时绕过

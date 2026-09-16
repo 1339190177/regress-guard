@@ -14,8 +14,8 @@ HOOKS = os.path.abspath(os.path.join(
 REQUIRED = {
     "PreToolUse": ["launcher.js", "boundary_guard", "execution_valve",
                    "read_before_edit_guard"],
-    "PostToolUse": ["risk_watch", "read_before_edit_guard"],
-    "PostToolUseFailure": ["fail_watch"],
+    "PostToolUse": ["risk_watch", "read_before_edit_guard", "plan_bridge"],
+    "PostToolUseFailure": ["fail_watch", "plan_bridge"],
     "SessionStart": ["self_heal", "compact_notice"],
     "Stop": ["reflection_check", "stop_notify"],
     "UserPromptSubmit": ["prompt_intercept"],
@@ -68,5 +68,29 @@ def test_uninstall_filters_all_guard_scripts():
     UN = os.path.abspath(os.path.join(os.path.dirname(HOOKS), "..", "uninstall.sh"))
     src = open(UN, encoding="utf-8").read()
     for name in ("stop_notify", "boundary_guard", "execution_valve",
-                 "fail_watch", "risk_watch", "compact_notice", "prompt_intercept"):
+                 "fail_watch", "risk_watch", "compact_notice", "prompt_intercept",
+                 "plan_bridge"):
         assert name in src, f"uninstall 过滤漏 {name}"
+
+
+def test_install_copies_every_hook_script():
+    """install.sh cp 清单覆盖 hooks.json 全部脚本（v1.39，stop_notify 病例
+    的通用化收口：注册了却从不拷贝——装到自愈前每轮报文件不存在）。
+
+    派生优于断言：脚本名从 hooks.json 命令里提取，新增钩子自动进契约。
+    self_heal.py 例外（拷进 lib/）；lib 下 *.py 走通配整目录拷贝。"""
+    import re
+    INS = os.path.abspath(os.path.join(os.path.dirname(HOOKS), "..", "install.sh"))
+    src = open(INS, encoding="utf-8").read()
+    names = set()
+    for entries in _events().values():
+        for e in entries:
+            for h in e.get("hooks", []):
+                for m in re.finditer(r"([\w-]+\.(?:py|js))",
+                                     str(h.get("command", ""))):
+                    names.add(m.group(1))
+    for n in sorted(names):
+        if n == "self_heal.py":
+            continue
+        assert f'cp "${{PLUGIN_ROOT}}/hooks/scripts/{n}"' in src, \
+            f"install.sh 未拷贝 {n}（stop_notify 病例重犯）"

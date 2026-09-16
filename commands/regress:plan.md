@@ -10,7 +10,8 @@ allowed-tools: Read, Write, Edit, Bash, Grep
 
 > **与宿主计划模式叠加**：可在 EnterPlanMode 下进行——原生管会话权限（只读容器），
 > 本命令管产物生命周期（清单=批准后契约，值班到 done）。批准双落：宿主手势退出
-> + plan_approve 落 approved.at。小改动走 quick（判据见 0.5）。
+> + plan_approve 落 approved.at；v1.39 起宿主 ExitPlanMode 批准由 plan_bridge
+> 钩子自动转录/盖章（钩子未生效时 AI 补转录，幂等）。小改动走 quick（判据见 0.5）。
 
 ## 步骤 0.5：规模判定（v1.37：full 的重仪式按档触发，不再一刀全量）
 

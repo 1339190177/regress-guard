@@ -84,6 +84,26 @@ worktree 是**物理隔离**；不开 worktree、多会话直接并行同一仓�
   仍靠 git 自身与事后审计（F3 检查以我的清单为基准，他人文件天然不在
   我清单内→拦，方向正确）
 
+## 原生计划模式桥（v1.39：批准点对齐）
+
+ZCode 原生计划模式的批准由 plan_bridge 钩子自动转录成治理清单——两条批准
+通道，产物层只有一份：
+
+```
+ExitPlanMode(计划原文) ──批准──→ PostToolUse → 转录+盖章原子完成
+                       ──拒绝──→ PostToolUseFailure → 零残留 + design_rejected 化石
+```
+
+- **幂等键** = session + plan_hash：重复事件 no-op；计划修订整档重写（落 plan_refined）
+- **双轨合一**：同 session 已有 /regress:plan 的 planning 清单 → 直接盖章它
+- **顾问预审豁免有据**：原生批准时人刚逐字读完计划=意图裁决（顾问否决权
+  为保护不在场者，人在环即最高裁决）
+- 边界从计划文本尽力提取（cap 12），提取不到留空——F3/track 扩界留痕兜底
+- 双重防御：成功事件内含拒绝语义（tool_response 特征）也按拒绝处理（拒绝
+  载荷语义未证，failure 事件与 response 特征双保险）
+- 注册漂移：脚本在而 config.json 未注册时 self_heal 警示（不自动改用户配置），
+  修复出口=重跑 install.sh；钩子未生效时 AI 按契约条款 1 补转录（幂等无害）
+
 ## 推送闭环（v1.34：广播 → 可度量可校准）
 
 决策型推送（plan_approval/blocked/sensory/finish_open）送出即落

@@ -64,6 +64,17 @@
             "statusMessage": "regress-guard: 读计数..."
           }
         ]
+      },
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/plan_bridge.py\" post",
+            "timeout": 5,
+            "statusMessage": "regress-guard: 原生计划转录..."
+          }
+        ]
       }
     ],
     "PostToolUseFailure": [
@@ -75,6 +86,17 @@
             "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/fail_watch.py\"",
             "timeout": 5,
             "statusMessage": "regress-guard: 失败信号采集..."
+          }
+        ]
+      },
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/plan_bridge.py\" fail",
+            "timeout": 5,
+            "statusMessage": "regress-guard: 拒绝计划化石..."
           }
         ]
       }

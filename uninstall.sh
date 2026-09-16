@@ -79,7 +79,7 @@ def _is_ours(h):
                 "read_before_edit", "prompt_intercept", "reflection_check",
                 "self_heal", "boundary_guard", "execution_valve",
                 "fail_watch", "risk_watch", "compact_notice", "stop_notify",
-                "pre_commit_guard")))
+                "pre_commit_guard", "plan_bridge"))
 
 for ev in list(events):
     cleaned = []
