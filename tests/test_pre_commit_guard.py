@@ -51,7 +51,8 @@ def project(tmp_path):
     (rg / "manifests").mkdir(parents=True)
     (rg / "config.json").write_text('{"strict": true}')
     (rg / "manifests" / "R1.md").write_text(
-        "---\nid: R1\nstatus: in-progress\nplanned_changes: []\nactual_changes: []\n---\n"
+        "---\nid: R1\nstatus: in-progress\nrollback: git revert 即回滚\n"
+        "planned_changes: []\nactual_changes: []\n---\n"
     )
     return p
 
@@ -253,7 +254,8 @@ def test_own_manifest_governs_despite_foreign(project):
     """我有清单 + 他有清单：按我的清单走（撞他文件才拦）——选择器不再拿别人清单。"""
     _stamp(project, "R1", FOREIGN_SID)  # R1 是他的
     (project / ".regress" / "manifests" / "R2.md").write_text(
-        "---\nid: R2\nstatus: in-progress\nsession: %s\nplanned_changes: []\n"
+        "---\nid: R2\nstatus: in-progress\nsession: %s\n"
+        "rollback: git revert 即回滚\nplanned_changes: []\n"
         "actual_changes: []\n---\n" % MY_SID)
     code, err, _ = run_guard("git commit -m x", project,
                              extra_env={"CLAUDE_SESSION_ID": MY_SID})
@@ -320,6 +322,7 @@ _M_FULL = """---
 id: R1
 status: in-progress
 tier: M
+rollback: git revert 即回滚
 understood_intent:
   复述: "补全貌层"
   边界: "做门禁规则；不做语法解析器"
@@ -435,3 +438,81 @@ def test_no_card_project_structural_warns(project):
     assert "无模块卡片" in err       # 但警示（stderr）
     assert any(e.get("note") == "structural_change_without_cards"
                for e in read_history(project))
+
+
+# ─── v1.41 收官两规则（REGRESS-2026-030：触发表激活，防空转）─────
+
+def test_rollback_missing_blocks_all_tiers(project):
+    """rollback 全档必填（能力断言+引信）：清单无 rollback → 拦。"""
+    _write_manifest(project, "---\nid: R1\nstatus: in-progress\n"
+                             "planned_changes: []\nactual_changes: []\n---\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "缺 rollback" in err
+    assert any(e.get("part") == "rollback" and e.get("reason") == "finish_missing"
+               for e in read_history(project))
+
+
+def test_rollback_default_invalid_on_escape_surface(project):
+    """触发表收窄：staged 触及迁移路径/破坏性 SQL 而仍是默认 → 拦。"""
+    _write_manifest(project, _M_FULL)
+    _stage(project, "db/migrations/001.sql", "DROP TABLE users;\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "逃逸面" in err
+
+
+def test_rollback_specific_answer_passes_escape(project):
+    """真回滚路径（提数据怎么回/迁移怎么退）→ 默认失效规则放行。"""
+    body = _M_FULL.replace(
+        "rollback: git revert 即回滚",
+        "rollback: 备份点 2026-09-16 恢复 + 001_down.sql 回退 schema")
+    _write_manifest(project, body)
+    _stage(project, "db/migrations/001.sql", "DROP TABLE users;\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert "逃逸面" not in err
+
+
+def test_self_review_planned_outside_key_required(project):
+    """触发表：actual_changes 非空 → 计划外键必在；补键（值=无）即放行。"""
+    body = _M_FULL.replace(
+        "actual_changes: []",
+        'actual_changes:\n  - id: F3\n    file: "src/extra.py"\n    type: from-diff')
+    _write_manifest(project, body)
+    _stage(project, "src/app.js", "x = 2\n")  # 修改非 AD，不触规则B
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "计划外" in err and "self_review" in err
+    body2 = body.replace("actual_changes:",
+                         'self_review:\n  计划外: "无"\nactual_changes:')
+    _write_manifest(project, body2)
+    code2, err2, _ = run_guard("git commit -m x", project)
+    assert "self_review" not in err2
+
+
+def test_self_review_debug_residue_key_required(project):
+    """触发表：diff 命中调试模式且非 tests/ → 调试残留键必在；补键放行。"""
+    _write_manifest(project, _M_FULL)
+    _stage(project, "src/app.js", "console.log('probe x=1')\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "调试残留" in err
+    body2 = _M_FULL.replace(
+        "actual_changes: []",
+        'self_review:\n  调试残留: "console.log 是必要输出，已逐处确认"\n'
+        "actual_changes: []")
+    _write_manifest(project, body2)
+    code2, err2, _ = run_guard("git commit -m x", project)
+    assert "调试残留" not in err2
+
+
+def test_debug_pattern_in_tests_not_triggered(project):
+    """tests/ 内的调试模式是测试常态——不触发键（路径豁免防误拦）。"""
+    _write_manifest(project, _M_FULL)
+    _stage(project, "tests/t.py", "console.log('in test ok')\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert "调试残留" not in err
+
+
+def test_no_trigger_keys_absent_legal(project):
+    """无触发 → 键不出现合法（不适用≠无——防空转的根：混装堵死）。"""
+    _write_manifest(project, _M_FULL)
+    _stage(project, "src/app.js", "x = 2\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert "self_review" not in err and "缺 rollback" not in err

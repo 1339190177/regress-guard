@@ -74,5 +74,6 @@ fragile_points:           # 至少 1 条（哪怕就是"无测试覆盖，人工
 ⚡ 快速清单已生成（mode: quick·判据四条全过）
    F1: src/auth/login.js (method-logic)
    V1: <脆弱点一行>
+   rollback: git revert 即回滚（v1.41 全档必填——触及迁移/外部状态时写真路径）
 现在可以直接 git commit。hook 自动跑测试验证；无 runner 时 warn 放行（quick 豁免）。
 ```

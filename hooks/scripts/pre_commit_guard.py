@@ -398,6 +398,73 @@ def main():
             print(f"REGRESS-GUARD (warning): 结构性变更（{len(_ad)} 文件）但项目无模块卡片——"
                   "建议 /regress:init 建产品层（全貌是强制产物的起点）", file=sys.stderr)
 
+    # ─── 4.6 收官两规则（v1.41：触发表激活，防空转）─────
+    # 顾问重塑：rollback=能力断言+引信（全档，写不出即不该提交；默认只在无逃逸面
+    # 时合法）；self_review 键触发表激活——不适用=键不出现（合法），「无」只表示
+    # 查过没有——堵"无/不适用混装"的空转根源（REGRESS-2026-030）。
+    def _v_ok(v):
+        v = str(v or "").strip()
+        return bool(v) and "{{" not in v and v.upper() != "TODO"
+
+    _rollback = str(_mp_scan.get("rollback") or "").strip()
+    if not _v_ok(_rollback):
+        record(regress_dir, "commit_blocked", manifest_id,
+               reason="finish_missing", part="rollback")
+        emit_block(
+            f"清单缺 rollback（v1.41：能力断言+引信——写不出即不该提交）：<id {manifest_id}>\n\n"
+            "· 一行即可：rollback: git revert 即回滚\n"
+            "· 触及迁移/删数据/外部状态时默认失效，须写具体回滚路径"
+            "（数据怎么回/迁移怎么退）"
+        )
+
+    # 触发表数据一次取齐：staged 全量 + diff 文本
+    try:
+        import subprocess as _sp2
+        _dr = _sp2.run(["git", "-C", project_dir, "diff", "--staged", "-U0"],
+                       capture_output=True, text=True, timeout=10)
+        _diff_text = _dr.stdout if _dr.returncode == 0 else ""
+        _staged_all = filter_files(get_staged_files(project_dir))
+    except Exception:
+        _diff_text, _staged_all = "", []
+
+    _ESCAPE_PATH = re.compile(r"migrations?/|schema|db/seed|alembic|flyway", re.I)
+    _ESCAPE_SQL = re.compile(r"DROP\s+TABLE|TRUNCATE|ALTER\s+TABLE|DELETE\s+FROM", re.I)
+    if ((any(_ESCAPE_PATH.search(s) for s in _staged_all)
+         or _ESCAPE_SQL.search(_diff_text))
+            and "git revert" in _rollback.lower() and len(_rollback) < 40):
+        record(regress_dir, "commit_blocked", manifest_id,
+               reason="finish_missing", part="rollback_default_on_escape")
+        emit_block(
+            f"rollback 默认值在逃逸面上失效（v1.41）：<id {manifest_id}>\n\n"
+            "本次提交触及迁移/schema/破坏性 SQL——「git revert 即回滚」不够"
+            "（revert 得回代码回不了数据），须写具体回滚路径：\n"
+            "· 迁移怎么退（down 脚本？手工 SQL？备份恢复？）\n"
+            "· 数据怎么回（备份点/可重放源？）"
+        )
+
+    _sr = _mp_scan.get("self_review") or {}
+    _keys_needed = []
+    if _mp_scan.get("actual_changes"):
+        _keys_needed.append("计划外")
+    if (re.search(r"console\.(?:log|debug)|debugger\b|pdb\.set_trace|breakpoint\(",
+                  _diff_text)
+            and any(not s.replace(os.sep, "/").startswith("tests/")
+                    for s in _staged_all)):
+        _keys_needed.append("调试残留")
+    _missing_sr = [k for k in _keys_needed if not _v_ok(_sr.get(k))]
+    if _missing_sr:
+        record(regress_dir, "commit_blocked", manifest_id,
+               reason="finish_missing", part="self_review", keys=_missing_sr)
+        emit_block(
+            f"self_review 缺键（触发表已激活，v1.41）：<id {manifest_id}>\n\n"
+            f"需补：{', '.join(_missing_sr)}\n"
+            "· 计划外键：清单回写过计划外文件（F3）——逐个有意识看过吗？"
+            "值=具体条目或「无」（查过没有）\n"
+            "· 调试残留键：diff 命中调试模式（print/console.log/debugger/pdb）——"
+            "值=条目或「无」\n"
+            "（不适用=键不出现即合法；本清单触发了，键必须在——防空转）"
+        )
+
     # ─── 5. staged 文件在清单内？──────────────────────
     try:
         manifest_files = get_all_changed_files(manifest)

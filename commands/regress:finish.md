@@ -17,6 +17,22 @@ allowed-tools: Read, Write, Edit, Bash, Grep
 按 /regress:track 的完整规则执行：`git diff` + 未跟踪文件对比清单，
 F3 直接回写 `actual_changes`（这是开发边界的扩界出口，留痕）。
 
+## 步骤 1.5：自审 diff（v1.41：触发表激活，防空转）
+
+**通读 `git diff`（staged+unstaged），三类各扫一遍**——改错自己写的 diff
+只有自己通读才能发现。键按触发表激活（不适用=键不出现，「无」=查过没有）：
+
+- **计划外**（触发：actual_changes 非空）：F3 回写的每个计划外文件——是有意
+  扩界还是顺手带上？值=逐文件一句结论或「无」
+- **调试残留**（触发：diff 命中 print/console.log/debugger/pdb 且非 tests/）：
+  是断言所需的输出还是忘删的探针？值=条目或「无」
+- **顺手重构**（无机器触发，纪律位）：计划内文件里夹的函数重命名/移动——
+  发现了记进报告（拆批或明示），不静默混入
+
+落产物：清单 frontmatter `self_review:` 下对应键。**提交门禁会拦**
+（reason=finish_missing）：触发的键缺失过不了 commit——防"三类全填无"的
+形式化由触发表承担（不触发不用填，触发了必须看过）。
+
 ## 步骤 2：verify（全证据）
 
 按 /regress:verify 的完整规则执行：

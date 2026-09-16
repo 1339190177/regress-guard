@@ -9,6 +9,10 @@ scan:                     # 全貌三行（v1.40 规则A：M/L 缺任一行门�
   entry: "{{入口在哪：一句话}}"
   test: "{{测试怎么跑：一条命令}}"
   card: "{{动的是哪张模块卡：模块名/新模块；card_sync: false=显式豁免结构同步}}"
+rollback: "git revert 即回滚"  # 能力断言+引信（v1.41 全档必填）——触及迁移/schema/破坏性SQL时默认失效，须写具体回滚路径（数据怎么回/迁移怎么退）
+self_review:              # 自审 diff（v1.41 触发表激活：不适用=键不出现，「无」=查过没有；门禁按触发拦缺失键）
+  计划外: "{{actual_changes 非空时必在：逐文件一句或 无}}"
+  调试残留: "{{diff 命中调试模式且非 tests/ 时必在：条目或 无}}"
 assumptions:
   - "{{ASSUMPTION_1}}"
   - "{{ASSUMPTION_2}}"

@@ -11,6 +11,9 @@ MANIFEST_TMPL = """---
 id: REGRESS-2026-001
 requirement: "test req"
 status: in-progress
+rollback: git revert 即回滚
+self_review:
+  调试残留: "console.log(1) 是夹具内容，非残留"
 planned_changes:
   - id: F1
     file: "src/app.js"

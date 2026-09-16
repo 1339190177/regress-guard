@@ -122,6 +122,10 @@ EOF
 ZCode 门卫只能看到 ZCode 发起的提交；IDE/终端直接 commit 时不可见。
 装一个原生 git `post-commit` 钩子记录**所有来源**的提交（静默/自禁用/不阻断/monorepo 向上找 .regress）。
 
+**已知边界（v1.41 注记）**：钩子装在 init 所在仓库的 `.git/hooks/`——嵌套仓
+拓扑（.regress 在外仓、代码在内仓）时代码提交走内仓，钩子观测不到
+（评审病例：commit_observed 0 条+.expect-commit 残留）。单仓项目机制完整。
+
 项目是 git 仓库且 `.git/hooks/post-commit` 不存在时才装（husky 等已有钩子则跳过并提示）：
 
 ```bash
