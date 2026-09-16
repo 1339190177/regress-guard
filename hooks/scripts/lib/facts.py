@@ -23,6 +23,7 @@ import re
 import sys
 
 STALE_DAYS = 180
+RETIRE_DAYS = 270  # v1.51 退场档：>270 天零刷新=死重候选（机制也要代谢）
 _HEADING = re.compile(r"^### (\d{4}-\d{2}-\d{2}) · (.+)$")
 _FRONTMATTER = """---
 name: machine-facts
@@ -121,19 +122,26 @@ def _rebuild_index(skill, refs):
 
 
 def health():
-    """返回 dict(count, oldest_days, stale=[(date, domain, title)...])。"""
+    """返回 dict(count, oldest_days, stale=[...], retire=[...])。
+
+    两档代谢（v1.51，B9——机制也要代谢）：stale(>STALE_DAYS)=待验证；
+    retire(>RETIRE_DAYS 零刷新)=退场候选——重验/确认失效/退场三选一，
+    永不自动删（凝固不删原则不变，考古地层里有史）。"""
     today = datetime.date.today()
     entries = _entries(_paths()[1])
-    stale, oldest = [], 0
+    stale, retire, oldest = [], [], 0
     for date_s, domain, title in entries:
         try:
             age = (today - datetime.date.fromisoformat(date_s)).days
         except ValueError:
             continue
         oldest = max(oldest, age)
-        if age > STALE_DAYS:
+        if age > RETIRE_DAYS:
+            retire.append((date_s, domain, title))
+        elif age > STALE_DAYS:
             stale.append((date_s, domain, title))
-    return {"count": len(entries), "oldest_days": oldest, "stale": stale}
+    return {"count": len(entries), "oldest_days": oldest,
+            "stale": stale, "retire": retire}
 
 
 def main(argv=None):
@@ -152,6 +160,11 @@ def main(argv=None):
             # 验证仍真→重录刷新日期；确证失效→整条删（考古地层里有史）
             print(f"  🧊 {date_s} · {domain} · {title}"
                   f"（待验证：真则重录刷新日期，假则删除）")
+        for date_s, domain, title in h["retire"]:
+            # v1.51 退场档（B9）：零刷新超龄=死重候选——重验/确认失效/从索引退场
+            # 三选一，永不自动删
+            print(f"  🥀 {date_s} · {domain} · {title}"
+                  f"（退场候选：长期零刷新——重验、删除、或退场三选一）")
         return 0
     print("用法: facts.py record <标题> <内容> [域] | health", file=sys.stderr)
     return 1

@@ -56,7 +56,21 @@ def test_health_reports_oldest_and_stale(tmp_path, monkeypatch):
     m.record("新事实", "y", "server")
     h = m.health()
     assert h["count"] == 2 and h["oldest_days"] > 180
-    assert [s[2] for s in h["stale"]] == ["老事实"]
+    # 2025-01-01 距今 >270 天 → 直接进退场档（B9：stale 与 retire 互斥分层）
+    assert [s[2] for s in h["retire"]] == ["老事实"]
+    assert h["stale"] == []
+
+
+def test_health_retire_threshold(tmp_path, monkeypatch):
+    """三档分层：<180 正常｜180-270 stale｜>270 退场候选（机制代谢）。"""
+    m, _ = _load(tmp_path, monkeypatch)
+    today = datetime.date.today()
+    m.record("正常", "a", "env", when=today)
+    m.record("陈旧", "b", "env", when=today - datetime.timedelta(days=200))
+    m.record("超龄", "c", "env", when=today - datetime.timedelta(days=300))
+    h = m.health()
+    assert [s[2] for s in h["stale"]] == ["陈旧"]
+    assert [s[2] for s in h["retire"]] == ["超龄"]
 
 
 def test_cli_health_smoke(tmp_path, monkeypatch, capsys):
