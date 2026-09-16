@@ -113,6 +113,23 @@ def journal_digest(project_dir, top=8):
     ]
 
 
+def advisor_adoption(project_dir):
+    """顾问采纳率（v1.49，B4——给裁判装评分器，GEPA 精神：judge 也要被评分）。
+
+    数据源=advisor_adoption 事件（finish 代谢位落，与回复中的标注义务同源
+    ——回复里写「已咨询第二意见：采纳/部分采纳/不采纳」，台账里也要有同条）。
+    前向采集：历史批次未落此事件不计入分母。"""
+    from collections import Counter
+    evs = [e for e in load_journal(project_dir)
+           if e.get("kind") == "advisor_adoption"]
+    by = Counter(str(e.get("adoption") or "?") for e in evs)
+    n = sum(by.values())
+    adopted = by.get("adopted", 0) + by.get("partial", 0)
+    return {"total": n, "adopted": adopted,
+            "rate": round(adopted / n, 2) if n else None,
+            "by": dict(by)}
+
+
 if __name__ == "__main__":
     import sys
     _d = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
@@ -133,5 +150,7 @@ if __name__ == "__main__":
             sys.exit(2)
         print(json.dumps({"ok": journal_append(sys.argv[3], start_dir=_d, **_fields)},
                          ensure_ascii=False))
+    elif _cmd == "adoption":
+        print(json.dumps(advisor_adoption(_d), ensure_ascii=False, indent=2))
     else:
         print(json.dumps(journal_digest(_d), ensure_ascii=False, indent=2))

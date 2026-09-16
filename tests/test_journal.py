@@ -151,3 +151,41 @@ def test_cli_add_rejects_bad_json(tmp_path):
         env={**os.environ, "REGRESS_JOURNAL": "on"})
     assert r.returncode == 2
     assert "json" in r.stderr
+
+
+# ─── v1.49 顾问采纳率（B4：给裁判装评分器） ────────────────
+
+def _adoption_proj(tmp_path, events):
+    import json as _json
+    proj = tmp_path / "proj"
+    (proj / ".regress" / "journal").mkdir(parents=True, exist_ok=True)
+    with open(proj / ".regress" / "journal" / "events.jsonl", "w",
+              encoding="utf-8") as f:
+        for ev in events:
+            f.write(_json.dumps(ev, ensure_ascii=False) + "\n")
+    return str(proj)
+
+
+def test_advisor_adoption_rate(tmp_path):
+    import sys as _sys
+    _sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..",
+                                     "hooks", "scripts", "lib"))
+    from journal import advisor_adoption
+    proj = _adoption_proj(tmp_path, [
+        {"kind": "advisor_adoption", "adoption": "adopted"},
+        {"kind": "advisor_adoption", "adoption": "adopted"},
+        {"kind": "advisor_adoption", "adoption": "rejected"},
+        {"kind": "task_done"},  # 无关事件不入分母
+    ])
+    r = advisor_adoption(proj)
+    assert r["total"] == 3 and r["adopted"] == 2 and abs(r["rate"] - 0.67) < 0.01
+
+
+def test_advisor_adoption_empty(tmp_path):
+    import sys as _sys
+    _sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..",
+                                     "hooks", "scripts", "lib"))
+    from journal import advisor_adoption
+    proj = _adoption_proj(tmp_path, [])
+    r = advisor_adoption(proj)
+    assert r["total"] == 0 and r["rate"] is None

@@ -42,6 +42,10 @@ python3 "<插件路径>/hooks/scripts/lib/pending.py" list --pending
 # 同清单同原因反复被拦=消息没教会 agent；🚨 无效候选（≥3 且跨会话/跨 7 天，
 # 分母恒带）值得改写消息文案；⚠️ repeat 是告警级观察
 python3 "<插件路径>/hooks/scripts/lib/history.py" .regress nudge
+
+# 10. 顾问采纳率（v1.49，给裁判装评分器）：adopted+partial 计入采纳；
+# 低采纳率=顾问意见不合用，校准咨询姿势（finish 代谢位落 advisor_adoption 事件）
+python3 "<插件路径>/hooks/scripts/lib/journal.py" . adoption
 ```
 
 ## 输出格式

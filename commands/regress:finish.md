@@ -91,6 +91,10 @@ python3 "<插件路径>/hooks/scripts/lib/journal.py" . digest
   **提交门禁会拦**（v1.40 规则B）：staged 有结构性增删/改名而卡片未随同 staged →
   block（病例：028 新增桥脚本卡片 8 天未回写无人拦）；纯脚手架确不需进卡 →
   清单 scan 加 `card_sync: false` 并写明理由
+- **顾问采纳落账（v1.49）**：本批评审带顾问意见 → 落一条 advisor_adoption
+  事件（journal add advisor_adoption，adoption ∈ adopted/partial/rejected）——
+  与回复中的标注义务同源（回复里写「已咨询第二意见：采纳」，台账里也要有同条），
+  采纳率在 /regress:stats 第 10 项可查
 - 全空 → 报告一行「无可沉淀，代谢跳过」——不硬凑
 - 顺带跑 `rules_ledger.py . health`：命中 ≥3 的稳定规律输出「建议固化 skill」卡片
   （🦴 经人批准后用 skill-creator 固化——**自动固化的错误经验会以技能的形式高速复发**）
