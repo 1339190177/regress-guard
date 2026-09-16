@@ -327,6 +327,77 @@ def main():
             _mark_expected(regress_dir, "gated")
             emit_pass()
 
+    # ─── 4.5 全貌层两规则（v1.40：理解是强制产物）────────
+    # 病例：028 新增桥脚本（模块结构变更）而卡片 8 天未回写，两批跳过 finish
+    # 卡片步骤，无机器拦——纪律位升机器位。对标 spec-first：理解必须落产物。
+    def _scan_ok(v):
+        v = str(v or "").strip()
+        return bool(v) and "{{" not in v and v.upper() != "TODO"
+
+    _mp_scan = parse_frontmatter(manifest) or {}
+    _tier = str(_mp_scan.get("tier") or "").strip().upper()
+
+    # 规则A（仅 M/L——S 档轻量合法不背全貌仪式）：scan 三行 + understood_intent 三件
+    if _tier in ("M", "L"):
+        _missing = [k for k in ("entry", "test", "card")
+                    if not _scan_ok((_mp_scan.get("scan") or {}).get(k))]
+        _ui = _mp_scan.get("understood_intent")
+        _ui_ok = (isinstance(_ui, dict) and
+                  all(_scan_ok(_ui.get(k)) for k in ("复述", "边界", "判据")))
+        if _missing or not _ui_ok:
+            record(regress_dir, "commit_blocked", manifest_id,
+                   reason="scan_missing", missing=_missing,
+                   ui_ok=bool(_ui_ok), tier=_tier)
+            emit_block(
+                f"M/L 档清单缺全貌产物（v1.40 规则A）：<id {manifest_id}>\n\n"
+                + (f"· scan 三行缺项：{', '.join(_missing)}\n" if _missing else "")
+                + ("" if _ui_ok else "· understood_intent 须三件（复述/边界/判据），"
+                   "空值/占位不算\n")
+                + "\n补法：清单 frontmatter 加\n  scan:\n    entry: <入口在哪>\n"
+                  "    test: <测试怎么跑>\n    card: <动的是哪张模块卡>\n"
+                  "  understood_intent:\n    复述/边界/判据 各一行非空\n"
+                  "（对标 spec-first：理解是强制产物——看不全就对不准）"
+            )
+
+    # 规则B（全档含 S/quick——结构变更本就不是轻量内部，028 标本即 S 可绕的洞）：
+    # staged 有结构性增删改名（ADR；tests/docs/md 是模块元数据豁免）→ 卡片须随同 staged
+    try:
+        import subprocess as _sp
+        _r = _sp.run(["git", "-C", project_dir, "diff", "--staged",
+                      "--diff-filter=ADR", "--name-only", "-z"],
+                     capture_output=True, text=True, timeout=10)
+        _ad = [f for f in (_r.stdout.split("\0") if _r.returncode == 0 else [])
+               if f and not f.replace(os.sep, "/").startswith(".regress/")
+               and not f.replace(os.sep, "/").startswith("tests/")
+               and not f.replace(os.sep, "/").startswith("docs/")
+               and not f.endswith(".md")]
+    except Exception:
+        _ad = []
+    if _ad:
+        _card_path = os.path.join(regress_dir, "product-arch.md")
+        _card_staged = any(
+            s.replace(os.sep, "/") == ".regress/product-arch.md"
+            for s in filter_files(get_staged_files(project_dir)))
+        # 显式豁免位（FP1 rescue）：纯脚手架确不需进卡，清单声明并写明理由
+        _sync_exempt = (_mp_scan.get("scan") or {}).get("card_sync") is False
+        if os.path.exists(_card_path) and not _card_staged and not _sync_exempt:
+            record(regress_dir, "commit_blocked", manifest_id,
+                   reason="card_stale", structural=_ad[:6], tier=_tier or "S?")
+            emit_block(
+                f"模块结构变更而卡片未同步（v1.40 规则B）：<id {manifest_id}>\n\n"
+                f"结构性增删/改名：\n  {chr(10).join(_ad[:6])}\n\n"
+                "模块卡片是活档案（.regress/product-arch.md）——结构变了卡片要跟着动"
+                "（finish 步骤 4），本次提交未包含卡片变更。\n"
+                "· 补法：更新对应模块卡（能力增行/缺口增删）后一并 staged\n"
+                "· 纯脚手架确不需进卡：清单 scan 加 card_sync: false 并写明理由"
+            )
+        elif not os.path.exists(_card_path):
+            # 无卡片的盲区（顾问补强）：不拦（未接入产品层），但警示留痕
+            record(regress_dir, "commit_warned", manifest_id,
+                   note="structural_change_without_cards", structural=_ad[:6])
+            print(f"REGRESS-GUARD (warning): 结构性变更（{len(_ad)} 文件）但项目无模块卡片——"
+                  "建议 /regress:init 建产品层（全貌是强制产物的起点）", file=sys.stderr)
+
     # ─── 5. staged 文件在清单内？──────────────────────
     try:
         manifest_files = get_all_changed_files(manifest)

@@ -312,3 +312,126 @@ def test_blocked_pushes_via_configured_channel(project, tmp_path):
     assert code == 2
     out = marker.read_text(encoding="utf-8")
     assert "提交被拦" in out and "R1" in out  # 带清单号的 blocked 推送落标
+
+
+# ─── v1.40 全貌层两规则（REGRESS-2026-029） ──────────────
+
+_M_FULL = """---
+id: R1
+status: in-progress
+tier: M
+understood_intent:
+  复述: "补全貌层"
+  边界: "做门禁规则；不做语法解析器"
+  判据: "验收第1条"
+scan:
+  entry: "门禁 main 4.5 节"
+  test: "pytest -q"
+  card: "钩子拦截链"
+planned_changes:
+  - id: F1
+    file: "src/app.js"
+    type: method-logic
+actual_changes: []
+---
+"""
+
+
+def _write_manifest(project, body):
+    (project / ".regress" / "manifests" / "R1.md").write_text(body, encoding="utf-8")
+
+
+def _stage(project, rel, content=None):
+    p = project / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if content is not None:
+        p.write_text(content, encoding="utf-8")
+    import subprocess as sp
+    sp.run(["git", "add", rel], cwd=str(project), check=True)
+
+
+def test_ml_missing_scan_blocks(project):
+    """规则A：M 档缺 scan 三行 → 拦（对标 spec-first：理解是强制产物）。"""
+    code, err, _ = run_guard("git commit -m x", project)  # 夹具 R1 无 tier/scan
+    # 夹具清单无 tier → 规则A 豁免——先验豁免再验真拦
+    _write_manifest(project, "---\nid: R1\nstatus: in-progress\ntier: M\n"
+                             "planned_changes: []\nactual_changes: []\n---\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "全貌产物" in err and "scan 三行" in err
+    assert any(e.get("reason") == "scan_missing" for e in read_history(project))
+
+
+def test_scan_placeholder_rejected(project):
+    """规则A防绕：占位值（{{}}）不算填过（顾问补强）。"""
+    body = _M_FULL.replace('entry: "门禁 main 4.5 节"', 'entry: "{{入口}}"')
+    _write_manifest(project, body)
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "全貌产物" in err
+
+
+def test_ml_with_scan_passes_rule_a(project):
+    """规则A 齐备 → 不因全貌拦（后续无 runner 拦是另一件事）。"""
+    _write_manifest(project, _M_FULL)
+    code, err, _ = run_guard("git commit -m x", project)
+    assert "全貌产物" not in err  # 规则A 放行
+
+
+def test_s_tier_exempt_from_rule_a(project):
+    """S 档轻量合法：不背全貌仪式（规则A 仅 M/L）。"""
+    _write_manifest(project, "---\nid: R1\nstatus: in-progress\ntier: S\n"
+                             "planned_changes: []\nactual_changes: []\n---\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert "全貌产物" not in err
+
+
+def test_structural_change_without_card_sync_blocks(project):
+    """规则B（028 标本回放）：新增模块文件 + 卡片在盘但未随同 staged → 拦。
+    S 档也拦——结构变更本就不是轻量内部（顾问修正）。"""
+    _write_manifest(project, "---\nid: R1\nstatus: in-progress\ntier: S\n"
+                             "planned_changes: []\nactual_changes: []\n---\n")
+    (project / ".regress" / "product-arch.md").write_text("# 卡\n", encoding="utf-8")
+    _stage(project, "src/bridge.py", "x = 1\n")  # 结构性新增，卡片未 staged
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "卡片未同步" in err
+    assert any(e.get("reason") == "card_stale" for e in read_history(project))
+
+
+def test_structural_change_with_card_staged_passes_rule_b(project):
+    """卡片随同 staged → 规则B 放行（后续拦是别的检查）。"""
+    _write_manifest(project, _M_FULL)
+    _stage(project, ".regress/product-arch.md", "# 卡\n")
+    _stage(project, "src/app.js", "x = 2\n")  # 修改已有文件不触发 AD
+    code, err, _ = run_guard("git commit -m x", project)
+    assert "卡片未同步" not in err
+
+
+def test_card_sync_false_exempts(project):
+    """显式豁免位：scan.card_sync: false + 理由 → 规则B 不拦。"""
+    body = _M_FULL.replace('card: "钩子拦截链"',
+                           'card: "无"\n  card_sync: false')
+    _write_manifest(project, body)
+    (project / ".regress" / "product-arch.md").write_text("# 卡\n", encoding="utf-8")
+    _stage(project, "src/scaffold.py", "t = 1\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert "卡片未同步" not in err
+
+
+def test_metadata_adds_do_not_trigger_rule_b(project):
+    """tests/docs/md 是模块元数据不是模块——新增它们不触发规则B（顾问路径豁免）。"""
+    _write_manifest(project, _M_FULL)
+    (project / ".regress" / "product-arch.md").write_text("# 卡\n", encoding="utf-8")
+    _stage(project, "tests/t.py", "def test_t(): pass\n")
+    _stage(project, "docs/guide.md", "# g\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert "卡片未同步" not in err
+
+
+def test_no_card_project_structural_warns(project):
+    """无卡片盲区（顾问补强）：结构性变更不拦，但警示留痕建议 init 产品层。"""
+    _write_manifest(project, _M_FULL)  # 不写 product-arch.md
+    _stage(project, "src/newmod.py", "n = 1\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert "卡片未同步" not in err  # 不拦
+    assert "无模块卡片" in err       # 但警示（stderr）
+    assert any(e.get("note") == "structural_change_without_cards"
+               for e in read_history(project))

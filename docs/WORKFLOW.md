@@ -205,6 +205,24 @@ TDD/systematic-debugging/verification-before-completion/executing-plans
 （superpowers 六件）、frontend-design（Anthropic）、office-hours（YC）、
 ui-ux-pro-max。
 
+## 全貌+对齐层（v1.40：理解是强制产物，对标 spec-first）
+
+行业对标（Kiro/spec-kit）：spec-first 的本质是理解本身成为强制产物。我们的
+等价实现是机器位，不是仪式位（病例：028 新增桥脚本而模块卡片 8 天未回写、
+两批跳过 finish 卡片步骤，无机器拦——纪律对狗food实践者本人都会漏）：
+
+| 机制 | 挂点 | 机器强制 |
+|------|------|---------|
+| scan 三行（入口/测试/动的哪张卡） | plan 步骤 4 清单 frontmatter | **M/L 缺任一行门禁拦**（规则A，空值/占位不算） |
+| understood_intent 三件（复述/边界/判据） | 同上 | M/L 缺件拦——复述=行业对齐标配 restatement |
+| 卡片新鲜度 scan_check（fresh/stale/absent） | plan 步骤 2a | stale 强制重扫受影响卡；absent M/L 先建卡 |
+| 结构变更同步卡片（ADR 事件，tests/docs/md 豁免） | 提交门禁 | **全档含 S/quick**：staged 有结构性增删/改名而卡片未随同 → 拦（规则B）；纯脚手架 scan.card_sync: false 显式豁免；无卡片项目警示不拦 |
+| EARS-lite 验收行（When…则…验：命令） | 模板验收标准节 | M/L 用；验命令复用脆弱点 verify 惯例 |
+
+分工逻辑：**S 档豁免的是全貌仪式（规则A），不豁免结构纪律（规则B）**——
+新增/删除/改名文件本就不是"轻量内部改动"。对齐层的歧义检测/假设账本/广度
+矩阵不动（已是强项）；本层补的是它们的原材料新鲜度——看不全就对不准。
+
 ## 机器事实卡（v1.32：跨项目地层，三层结构）
 
 机器级经验（服务器拓扑/通道/环境坑/跨项目工具坑）不属于任何项目——沉在单项目地层里

@@ -315,13 +315,14 @@ def test_read_frontmatter_unfenced_fallback_capped(tmp_path):
 
 
 def test_template_body_has_acceptance_and_tradeoff():
-    """v1.25：验收标准节（判据/证据/状态）与设计取舍行骨架在模板里——需求的证据律。"""
+    """v1.25 证据律 + v1.40 EARS-lite：验收标准节（判据/证据/状态）与设计取舍
+    行骨架在模板里；判据列头带 When…则…验 三件格式约言。"""
     tmpl = os.path.join(os.path.dirname(__file__), "..", "templates",
                         "regress-manifest.md")
     body = open(os.path.abspath(tmpl), encoding="utf-8").read()
     assert "验收标准（做到什么算完" in body
-    for col in ("判据（可检验）", "证据（verify", "状态"):
-        assert col in body, f"验收标准缺「{col}」列"
+    for col in ("判据（EARS-lite", "When <条件>，则 <可观察结果>", "证据（verify", "状态"):
+        assert col in body, f"验收标准缺「{col}」列/格式约言"
     assert "设计取舍" in body and "否决因" in body
 
 

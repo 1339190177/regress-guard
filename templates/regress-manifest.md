@@ -1,7 +1,14 @@
 ---
 id: REGRESS-{{YEAR}}-{{SEQ}}
 requirement: "{{RAW_REQUIREMENT}}"
-understood_intent: "{{AI_PARSED_FULL_DESCRIPTION}}"
+understood_intent:        # 对齐三件（v1.40 升格：复述=行业对齐标配 restatement）
+  复述: "{{AI_PARSED_FULL_DESCRIPTION}}"
+  边界: "{{做什么/不做什么}}"
+  判据: "{{怎么算成：引用验收标准节第几条}}"
+scan:                     # 全貌三行（v1.40 规则A：M/L 缺任一行门禁拦——理解是强制产物）
+  entry: "{{入口在哪：一句话}}"
+  test: "{{测试怎么跑：一条命令}}"
+  card: "{{动的是哪张模块卡：模块名/新模块；card_sync: false=显式豁免结构同步}}"
 assumptions:
   - "{{ASSUMPTION_1}}"
   - "{{ASSUMPTION_2}}"
@@ -66,17 +73,20 @@ created_at: "{{DATE}}"
 1. {{ASSUMPTION_1}}
 2. {{ASSUMPTION_2}}
 
-## 验收标准（做到什么算完 · v1.25：需求的证据律）
+## 验收标准（做到什么算完 · v1.25 证据律 · v1.40 EARS-lite）
 
 > 每条必须可检验：布尔判据或可观察行为。"根治/优化/更好"这类词必须挂在下面
 > 某条判据上，指不回去的词不许出现在汇报里。非功能底线（延迟/安全/兼容）在
 > 这里定型——它们在需求阶段缺席，设计就会朝反方向跑
 > （病例：REGRESS-005 jitter buffer，产品价值观在两轮过度设计后才抵达）。
 > 与脆弱点互补分层：验收=需求侧 done 定义（功能对不对），脆弱点=风险侧（周边会不会坏）。
+> **EARS-lite 行格式（v1.40，M/L 用）**：`When <条件>，则 <可观察结果>（验：<命令>）`
+> ——条件/结果/验命令三件齐才算一条完整判据（对标 Kiro EARS 的机器可解析性，
+> 验命令复用脆弱点 verify 惯例，finish/verify 可直接跑）。
 
-| # | 判据（可检验） | 证据（verify 命令 / human_check） | 状态 |
+| # | 判据（EARS-lite：When…则…验：…） | 证据（verify 命令 / human_check） | 状态 |
 |---|--------------|-----------------------------------|------|
-| A1 | {{例：发起对讲后 3s 内建流，全程无断续}} | {{真机听感 human_check:V8}} | open |
+| A1 | {{例：When 发起对讲，则 3s 内建流且全程无断续}} | {{真机听感 human_check:V8}} | open |
 
 ## 广度矩阵（用户可见功能必填 · v1.35：治"做完才发现少一半"）
 
