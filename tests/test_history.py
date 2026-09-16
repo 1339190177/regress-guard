@@ -157,3 +157,53 @@ def test_observed_source_distinction(regress_dir):
     record(regress_dir, "commit_observed", "", commit_sha="h2", subject="s", source="git-backfill")
     s = summarize(regress_dir)
     assert s["outside_gate_commits"] == 2  # 只有外部直提+回填
+
+
+# ─── v1.47 块消息有效性（B2 影子采集，GEPA 评分环） ────────
+
+def _block(regress_dir, mid, reason, session, ts):
+    """直写事件（record 的 timestamp/session 由 env 推断，测试要显式控制）。"""
+    with open(os.path.join(regress_dir, "history.jsonl"), "a",
+              encoding="utf-8") as f:
+        f.write(json.dumps({"timestamp": ts, "event": "commit_blocked",
+                            "manifest_id": mid, "session_id": session,
+                            "reason": reason}, ensure_ascii=False) + "\n")
+
+
+def test_nudge_single_block_unflagged(regress_dir):
+    """单次拦截无标——影子模式不制造噪音。"""
+    from history import nudge_effectiveness
+    _block(regress_dir, "R1", "scan_missing", "s1", "2026-09-16T10:00:00")
+    rows = nudge_effectiveness(regress_dir)
+    assert len(rows) == 1 and rows[0]["flag"] == "" and rows[0]["blocks"] == 1
+
+
+def test_nudge_repeat_same_session(regress_dir):
+    """同会话 ×2 = repeat（告警级，未到无效候选）。"""
+    from history import nudge_effectiveness
+    for i in range(2):
+        _block(regress_dir, "R1", "card_stale", "s1",
+               f"2026-09-16T1{i}:00:00")
+    rows = nudge_effectiveness(regress_dir)
+    assert rows[0]["flag"] == "repeat" and rows[0]["blocks"] == 2
+
+
+def test_nudge_ineffective_cross_session(regress_dir):
+    """≥3 且跨 ≥2 会话 = ineffective_candidate，分母恒带（顾问判据）。"""
+    from history import nudge_effectiveness
+    _block(regress_dir, "R1", "rollback_missing", "s1", "2026-09-16T10:00:00")
+    _block(regress_dir, "R1", "rollback_missing", "s2", "2026-09-16T11:00:00")
+    _block(regress_dir, "R1", "rollback_missing", "s3", "2026-09-16T12:00:00")
+    rows = nudge_effectiveness(regress_dir)
+    r = rows[0]
+    assert r["flag"] == "ineffective_candidate"
+    assert r["blocks"] == 3 and r["sessions"] == 3  # 分母+会话数都在
+
+
+def test_nudge_keys_isolated(regress_dir):
+    """不同 reason 不互相污染分母——键=(manifest_id, reason)。"""
+    from history import nudge_effectiveness
+    _block(regress_dir, "R1", "a", "s1", "2026-09-16T10:00:00")
+    _block(regress_dir, "R1", "b", "s1", "2026-09-16T10:30:00")
+    rows = nudge_effectiveness(regress_dir)
+    assert all(r["blocks"] == 1 for r in rows) and len(rows) == 2

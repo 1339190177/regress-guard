@@ -37,6 +37,11 @@ python3 "<插件路径>/hooks/scripts/lib/notify.py" stats
 
 # 8. 待决裁决：人类说「有用/误报/忽略」后由 agent 记账（对号，见推送正文〔待决#N〕）
 python3 "<插件路径>/hooks/scripts/lib/pending.py" list --pending
+
+# 9. 块消息有效性（v1.47 影子采集，GEPA 评分环）：拦截消息即提示词——
+# 同清单同原因反复被拦=消息没教会 agent；🚨 无效候选（≥3 且跨会话/跨 7 天，
+# 分母恒带）值得改写消息文案；⚠️ repeat 是告警级观察
+python3 "<插件路径>/hooks/scripts/lib/history.py" .regress nudge
 ```
 
 ## 输出格式

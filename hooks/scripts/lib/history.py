@@ -236,6 +236,46 @@ def summarize(regress_dir):
     }
 
 
+def nudge_effectiveness(regress_dir):
+    """块消息有效性（v1.47，B2 影子采集——只测不拦，阈值先影子）。
+
+    GEPA 评分环落地：拦截消息本身就是提示词（steer agent 下一动作），
+    同清单同原因反复被拦 = 消息没把 agent 教会的直接信号。
+    判据（顾问定，影子期只标注不拦截）：
+      ≥2 次 → repeat（告警级）
+      ≥3 次 且（跨 ≥2 会话 或 时间跨 ≥7 天）→ ineffective_candidate
+    分母恒带（该键总拦截数）——小样本噪声的第一道防线。
+    """
+    from collections import defaultdict
+    events = load_history(regress_dir)
+    groups = defaultdict(list)
+    for e in events:
+        if e.get("event") == "commit_blocked":
+            groups[(str(e.get("manifest_id") or ""),
+                    str(e.get("reason") or "unknown"))].append(e)
+    rows = []
+    for (mid, reason), es in sorted(groups.items(),
+                                    key=lambda kv: -len(kv[1])):
+        sessions = {str(e.get("session_id") or "") for e in es}
+        ts = sorted(str(e.get("timestamp") or "") for e in es)
+        try:
+            from datetime import datetime as _dt
+            span_days = (_dt.fromisoformat(ts[-1]) - _dt.fromisoformat(ts[0])
+                         ).days if len(ts) > 1 else 0
+        except ValueError:
+            span_days = 0
+        flag = ""
+        if len(es) >= 3 and (len(sessions) >= 2 or span_days >= 7):
+            flag = "ineffective_candidate"
+        elif len(es) >= 2:
+            flag = "repeat"
+        rows.append({"manifest_id": mid, "reason": reason,
+                     "blocks": len(es),            # 分母恒带
+                     "sessions": len(sessions), "span_days": span_days,
+                     "flag": flag})
+    return rows
+
+
 def build_trace(regress_dir):
     """构建交付链视图（借鉴 Harness Inspector 的 Intent→Process→Output）。
 
@@ -319,3 +359,15 @@ if __name__ == "__main__":
             print(json.dumps(e, ensure_ascii=False))
     elif cmd == "trace":
         print(build_trace(regress_dir))
+    elif cmd == "nudge":
+        rows = nudge_effectiveness(regress_dir)
+        if not rows:
+            print("（无拦截记录——块消息有效性暂无可测）")
+        else:
+            print(f"块消息有效性（影子采集）：{len(rows)} 键｜"
+                  f"repeat {sum(1 for r in rows if r['flag'] == 'repeat')}"
+                  f"｜无效候选 {sum(1 for r in rows if r['flag'] == 'ineffective_candidate')}")
+            for r in rows[:10]:
+                mark = {"repeat": "⚠️ ", "ineffective_candidate": "🚨"}.get(r["flag"], "  ")
+                print(f"  {mark}{r['manifest_id'] or '-'} [{r['reason']}] ×{r['blocks']}"
+                      f"（{r['sessions']} 会话/{r['span_days']} 天）")
