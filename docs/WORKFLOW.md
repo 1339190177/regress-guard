@@ -132,6 +132,14 @@ python3 hooks/scripts/lib/notify.py stats   # 送达率 + event 分布 + 待决/
 git commit               ← 门禁跑测试，通过放行
 ```
 
+## 特征测试（v1.45：改无测试老代码前先钉住现状）
+
+`/regress:characterize <文件>` 五步：枚举公开入口（私有/外部服务依赖标"不可钉"）
+→ **探针真跑**三类输入（典型/空值/边界）落 JSON → 生成断言**真值**的 golden
+master pytest（浮点 approx/异常只记类型）→ 跑绿=行为已钉 → 回写 F3+脆弱点
+`kind: machine`。证据律沿用：断言探针捕获的真值，不猜 AI 以为的值——
+不 mock 外部服务（mock 出的行为不是现状，钉了也是假钉）。
+
 ## Bypass 模式（紧急 hotfix）
 
 ```

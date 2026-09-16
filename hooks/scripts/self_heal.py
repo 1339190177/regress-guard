@@ -66,6 +66,7 @@ REQUIRED_COMMANDS = [
     "regress:init", "regress:plan", "regress:track", "regress:verify",
     "regress:quick", "regress:bypass", "regress:learn", "regress:evolve",
     "regress:trace", "regress:resume", "regress:finish", "regress:stats",
+    "regress:characterize",
     "regress:install", "regress:uninstall", "regress:update"
 ]
 

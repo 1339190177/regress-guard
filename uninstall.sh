@@ -39,7 +39,7 @@ for skill in regression-planning characterization-testing change-impact-analysis
 done
 
 # ─── 2. 删除 commands（与 self_heal REQUIRED_COMMANDS 同源，P1#6 补 resume/finish/stats）───
-for cmd in regress:init regress:plan regress:track regress:verify regress:quick regress:bypass regress:learn regress:evolve regress:trace regress:resume regress:finish regress:stats regress:install regress:uninstall regress:update; do
+for cmd in regress:init regress:plan regress:track regress:verify regress:quick regress:bypass regress:learn regress:evolve regress:trace regress:resume regress:finish regress:stats regress:characterize regress:install regress:uninstall regress:update; do
     f="${ZCODE_HOME}/commands/${cmd}.md"
     if [ -f "$f" ]; then
         rm "$f"

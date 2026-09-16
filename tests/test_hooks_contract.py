@@ -122,3 +122,21 @@ def test_install_registers_every_hooks_json_script():
         stem = n.rsplit(".", 1)[0]
         assert stem in pyeof, \
             f"install.sh 注册段未出现 {stem}——脚本模式装完钩子不生效（P0-2 族）"
+
+
+def test_command_synced_in_selfheal_and_uninstall():
+    """命令三侧同步（v1.45，B7）：commands/ 文件 ↔ self_heal REQUIRED_COMMANDS
+    ↔ uninstall 删除清单——漏一侧=死文件（自愈不恢复）或卸载残留。
+
+    派生优于断言：从 commands/ 目录 glob，新增命令自动进契约。"""
+    import glob
+    ROOT = os.path.abspath(os.path.join(os.path.dirname(HOOKS), ".."))
+    cmds = sorted(os.path.basename(p)[:-3]
+                  for p in glob.glob(os.path.join(ROOT, "commands", "*.md")))
+    assert len(cmds) >= 15, f"命令数异常少（{len(cmds)}）——glob 疑未命中"
+    sh = open(os.path.join(ROOT, "hooks", "scripts", "self_heal.py"),
+              encoding="utf-8").read()
+    un = open(os.path.join(ROOT, "uninstall.sh"), encoding="utf-8").read()
+    for c in cmds:
+        assert c in sh, f"self_heal REQUIRED_COMMANDS 漏 {c}（自愈不恢复=死文件）"
+        assert c in un, f"uninstall 漏删 {c}（卸载残留）"
