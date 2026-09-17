@@ -38,6 +38,33 @@ def test_backfill_never_overwrites_custom(tmp_path, monkeypatch):
     assert (rg / "README.md").read_text(encoding="utf-8") == "我的定制版"
 
 
+def test_version_drift_warns(tmp_path, monkeypatch, capsys):
+    """源仓版本新于已装副本（.source 戳）→ stderr 一行警示（不自动改）。"""
+    sh = _load_heal(tmp_path, monkeypatch)
+    (tmp_path / "hookhome" / ".source").write_text(
+        "source_path=/x\nsource_version=1.55.0\ninstalled_at=2026-09-17\n", encoding="utf-8")
+    src = tmp_path / "repo"
+    (src / ".zcode-plugin").mkdir(parents=True)
+    (src / ".zcode-plugin" / "plugin.json").write_text('{"version": "1.59.0"}', encoding="utf-8")
+    monkeypatch.setattr(sh, "SOURCE_CANDIDATES", [str(src)])
+    sh.check_version_drift()
+    err = capsys.readouterr().err
+    assert "1.55.0" in err and "1.59.0" in err and "版本漂移" in err
+
+
+def test_version_no_drift_silent(tmp_path, monkeypatch, capsys):
+    """版本一致（或无 .source 戳）→ 静默。"""
+    sh = _load_heal(tmp_path, monkeypatch)
+    (tmp_path / "hookhome" / ".source").write_text(
+        "source_version=1.59.0\n", encoding="utf-8")
+    src = tmp_path / "repo"
+    (src / ".zcode-plugin").mkdir(parents=True)
+    (src / ".zcode-plugin" / "plugin.json").write_text('{"version": "1.59.0"}', encoding="utf-8")
+    monkeypatch.setattr(sh, "SOURCE_CANDIDATES", [str(src)])
+    sh.check_version_drift()
+    assert capsys.readouterr().err == ""
+
+
 def test_backfill_idempotent(tmp_path, monkeypatch):
     sh = _load_heal(tmp_path, monkeypatch)
     rg = tmp_path / "proj" / ".regress"

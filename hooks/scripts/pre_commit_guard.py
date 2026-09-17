@@ -35,7 +35,38 @@ if LIB_DIR not in sys.path:
 from manifest_parser import find_active_manifest, get_all_changed_files, get_manifest_status, update_frontmatter, get_fragile_points, parse_frontmatter  # noqa: E402
 from git_diff_analyzer import get_staged_files, filter_files, find_untracked_changes  # noqa: E402
 from test_runner import run_tests  # noqa: E402
-from history import record  # noqa: E402
+from history import record as _history_record  # noqa: E402
+
+
+def _running_version():
+    """门禁自身版本（v1.59）：044 病例——活体门禁是旧已装副本时无从查证。
+
+    源仓布局读 plugin.json（本文件在 hooks/scripts/ 下，上三级即插件根）；
+    已装布局无 plugin.json → 读 install.sh 落的 .source 戳（source_version=）。
+    """
+    try:
+        pj = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), ".zcode-plugin", "plugin.json")
+        with open(pj, encoding="utf-8") as f:
+            return str(json.load(f).get("version") or "unknown")
+    except Exception:
+        pass
+    try:
+        meta = os.path.join(os.path.expanduser("~/.zcode"),
+                            "regress-guard-hooks", ".source")
+        with open(meta, encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("source_version="):
+                    return line.split("=", 1)[1].strip() or "unknown"
+    except Exception:
+        pass
+    return "unknown"
+
+
+def record(rd, event, manifest_id="", **details):
+    """一点包装（v1.59）：所有事件盖 guard_version——谁在把关，事后可查。"""
+    details.setdefault("guard_version", _running_version())
+    _history_record(rd, event, manifest_id, **details)
 
 
 def emit_pass():

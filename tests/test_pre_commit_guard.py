@@ -617,6 +617,9 @@ def test_block_recall_not_wired_reason(project):
     _stage(project, "src/extra.js", "y = 1\n")
     code, err, _ = run_guard("git commit -m x", project)
     assert code == 2 and "不在回归清单" in err and "📚" not in err
+    # v1.59：拦截事件盖 guard_version（谁在把关，事后可查——044 病例）
+    assert any(e.get("event") == "commit_blocked" and str(e.get("guard_version") or "")
+               not in ("", "None") for e in read_history(project))
 
 
 def test_block_recall_corrupt_ledger_degrades(project):

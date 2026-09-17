@@ -458,6 +458,36 @@ def check_bridge_registration():
         pass  # 警示是增强不是依赖
 
 
+def check_version_drift():
+    """v1.59 版本漂移警示（044 病例机制化）：源仓 plugin.json 新于已装副本
+    → 会话启动自愈本会同步，但热会话里的钩子仍是旧版在把关——警示一眼可见。
+    已装版本读 install.sh 落的 .source 戳（source_version= 行）。
+    只警示不自动改（升级走既有轨道：会话启动自愈 / install.sh）。"""
+    try:
+        installed = ""
+        src_meta = os.path.join(HOOK_HOME, ".source")
+        if os.path.isfile(src_meta):
+            with open(src_meta, encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("source_version="):
+                        installed = line.split("=", 1)[1].strip()
+        if not installed:
+            return
+        for cand in SOURCE_CANDIDATES:
+            pj = os.path.join(cand, ".zcode-plugin", "plugin.json")
+            if os.path.isfile(pj):
+                with open(pj, encoding="utf-8") as f:
+                    source_v = str(json.load(f).get("version") or "")
+                if source_v and source_v != installed:
+                    print(f"REGRESS-GUARD: ⚠️ 已装副本 v{installed} 与源仓 v{source_v} "
+                          f"版本漂移——重启会话（启动自愈会同步）或重跑 install.sh 激活，"
+                          f"期间钩子按旧版把关（事件已盖 guard_version 可查）",
+                          file=sys.stderr)
+                return
+    except Exception:
+        pass  # 警示是增强不是依赖
+
+
 def main():
     # 快速检查：如果连 hook_home 都不存在，说明根本没装过，跳过
     if not os.path.isdir(HOOK_HOME):
@@ -470,6 +500,7 @@ def main():
     if gc_note:
         healed.append(gc_note)
     check_bridge_registration()
+    check_version_drift()
 
     # 老项目自动升级：零号入口缺失即补（幂等，永不覆盖已定制内容）
     rg = _current_regress_dir()
