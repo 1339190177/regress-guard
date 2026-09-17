@@ -8,7 +8,8 @@
 用法：
   rules_ledger.py . record --sig "<失败签名>" --occurrences 5   # learn 沉淀/再检出时
   rules_ledger.py . health                                       # 衰变候选 + 固化候选
-  rules_ledger.py . health --decay-days 180 --promote-hits 3
+  rules_ledger.py . match --query "<拦截原因/报错关键词>"         # 召回：失败现场读路径（v1.53）
+  rules_ledger.py . match --query "..." --json --top 3           # 机器读
 
 数据：.regress/rules-ledger.json（随 git 入库）。命中定义：learn 再检出同一签名
 （真实"被咨询"无法自动探测，再检出是务实代理——诚实边界，记录在案）。
@@ -17,7 +18,9 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
+from collections import Counter
 from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -94,6 +97,55 @@ def supersede(project_dir, old_sig, new_sig):
     return True
 
 
+MATCH_MIN_SHARED = 3    # 噪声地板：共享 bigram 少于此数不算相关
+MATCH_STOP_RATIO = 0.6  # IDF-lite：bigram 出现在超过此比例的签名中 → 样板停用
+
+
+def _bigrams(text):
+    """字符 bigram（去空白、小写）——无分词依赖的中英混排召回基础。"""
+    t = re.sub(r"\s+", "", str(text or "")).lower()
+    return {t[i:i + 2] for i in range(len(t) - 1)}
+
+
+def match(project_dir, query, top=3, min_shared=MATCH_MIN_SHARED):
+    """召回（v1.53 读路径）：按 bigram 重叠数排序历史规律——骨架库不只回流，还能供给。
+
+    排序 = 共享 bigram 数降序，同分先比 hits（历史命中）再比 last_hit（新鲜度）
+    ——相关性优先，频率只作断路器（顾问：乘子会把"高频"伪装成"相关"）。
+    样板停用（IDF-lite）：≥5 条时，出现在 >60% 签名里的 bigram（"定位/归因"这类
+    格式样板词）不参与匹配，否则万物皆相关。被取代的旧签名不召回。
+    """
+    top = max(0, int(top))
+    query = str(query or "").strip()
+    if top <= 0 or not query:
+        return []
+    data = load(project_dir)
+    entries = [e for k, e in data.items()
+               if not str(k).startswith("_") and isinstance(e, dict) and e.get("sig")]
+    if not entries:
+        return []
+    sup_map = data.get("_superseded") if isinstance(data.get("_superseded"), dict) else {}
+    sup_sigs = {str(v.get("old_sig", "")) for v in sup_map.values()}
+    sig_bgs = [(_bigrams(e["sig"]), e) for e in entries if e["sig"] not in sup_sigs]
+    if not sig_bgs:
+        return []
+    q = _bigrams(query)
+    stop = set()
+    if len(sig_bgs) >= 5:  # 太小的账本停用过滤反而失真
+        df = Counter(b for bgs, _ in sig_bgs for b in bgs)
+        stop = {b for b, n in df.items() if n > len(sig_bgs) * MATCH_STOP_RATIO}
+    q -= stop
+    out = []
+    for bgs, e in sig_bgs:
+        shared = len(q & (bgs - stop))
+        if shared >= min_shared:
+            out.append({"sig": e["sig"], "hits": int(e.get("hits", 1)),
+                        "last_hit": e.get("last_hit", ""), "score": shared})
+    out.sort(key=lambda h: str(h["last_hit"]), reverse=True)   # 稳定预排：新鲜度断路
+    out.sort(key=lambda h: (-h["score"], -h["hits"]))          # 主排序保持断路序
+    return out[:top]
+
+
 def health(project_dir, decay_days=DEFAULT_DECAY_DAYS, promote_hits=PROMOTE_HITS):
     """规律健康：降级候选（>decay_days 零命中）+ 固化候选（hits≥promote_hits 且未腐化）。
 
@@ -138,6 +190,10 @@ def main(argv=None):
     su = sub.add_parser("supersede", help="版本链接：旧规律被新版取代")
     su.add_argument("--old", required=True)
     su.add_argument("--new", required=True)
+    m = sub.add_parser("match", help="召回：按关键词匹配历史规律（失败现场读路径）")
+    m.add_argument("--query", required=True, help="查询文本（拦截原因/报错关键词）")
+    m.add_argument("--top", type=int, default=3, help="召回条数上限")
+    m.add_argument("--json", action="store_true", help="机器读（B2 门禁消费）")
     h = sub.add_parser("health", help="规律健康：降级候选 + 固化候选")
     h.add_argument("--decay-days", type=int, default=DEFAULT_DECAY_DAYS)
     h.add_argument("--promote-hits", type=int, default=PROMOTE_HITS)
@@ -150,6 +206,16 @@ def main(argv=None):
         record(project_dir, args.sig, args.occurrences)
     elif args.cmd == "supersede":
         supersede(project_dir, args.old, args.new)
+    elif args.cmd == "match":
+        res = match(project_dir, args.query, top=args.top)
+        if args.json:
+            print(json.dumps(res, ensure_ascii=False))
+        elif not res:
+            print("📚 无相关规律（账本空或共享 bigram 未达阈值）")
+        else:
+            print(f"📚 相关规律 TOP-{len(res)}（骨架库召回——提示不是行动，采纳前先对照本次现场）：")
+            for i, r in enumerate(res, 1):
+                print(f"  {i}. 「{r['sig'][:60]}」 命中×{r['hits']}（最近 {r['last_hit']}）")
     else:
         import io as _io, contextlib as _cb
         with _cb.redirect_stdout(_io.StringIO()) as buf:

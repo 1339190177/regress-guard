@@ -102,3 +102,71 @@ def test_unlinked_rule_decay_unchanged(tmp_path):
     record(str(tmp_path), "独立规律C", 1)
     r = health(str(tmp_path), decay_days=-1)
     assert any("独立规律C" in str(e.get("sig", "")) for e in r["stale"])
+
+
+# ─── v1.53 召回（B1 骨架库读路径） ────────────────
+
+def _load_rl():
+    import importlib.util as ilu
+    spec = ilu.spec_from_file_location("rl", LEDGER)
+    rl = ilu.module_from_spec(spec)
+    spec.loader.exec_module(rl)
+    return rl
+
+
+def test_match_ranks_relevant_first(tmp_path):
+    """相关规律排最前，无关条目不因偶发 bigram 混入。"""
+    rl = _load_rl()
+    rl.record(str(tmp_path), "f-string 字面量大括号写成单层导致 KeyError", 2)
+    rl.record(str(tmp_path), "gen_reference 派生区过期被门禁拦", 1)
+    res = rl.match(str(tmp_path), "f-string 大括号 KeyError 测试失败")
+    assert res and "f-string" in res[0]["sig"]
+    assert all("gen_reference" not in r["sig"] for r in res)
+
+
+def test_match_empty_ledger_and_no_overlap(tmp_path):
+    """空账本/无共享：返回空列表不抛错（召回是增强不是依赖）。"""
+    rl = _load_rl()
+    assert rl.match(str(tmp_path / "never"), "任何查询") == []
+    rl.record(str(tmp_path), "端口占用 18801", 1)
+    assert rl.match(str(tmp_path), "zz qq xx") == []
+
+
+def test_match_stopbigram_filters_boilerplate(tmp_path):
+    """≥5 条共享样板词（定位/归因）→ 样板 bigram 停用；带区分词仍召回。"""
+    rl = _load_rl()
+    for i in range(5):
+        rl.record(str(tmp_path), f"规律{i} 定位 xx{i} 归因 yy{i}", 1)
+    assert rl.match(str(tmp_path), "定位 归因") == []
+    assert any("规律2" in r["sig"] for r in rl.match(str(tmp_path), "规律2 xx2 yy2 失败"))
+
+
+def test_match_superseded_not_recalled(tmp_path):
+    """被取代的旧签名不进召回（过气经验不该再教人）。"""
+    rl = _load_rl()
+    rl.record(str(tmp_path), "旧方案安装脚本路径写死", 3)
+    rl.record(str(tmp_path), "另一条无关规律词语", 1)
+    rl.supersede(str(tmp_path), "旧方案安装脚本路径写死", "新方案安装自动探测")
+    res = rl.match(str(tmp_path), "安装脚本路径写死失败")
+    assert all("旧方案" not in r["sig"] for r in res)
+
+
+def test_match_min_shared_threshold(tmp_path):
+    """共享数低于噪声地板（3）不召回；min_shared 参数可调。"""
+    rl = _load_rl()
+    rl.record(str(tmp_path), "ab cd ef", 1)
+    assert rl.match(str(tmp_path), "ab zz qq") == []          # 只共享 1 个 bigram
+    assert rl.match(str(tmp_path), "ab cd zz", min_shared=2)  # 降到 2 则召回
+    assert rl.match(str(tmp_path), "ab cd zz", min_shared=2) != []
+
+
+def test_match_cli_json(tmp_path):
+    """CLI 人读/机器读双通道：--json 可解析，无召回给明确文案。"""
+    proj = _mk(tmp_path)
+    _run(proj, "record", "--sig", "f-string 大括号错误", "--occurrences", "2")
+    r = _run(proj, "match", "--query", "f-string 大括号报错", "--json")
+    assert r.returncode == 0
+    data = json.loads(r.stdout)
+    assert isinstance(data, list) and data and "f-string" in data[0]["sig"]
+    r2 = _run(proj, "match", "--query", "毫无关联的查询词语组")
+    assert r2.returncode == 0 and "无相关规律" in r2.stdout
