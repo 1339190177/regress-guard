@@ -82,6 +82,21 @@ def _fm_get(fm_text, key):
     return m.group(1).strip() if m else ""
 
 
+def allocate_and_write(manifests_dir, title, content_fn):
+    """编号分配临界区（v1.56，五标本之一机器收口）：扫号+落盘同锁。
+
+    两桥并发批准时 flock 串行化临界区，不再撞号；AI 手写清单路径不经此函数
+    （纪律位：plan.md 选号前 ls）。content_fn(mid, stem) → 清单全文。
+    """
+    from filelock import file_lock
+    with file_lock(os.path.join(manifests_dir, "id-alloc")):
+        mid, stem = next_id_and_name(manifests_dir, title)
+        path = os.path.join(manifests_dir, stem + ".md")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content_fn(mid, stem))
+    return mid, path
+
+
 def next_id_and_name(manifests_dir, title):
     """扫现有清单自推编号，保持项目既有格式（REGRESS-YYYY-NNN / REGRESS-NNN）。"""
     import glob
@@ -288,11 +303,10 @@ def do_post(project_dir, data, sid):
                            plan_hash=sha, note="dual-track: 盖章既有 planning 清单")
         _receipt(mid)
         return
-    mid, stem = next_id_and_name(manifests_dir, title)
     paths = extract_paths(plan)
-    with open(os.path.join(manifests_dir, stem + ".md"), "w",
-              encoding="utf-8") as f:
-        f.write(_build_manifest(mid, title, sid, plan, paths, at))
+    mid, _ = allocate_and_write(
+        manifests_dir, title,
+        lambda m, s: _build_manifest(m, title, sid, plan, paths, at))
     if journal_append:
         journal_append("plan_approved", start_dir=project_dir, manifest_id=mid,
                        via="native-plan-bridge", plan_hash=sha)

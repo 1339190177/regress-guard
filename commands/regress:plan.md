@@ -241,6 +241,9 @@ python3 "<插件路径>/hooks/scripts/lib/journal.py" . add plan_advisor_review 
 
 清单以 `status: planning` 创建后，**停下输出计划卡片**（30 秒可扫完），不实施：
 
+（选号纪律，v1.56：原生桥路径的编号分配已挂文件锁防并发撞号；**AI 手写清单不经锁**——
+落盘前先 `ls .regress/manifests/` 取当前最大号再 +1，别凭记忆写号）
+
 ```
 📋 计划（等待批准 · REGRESS-<序号>）
   理解：<一句话，含边界（做什么/不做什么）>

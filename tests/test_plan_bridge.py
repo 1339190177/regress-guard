@@ -34,6 +34,11 @@ def _proj(tmp_path):
 
 def _env(monkeypatch, proj):
     monkeypatch.setenv("ZCODE_PROJECT_DIR", str(proj))
+    # v1.56 标本：钩子 env 带宿主 CLAUDE_PROJECT_DIR（真实工作区）——桥的候选
+    # 顺序 CLAUDE 优先，测试只钉 ZCODE → 门禁 5.6 复验时清单写进真实工作区、
+    # tmp 断言全翻（shell 复现不出：无宿主 env）。两键都钉死 + 剥离真实会话键。
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
+    monkeypatch.delenv("ZCODE_SESSION_ID", raising=False)
     monkeypatch.setenv("CLAUDE_SESSION_ID", "sess_bridge_t")
     monkeypatch.setenv("REGRESS_JOURNAL", "on")  # conftest 默认 off，桥测试要化石
 
@@ -204,3 +209,36 @@ def test_bridge_receipt_opt_in(tmp_path, monkeypatch, capsys):
     payload = _json.loads(out[0])
     ctx = payload["hookSpecificOutput"]["additionalContext"]
     assert "REGRESS-" in ctx and "via:native-plan-bridge" in ctx
+
+
+# ─── v1.56 编号并发锁（B1：五标本之一机器收口） ────────────────
+
+def test_allocate_concurrent_unique_ids(tmp_path):
+    """6 线程并发分配：清单数=6、编号唯一且连续（锁把扫号+落盘串成临界区）。"""
+    from concurrent.futures import ThreadPoolExecutor
+    pb = _load()
+    mdir = tmp_path / "proj" / ".regress" / "manifests"
+    mdir.mkdir(parents=True)
+
+    def alloc(i):
+        mid, path = pb.allocate_and_write(
+            str(mdir), f"任务{i}",
+            lambda m, s: f"---\nid: {m}\nstatus: planning\n---\n任务{i}")
+        return mid, os.path.basename(path)
+
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        results = list(ex.map(alloc, range(6)))
+    ids = sorted(r[0] for r in results)
+    assert len(ids) == 6 and len(set(ids)) == 6
+    assert len(list(mdir.glob("*.md"))) == 6
+    assert ids == [f"REGRESS-{i:03d}" for i in range(1, 7)]  # 从 1 连续
+
+
+def test_allocate_sequence_same_as_before(tmp_path):
+    """单线程顺序分配：编号自增与锁前行为一致（回归不变）。"""
+    pb = _load()
+    mdir = tmp_path / "proj" / ".regress" / "manifests"
+    mdir.mkdir(parents=True)
+    m1, _ = pb.allocate_and_write(str(mdir), "a", lambda m, s: f"---\nid: {m}\n---\nx")
+    m2, _ = pb.allocate_and_write(str(mdir), "b", lambda m, s: f"---\nid: {m}\n---\ny")
+    assert m1 == "REGRESS-001" and m2 == "REGRESS-002"
