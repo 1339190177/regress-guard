@@ -276,6 +276,38 @@ def nudge_effectiveness(regress_dir):
     return rows
 
 
+def recall_effectiveness(regress_dir):
+    """召回有效性代理（v1.58，B3——弱证据，只排序不回流）。
+
+    对每条 rule_recall 沿事件序找同 manifest 的下一个 commit_passed：
+      其间无同 manifest 的 commit_blocked → resolved_clean（顾问"干净才计"）
+      有 → resolved_shadow（解决时另有干预，召回贡献未知——单列不加总）
+      无放行 → pending
+    诚实边界：事件序代理非因果（GEPA 6.3 同防线）；真值仍靠人读与
+    advisor_adoption 同族的前向采集。
+    """
+    events = load_history(regress_dir)
+    rows = []
+    for i, e in enumerate(events):
+        if e.get("event") != "rule_recall":
+            continue
+        mid = str(e.get("manifest_id") or "")
+        outcome = "pending"
+        for e2 in events[i + 1:]:
+            if str(e2.get("manifest_id") or "") != mid:
+                continue  # 跨清单事件不干扰
+            ev = e2.get("event")
+            if ev == "commit_blocked":
+                outcome = "resolved_shadow"
+                break
+            if ev == "commit_passed":
+                outcome = "resolved_clean"
+                break
+        rows.append({"manifest_id": mid, "reason": str(e.get("reason") or ""),
+                     "n": e.get("n"), "outcome": outcome})
+    return rows
+
+
 def build_trace(regress_dir):
     """构建交付链视图（借鉴 Harness Inspector 的 Intent→Process→Output）。
 
@@ -371,3 +403,17 @@ if __name__ == "__main__":
                 mark = {"repeat": "⚠️ ", "ineffective_candidate": "🚨"}.get(r["flag"], "  ")
                 print(f"  {mark}{r['manifest_id'] or '-'} [{r['reason']}] ×{r['blocks']}"
                       f"（{r['sessions']} 会话/{r['span_days']} 天）")
+    elif cmd == "recall":
+        rows = recall_effectiveness(regress_dir)
+        if not rows:
+            print("（无 rule_recall 记录——召回有效性暂无可测）")
+        else:
+            from collections import Counter
+            c = Counter(r["outcome"] for r in rows)
+            print(f"召回有效性（事件序代理·弱证据只排序）：{len(rows)} 次｜"
+                  f"干净解决 {c.get('resolved_clean', 0)}｜"
+                  f"带干预解决 {c.get('resolved_shadow', 0)}｜未决 {c.get('pending', 0)}")
+            for r in rows[:10]:
+                mark = {"resolved_clean": "✅", "resolved_shadow": "◐",
+                        "pending": "⏳"}.get(r["outcome"], " ")
+                print(f"  {mark}{r['manifest_id'] or '-'} [{r['reason']}] n={r.get('n', '?')}")

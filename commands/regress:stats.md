@@ -46,6 +46,10 @@ python3 "<插件路径>/hooks/scripts/lib/history.py" .regress nudge
 # 10. 顾问采纳率（v1.49，给裁判装评分器）：adopted+partial 计入采纳；
 # 低采纳率=顾问意见不合用，校准咨询姿势（finish 代谢位落 advisor_adoption 事件）
 python3 "<插件路径>/hooks/scripts/lib/journal.py" . adoption
+
+# 11. 召回有效性（v1.58，事件序代理·弱证据只排序）：rule_recall 后同清单
+# 直接放行=干净解决；间有拦截=带干预解决（单列不加总）；未决。扩召回接线看这里
+python3 "<插件路径>/hooks/scripts/lib/history.py" .regress recall
 ```
 
 ## 输出格式

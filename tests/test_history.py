@@ -200,6 +200,41 @@ def test_nudge_ineffective_cross_session(regress_dir):
     assert r["blocks"] == 3 and r["sessions"] == 3  # 分母+会话数都在
 
 
+# ─── v1.58 召回有效性代理（B3：弱证据三态，干净才计） ────────
+
+def _ev(regress_dir, event, mid, ts, reason=""):
+    with open(os.path.join(regress_dir, "history.jsonl"), "a",
+              encoding="utf-8") as f:
+        f.write(json.dumps({"timestamp": ts, "event": event,
+                            "manifest_id": mid, "reason": reason},
+                           ensure_ascii=False) + "\n")
+
+
+def test_recall_clean_shadow_pending(regress_dir):
+    """三态：直接放行=clean；间有拦截=shadow；无放行=pending。"""
+    from history import recall_effectiveness
+    _ev(regress_dir, "rule_recall", "M1", "2026-09-17T10:00:00", "test_failed")
+    _ev(regress_dir, "commit_passed", "M1", "2026-09-17T10:05:00")
+    _ev(regress_dir, "rule_recall", "M2", "2026-09-17T11:00:00", "scan_missing")
+    _ev(regress_dir, "commit_blocked", "M2", "2026-09-17T11:02:00", "untracked_files")
+    _ev(regress_dir, "commit_passed", "M2", "2026-09-17T11:09:00")
+    _ev(regress_dir, "rule_recall", "M3", "2026-09-17T12:00:00", "test_failed")
+    rows = recall_effectiveness(regress_dir)
+    by_mid = {r["manifest_id"]: r["outcome"] for r in rows}
+    assert by_mid == {"M1": "resolved_clean", "M2": "resolved_shadow", "M3": "pending"}
+
+
+def test_recall_cross_manifest_events_ignored(regress_dir):
+    """跨清单事件不干扰：M4 的拦截不把 M5 的召回判成 shadow。"""
+    from history import recall_effectiveness
+    _ev(regress_dir, "rule_recall", "M5", "2026-09-17T10:00:00", "test_failed")
+    _ev(regress_dir, "commit_blocked", "M4", "2026-09-17T10:01:00", "x")
+    _ev(regress_dir, "commit_passed", "M4", "2026-09-17T10:02:00")
+    _ev(regress_dir, "commit_passed", "M5", "2026-09-17T10:03:00")
+    rows = recall_effectiveness(regress_dir)
+    assert rows[0]["manifest_id"] == "M5" and rows[0]["outcome"] == "resolved_clean"
+
+
 def test_nudge_keys_isolated(regress_dir):
     """不同 reason 不互相污染分母——键=(manifest_id, reason)。"""
     from history import nudge_effectiveness
