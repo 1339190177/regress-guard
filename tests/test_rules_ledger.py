@@ -70,6 +70,38 @@ def test_corrupt_ledger_tolerated(tmp_path):
     assert len(data) == 1
 
 
+# ─── v1.57 近重复自检（B2：源头去重） ────────────────
+
+def test_record_near_dup_hint(tmp_path, capsys):
+    """新沉淀与既有共享 ≥6 bigram → 提示近重复+supersede 建议（print-only）。"""
+    rl = _load_rl()
+    rl.record(str(tmp_path), "f-string 字面量大括号写成单层导致 KeyError 定位模板", 2)
+    rl.record(str(tmp_path), "f-string 字面量大括号单层导致 KeyError 的另一说法", 1)
+    out = capsys.readouterr().out
+    assert "近重复候选" in out and "supersede" in out and "f-string" in out
+    # 提示不阻断：两条账目都在
+    assert len([k for k, e in rl.load(str(tmp_path)).items()
+                if not str(k).startswith("_")]) == 2
+
+
+def test_record_distinct_no_hint(tmp_path, capsys):
+    """无关新沉淀：无近重复提示。"""
+    rl = _load_rl()
+    rl.record(str(tmp_path), "端口占用 18801 启动失败", 1)
+    rl.record(str(tmp_path), "git rebase 冲突未解决", 1)
+    assert "近重复候选" not in capsys.readouterr().out
+
+
+def test_record_same_sig_rehit_no_hint(tmp_path, capsys):
+    """同 sig 再检出（命中路径）：精确去重已在，不打近重复提示。"""
+    rl = _load_rl()
+    rl.record(str(tmp_path), "f-string 字面量大括号写成单层导致 KeyError", 1)
+    capsys.readouterr()
+    rl.record(str(tmp_path), "f-string 字面量大括号写成单层导致 KeyError", 2)
+    out = capsys.readouterr().out
+    assert "命中" in out and "近重复候选" not in out
+
+
 def test_not_initialized_project(tmp_path):
     """未接入项目：exit 1 + stderr 提示，不炸。"""
     r = _run(tmp_path / "nope", "health")

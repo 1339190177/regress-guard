@@ -49,8 +49,16 @@ def _save(project_dir, data):
         json.dump(data, f, ensure_ascii=False, indent=1, sort_keys=True)
 
 
+NEAR_DUP_MIN = 6  # 近重复门槛：高于召回地板 3——误报提示比漏报更烦人
+
+
 def record(project_dir, sig, occurrences=0):
-    """记账：首次沉淀 hits=1；同签名再检出 = 命中一次（hits+1，last_hit 刷新）。"""
+    """记账：首次沉淀 hits=1；同签名再检出 = 命中一次（hits+1，last_hit 刷新）。
+
+    新沉淀时自检近重复（v1.57 源头去重）：同一规律换个说法就成两条新账目是
+    账本膨胀的主路径（实测：真实项目 3 周 18 节）。提示 print-only——
+    自动合并的错误比膨胀更贵，人看一眼再决定 supersede。
+    """
     data = load(project_dir)
     key = hashlib.sha1(sig.encode("utf-8")).hexdigest()[:12]
     today = date.today().isoformat()
@@ -67,6 +75,16 @@ def record(project_dir, sig, occurrences=0):
         action = f"命中（第 {entry['hits']} 次）"
     _save(project_dir, data)
     print(f"📒 {action}: 「{sig[:60]}」 occurrences={data[key]['occurrences']}")
+    if action == "新沉淀":
+        try:
+            near = [r for r in match(project_dir, sig, top=2, min_shared=NEAR_DUP_MIN)
+                    if r["sig"] != sig]
+            for r in near:
+                print(f"⚠️ 近重复候选: 「{r['sig'][:60]}」（hits={r['hits']}）——"
+                      f"若是同一规律的改写，优先 supersede 旧版而非新增：\n"
+                      f"   rules_ledger.py . supersede --old \"{r['sig'][:40]}…\" --new \"{sig[:40]}…\"")
+        except Exception:
+            pass  # 自检是增强：任何异常不碍记账
     return data[key]
 
 
