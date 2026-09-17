@@ -39,6 +39,47 @@ DECISION_EVENTS = ("plan_approval", "blocked", "sensory", "finish_open")
 # blocked 合并窗口（v1.38 降噪）：同键未决 30 分钟内折叠不重发（病例：同清单
 # 6 分钟 6 连推主动制造 alert fatigue，污染误报率校准）
 BLOCKED_COALESCE_S = 30 * 60
+# chat 折叠窗（v1.64，B9）：同项目+同主题 30 分钟纯去重（哨兵/固化候选/轮末
+# 提醒叠加时防刷屏）。chat 无待决生命周期——不进 pending，机器级小状态文件
+CHAT_COALESCE_S = 30 * 60
+
+
+def _chat_fold_check(pname, title):
+    """chat 同键窗口去重（v1.64）：键=项目+标题指纹。哨兵日频天然不受影响；
+    坏状态文件从零重建、时间解析失败按过期处理——发送优先于折叠。"""
+    if os.environ.get("RG_CHAT_FOLD") == "off":
+        return False
+    import datetime as _dt
+    import hashlib as _hl
+    key = _hl.sha1(f"{pname}|{title}".encode("utf-8", "ignore")).hexdigest()[:12]
+    path = os.path.expanduser(
+        os.environ.get("RG_CHAT_STATE") or "~/.zcode/regress-chat-fold.json")
+    now = _dt.datetime.now()
+
+    def _age(v):
+        try:
+            return (now - _dt.datetime.fromisoformat(str(v))).total_seconds()
+        except ValueError:
+            return float("inf")
+
+    try:
+        state = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else {}
+        if not isinstance(state, dict):
+            state = {}
+    except Exception:
+        state = {}
+    hit = state.get(key)
+    if hit is not None and _age(hit) < CHAT_COALESCE_S:
+        return True
+    try:  # 写回顺手 prune >24h，状态文件不无限长
+        fresh = {k: v for k, v in state.items() if _age(v) < 86400}
+        fresh[key] = now.isoformat(timespec="seconds")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(fresh, f, ensure_ascii=False)
+    except Exception:
+        pass
+    return False
 
 _SND_CANDIDATES = (
     "/usr/share/sounds/alsa/Front_Center.wav",
@@ -106,6 +147,10 @@ def notify(project_dir, event, title, body="", source_id=""):
         return 0
     pname = cfg.get("name") or os.path.basename(os.path.abspath(project_dir))
     title = f"【{pname}】{title}"
+    if event == "chat" and _chat_fold_check(pname, title):
+        print(f"notify: chat 折叠（同项目同主题 {CHAT_COALESCE_S // 60} 分钟内已发）",
+              file=sys.stderr)
+        return 0
     if event in DECISION_EVENTS:
         # v1.38 blocked 合并（降噪，顾问指纹修正）：同「项目+ref+原因指纹」未决
         # 且窗口内 → 折叠（不重发不重记账不刷新窗口——持续失败最多每 30 分钟

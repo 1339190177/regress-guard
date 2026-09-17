@@ -42,3 +42,14 @@ def _isolate_pending_and_send_ledger(monkeypatch, tmp_path):
     污染——度量层被污染比配置被污染更隐蔽（数字看起来仍然"正常"）。"""
     monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "no-pending.jsonl"))
     monkeypatch.setenv("RG_SEND_LEDGER", str(tmp_path / "no-send.log"))
+
+
+@pytest.fixture(autouse=True)
+def _isolate_chat_fold_state(monkeypatch, tmp_path):
+    """chat 折叠状态默认指向 tmp（v1.64）。
+
+    病例：折叠状态走真机 ~/.zcode/regress-chat-fold.json 时，同标题 chat
+    跨测试/跨收集顺序串味——先发的测试把状态写进真机，后跑的 stop_notify
+    用例被折叠掉通道副作用（marker 文件不落）→ FileNotFoundError，
+    且 shell 与门禁两种收集顺序表现不同（订单依赖假绿）。"""
+    monkeypatch.setenv("RG_CHAT_STATE", str(tmp_path / "chat-fold.json"))

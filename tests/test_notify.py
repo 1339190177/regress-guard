@@ -71,6 +71,44 @@ def test_progress_event_default_on_toggleable(tmp_path):
     assert nt.notify(str(proj2), "progress", "t") == 0
 
 
+# ─── v1.64 chat 折叠（B9：哨兵上线后的噪音防御） ────────
+
+def test_chat_fold_same_title(tmp_path, monkeypatch, capsys):
+    """同项目同标题 30 分钟内第二条折叠返 0；异标题照发。"""
+    nt = _load()
+    monkeypatch.setenv("RG_CHAT_STATE", str(tmp_path / "fold.json"))
+    stub = _channel_stub(tmp_path, tmp_path / "m10")
+    proj = _mk(tmp_path, {"channels": [stub + " {title}"]})
+    assert nt.notify(str(proj), "chat", "📡 哨兵日报") == 1
+    assert nt.notify(str(proj), "chat", "📡 哨兵日报") == 0  # 折叠
+    assert "chat 折叠" in capsys.readouterr().err
+    assert nt.notify(str(proj), "chat", "📡 另一个主题") == 1  # 异题照发
+    state = json.load(open(tmp_path / "fold.json", encoding="utf-8"))
+    assert len(state) == 2  # 两键各一
+
+
+def test_chat_fold_off_switch(tmp_path, monkeypatch):
+    """RG_CHAT_FOLD=off：同题也发（一键关）。"""
+    nt = _load()
+    monkeypatch.setenv("RG_CHAT_STATE", str(tmp_path / "fold.json"))
+    monkeypatch.setenv("RG_CHAT_FOLD", "off")
+    stub = _channel_stub(tmp_path, tmp_path / "m11")
+    proj = _mk(tmp_path, {"channels": [stub + " {title}"]})
+    assert nt.notify(str(proj), "chat", "📡 哨兵日报") == 1
+    assert nt.notify(str(proj), "chat", "📡 哨兵日报") == 1  # 关折叠照发
+
+
+def test_chat_fold_corrupt_state(tmp_path, monkeypatch):
+    """坏状态文件：从零重建不炸，发送优先于折叠。"""
+    nt = _load()
+    monkeypatch.setenv("RG_CHAT_STATE", str(tmp_path / "fold.json"))
+    (tmp_path / "fold.json").write_text("{不是json", encoding="utf-8")
+    stub = _channel_stub(tmp_path, tmp_path / "m12")
+    proj = _mk(tmp_path, {"channels": [stub + " {title}"]})
+    assert nt.notify(str(proj), "chat", "📡 主题") == 1
+    assert json.load(open(tmp_path / "fold.json", encoding="utf-8"))
+
+
 def test_wecom_subprocess_receives_merged_conf(tmp_path, monkeypatch):
     """v1.31.4 回归：裸项目+机器级 wecom → 企微子进程必须真拿到合并配置（API 桩被命中）。
     病例：2026-09-05 合并只活在父进程，子进程只读项目文件 → 演示项目推送静默失败，
