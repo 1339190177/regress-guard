@@ -202,3 +202,55 @@ def test_match_cli_json(tmp_path):
     assert isinstance(data, list) and data and "f-string" in data[0]["sig"]
     r2 = _run(proj, "match", "--query", "毫无关联的查询词语组")
     assert r2.returncode == 0 and "无相关规律" in r2.stdout
+
+
+# ─── v1.61 结构化查询面（B6：召回从拦截至扩到开工前） ────────
+
+_MF = """---
+id: R9
+status: planning
+planned_changes:
+- id: F1
+  file: hooks/scripts/lib/rules_ledger.py
+  type: internal
+fragile_points:
+- id: FP1
+  kind: machine
+  description: 派生查询稀释召回
+  verify: pytest
+  status: open
+scan:
+  card: 知识层
+---\n
+"""
+
+
+def test_query_from_manifest_terms(tmp_path):
+    """派生查询含 planned 文件名与脆弱点描述词。"""
+    rl = _load_rl()
+    mf = tmp_path / "m.md"
+    mf.write_text(_MF, encoding="utf-8")
+    q = rl.query_from_manifest(str(mf))
+    assert "rules_ledger.py" in q and "派生查询稀释召回" in q and "知识层" in q
+
+
+def test_match_from_manifest_cli(tmp_path):
+    """CLI --from-manifest：先打印派生查询再召回按文件名种的规律。"""
+    proj = _mk(tmp_path)
+    _run(proj, "record", "--sig", "rules_ledger.py 账本膨胀双胞胎重复条目", "--occurrences", "2")
+    mf = proj / "regress" / "manifests" / "R9.md"
+    mf.parent.mkdir(parents=True, exist_ok=True)
+    mf.write_text(_MF, encoding="utf-8")
+    r = _run(proj, "match", "--from-manifest", str(mf))
+    assert r.returncode == 0
+    assert "派生查询" in r.stdout and "rules_ledger.py" in r.stdout
+    assert "账本膨胀" in r.stdout
+
+
+def test_query_from_manifest_bad_path(tmp_path):
+    """坏路径/无 frontmatter：返空不炸。"""
+    rl = _load_rl()
+    assert rl.query_from_manifest(str(tmp_path / "nope.md")) == ""
+    empty = tmp_path / "empty.md"
+    empty.write_text("没有frontmatter", encoding="utf-8")
+    assert isinstance(rl.query_from_manifest(str(empty)), str)

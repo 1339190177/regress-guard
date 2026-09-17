@@ -125,6 +125,25 @@ def _bigrams(text):
     return {t[i:i + 2] for i in range(len(t) - 1)}
 
 
+def query_from_manifest(manifest_path):
+    """从清单派生召回查询（v1.61 结构化查询面）：planned files + 脆弱点描述
+    （前3条）+ scan.card 卡名——清单本身就是"动哪里/怕什么"的结构化自述。
+
+    plan 步骤 2b 前召回/learn 沉淀前查重用；召回从"拦截至"扩到"开工前"。
+    cap 300 字符防稀释；读不到返空串（查询是增强不是依赖）。
+    """
+    try:
+        from manifest_parser import get_all_changed_files, get_fragile_points, parse_frontmatter
+        terms = [f.replace(os.sep, "/") for f in get_all_changed_files(manifest_path)]
+        for fp in get_fragile_points(manifest_path)[:3]:
+            terms.append(str(fp.get("description") or "")[:60])
+        fm = parse_frontmatter(manifest_path) or {}
+        terms.append(str((fm.get("scan") or {}).get("card") or ""))
+        return " ".join(t for t in terms if t)[:300]
+    except Exception:
+        return ""
+
+
 def match(project_dir, query, top=3, min_shared=MATCH_MIN_SHARED):
     """召回（v1.53 读路径）：按 bigram 重叠数排序历史规律——骨架库不只回流，还能供给。
 
@@ -209,7 +228,9 @@ def main(argv=None):
     su.add_argument("--old", required=True)
     su.add_argument("--new", required=True)
     m = sub.add_parser("match", help="召回：按关键词匹配历史规律（失败现场读路径）")
-    m.add_argument("--query", required=True, help="查询文本（拦截原因/报错关键词）")
+    m.add_argument("--query", default="", help="查询文本（拦截原因/报错关键词）")
+    m.add_argument("--from-manifest", default="",
+                   help="从清单派生查询（结构化：文件+脆弱点+卡名；与 --query 互斥）")
     m.add_argument("--top", type=int, default=3, help="召回条数上限")
     m.add_argument("--json", action="store_true", help="机器读（B2 门禁消费）")
     h = sub.add_parser("health", help="规律健康：降级候选 + 固化候选")
@@ -225,7 +246,10 @@ def main(argv=None):
     elif args.cmd == "supersede":
         supersede(project_dir, args.old, args.new)
     elif args.cmd == "match":
-        res = match(project_dir, args.query, top=args.top)
+        query = args.query or query_from_manifest(args.from_manifest)
+        if args.from_manifest and not args.json:
+            print(f"🔍 派生查询（from {os.path.basename(args.from_manifest)}）: {query[:120]}")
+        res = match(project_dir, query, top=args.top)
         if args.json:
             print(json.dumps(res, ensure_ascii=False))
         elif not res:
