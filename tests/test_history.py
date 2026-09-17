@@ -242,3 +242,23 @@ def test_nudge_keys_isolated(regress_dir):
     _block(regress_dir, "R1", "b", "s1", "2026-09-16T10:30:00")
     rows = nudge_effectiveness(regress_dir)
     assert all(r["blocks"] == 1 for r in rows) and len(rows) == 2
+
+
+# ─── v1.62 拦截热力图（B7：召回扩点的数据接口） ────────
+
+def test_block_heatmap_ranking(regress_dir):
+    """按频次降序，含清单数与最近时间；reason 缺失归 unknown。"""
+    from history import block_heatmap
+    _block(regress_dir, "R1", "test_failed", "s1", "2026-09-17T10:00:00")
+    _block(regress_dir, "R2", "test_failed", "s1", "2026-09-17T11:00:00")
+    _block(regress_dir, "R1", "untracked_files", "s1", "2026-09-17T12:00:00")
+    rows = block_heatmap(regress_dir)
+    assert rows[0]["reason"] == "test_failed" and rows[0]["blocks"] == 2
+    assert rows[0]["manifests"] == 2 and rows[0]["last"].startswith("2026-09-17T11")
+    assert rows[1]["reason"] == "untracked_files" and rows[1]["blocks"] == 1
+
+
+def test_block_heatmap_empty(regress_dir):
+    """无拦截：空表不炸。"""
+    from history import block_heatmap
+    assert block_heatmap(regress_dir) == []

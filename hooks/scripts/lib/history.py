@@ -308,6 +308,25 @@ def recall_effectiveness(regress_dir):
     return rows
 
 
+def block_heatmap(regress_dir):
+    """拦截热力图（v1.62，B7）：commit_blocked 按 reason 聚合频次。
+
+    用途：召回接线扩点判据的数据接口（v1.54 只挂高频3点——"扩点看数据"，
+    高频 reason 即下一个该接召回的拦截点）。reason 缺失归 unknown 桶。
+    """
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for e in load_history(regress_dir):
+        if e.get("event") == "commit_blocked":
+            groups[str(e.get("reason") or "unknown")].append(e)
+    rows = []
+    for reason, es in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+        rows.append({"reason": reason, "blocks": len(es),
+                     "manifests": len({str(e.get("manifest_id") or "") for e in es}),
+                     "last": max((str(e.get("timestamp") or "") for e in es), default="")})
+    return rows
+
+
 def build_trace(regress_dir):
     """构建交付链视图（借鉴 Harness Inspector 的 Intent→Process→Output）。
 
@@ -417,3 +436,12 @@ if __name__ == "__main__":
                 mark = {"resolved_clean": "✅", "resolved_shadow": "◐",
                         "pending": "⏳"}.get(r["outcome"], " ")
                 print(f"  {mark}{r['manifest_id'] or '-'} [{r['reason']}] n={r.get('n', '?')}")
+    elif cmd == "heatmap":
+        rows = block_heatmap(regress_dir)
+        if not rows:
+            print("（无拦截记录——热力图空）")
+        else:
+            print(f"拦截热力图（reason×频次，召回扩点看这里）：{len(rows)} 种原因")
+            for r in rows[:10]:
+                print(f"  🔥 {r['reason']} ×{r['blocks']}"
+                      f"（{r['manifests']} 清单，最近 {r['last'][:16]}）")

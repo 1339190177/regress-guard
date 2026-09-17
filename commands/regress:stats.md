@@ -50,6 +50,10 @@ python3 "<插件路径>/hooks/scripts/lib/journal.py" . adoption
 # 11. 召回有效性（v1.58，事件序代理·弱证据只排序）：rule_recall 后同清单
 # 直接放行=干净解决；间有拦截=带干预解决（单列不加总）；未决。扩召回接线看这里
 python3 "<插件路径>/hooks/scripts/lib/history.py" .regress recall
+
+# 12. 拦截热力图（v1.62）：commit_blocked 按 reason 聚合频次——高频原因
+# 就是下一个该接召回的拦截点（v1.54 只挂3点，扩点看这里的数据）
+python3 "<插件路径>/hooks/scripts/lib/history.py" .regress heatmap
 ```
 
 ## 输出格式
