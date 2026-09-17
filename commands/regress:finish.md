@@ -91,6 +91,9 @@ python3 "<插件路径>/hooks/scripts/lib/journal.py" . digest
   **提交门禁会拦**（v1.40 规则B）：staged 有结构性增删/改名而卡片未随同 staged →
   block（病例：028 新增桥脚本卡片 8 天未回写无人拦）；纯脚手架确不需进卡 →
   清单 scan 加 `card_sync: false` 并写明理由
+- **验收行勾选（v1.55 升机器位）**：M/L 清单「## 验收标准」每行验证过后行尾加
+  `✅`——done 盖章时门禁校验全勾（缺节/未勾/占位/判据缺（验：命令）都拦）；
+  纸面验收不是反馈，勾过的才算数
 - **顾问采纳落账（v1.49）**：本批评审带顾问意见 → 落一条 advisor_adoption
   事件（journal add advisor_adoption，adoption ∈ adopted/partial/rejected）——
   与回复中的标注义务同源（回复里写「已咨询第二意见：采纳」，台账里也要有同条），

@@ -82,6 +82,74 @@ def _recall_hint(reason_key, msg):
         return ""
 
 
+# 验收行"已勾"标记（v1.55 验收入环）：
+#   EARS 列表行 → 行尾标记（✅/已验/（过）/通过），行内散文不误判；
+#   表格行 → 状态列（末列）行尾标记或含 pass/done/ok/locked/✔（短单元格低散文风险）
+_ACC_END_MARKS = ("✅", "已验", "（过）", "通过")
+_ACC_CELL_KEYWORDS = ("pass", "done", "ok", "locked", "✔")
+
+
+def _acceptance_state(manifest_path):
+    """解析验收标准节（v1.55）：返回 (present, total, open_rows)。
+
+    present=False = 无「## 验收标准」节；total = 认出的判据行数（0=节在但没写判据）；
+    open_rows = 未勾判据行的短描述。判据行两种形态：EARS 列表行（单行
+    "- When…则…（验：…）" 或两行判据+缩进（验：…）续行——先合并成逻辑行再判）
+    与表格行。无（验： 的 EARS 行 = 不完整判据（v1.40 三件齐才算一条）= 未勾；
+    {{占位}} 行 = 没写 = 未勾；✅ 标记放逻辑行最尾（验命令之后）。
+    解析永不抛错（读不到=不在此处拦）。
+    """
+    try:
+        text = open(manifest_path, encoding="utf-8").read()
+    except Exception:
+        return True, 1, []
+    m = re.search(r"^## 验收标准.*?(?=^## |\Z)", text, re.M | re.S)
+    if not m:
+        return False, 0, []
+    # 逻辑行合并：列表项的缩进续行拼回同一条判据
+    logical, rows = [], []
+    for line in m.group(0).splitlines():
+        s = line.strip()
+        if s.startswith("|"):
+            if logical:
+                rows.append(" ".join(logical))
+                logical = []
+            rows.append(s)
+        elif s.startswith("- "):
+            if logical:
+                rows.append(" ".join(logical))
+            logical = [s]
+        elif logical and s and not s.startswith(">") and not s.startswith("#"):
+            logical.append(s)
+        elif logical:
+            rows.append(" ".join(logical))
+            logical = []
+    if logical:
+        rows.append(" ".join(logical))
+    total, open_rows = 0, []
+    for s in rows:
+        is_row = "When" in s or "（验" in s or "则" in s
+        if s.startswith("|"):  # 表格行（状态列看末列）
+            cells = [c.strip() for c in s.strip("|").split("|")]
+            if len(cells) < 2 or cells[0] in ("#", "—") or set(cells[0]) <= {"-", "#", ":", " "}:
+                continue  # 表头/分隔行
+            total += 1
+            if "{{" in s:
+                open_rows.append(cells[0][:40] + "（占位未填）")
+                continue
+            status = cells[-1]
+            if not (status.endswith(_ACC_END_MARKS)
+                    or any(k in status.lower() for k in _ACC_CELL_KEYWORDS)):
+                open_rows.append(cells[0][:40])
+        elif is_row:
+            total += 1
+            if "{{" in s:
+                open_rows.append(s.strip("- ").split("（")[0][:40] + "（占位未填）")
+            elif not (s.rstrip().endswith(_ACC_END_MARKS) and "（验：" in s):
+                open_rows.append(s.strip("- ")[:40])
+    return True, total, open_rows
+
+
 def emit_block(msg, reason_key=""):
     if _NOTIFY_STATE["project_dir"] and not os.environ.get("RG_NO_NOTIFY"):
         try:
@@ -737,6 +805,34 @@ def main():
     runner = result.get("runner", "unknown")
 
     if status == "pass":
+        # ─── 6.5 验收入环（v1.55：M/L done 盖章前验收行全勾）─────────
+        # 验收=需求侧 done 定义——没有它 done 就是自我宣布。验命令本批不
+        # 复跑（顾问：全量测试已跑，复跑多重复；自证谎报等字段数据再上执行器）。
+        # S 档/quick 豁免（轻量合法不破）。
+        if _tier in ("M", "L") and str((_mp_scan or {}).get("mode") or "") != "quick":
+            present, total, open_rows = _acceptance_state(manifest)
+            if not present or total == 0:
+                record(regress_dir, "commit_blocked", manifest_id,
+                       reason="acceptance_missing", tier=_tier)
+                emit_block(
+                    f"M/L 清单缺验收标准判据（v1.55 验收入环）：<id {manifest_id}>\n\n"
+                    "验收标准节缺失或没有可认出的判据行——门禁复验脆弱点、"
+                    "跑全量测试，唯独没人查「需求做没做对」。\n\n"
+                    "补法：清单加「## 验收标准」节，每行 EARS-lite：\n"
+                    "  - When 条件，则 可观察结果（验：当场可跑命令）\n"
+                    "验证过一行就在行尾加 ✅；S 档/quick 模式豁免本规则"
+                )
+            elif open_rows:
+                _rows = "\n  ".join(f"· {r}" for r in open_rows[:5])
+                record(regress_dir, "commit_blocked", manifest_id,
+                       reason="acceptance_open", n=len(open_rows), tier=_tier)
+                emit_block(
+                    f"M/L 清单有 {len(open_rows)} 行验收未勾（v1.55 验收入环）：<id {manifest_id}>\n\n"
+                    f"{_rows}\n\n"
+                    "验收行没验证过就盖章 done = 纸面反馈。补法：逐行跑（验：命令），"
+                    "通过后行尾加 ✅（或表格式状态列写 pass/done/locked）；\n"
+                    "判据行本身缺（验：命令）= 不完整判据（三件齐才算一条），补全再勾"
+                )
         passed = f"{result['passed']}/{result['total']}"
         try:
             update_frontmatter(manifest, {

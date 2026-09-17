@@ -626,3 +626,78 @@ def test_block_recall_corrupt_ledger_degrades(project):
     (project / ".regress" / "rules-ledger.json").write_text("{不是json", encoding="utf-8")
     code, err, _ = run_guard("git commit -m x", project)
     assert code == 2 and "全貌产物" in err and "📚" not in err
+
+
+# ─── v1.55 验收入环（B3：EARS 验收从纸面进环） ────────────────
+
+def _passing_runner(project):
+    """给 tmp 项目造 pytest runner + 一个必过用例（reach 6 节 pass 分支）。"""
+    (project / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    (project / "test_smoke.py").write_text("def test_ok():\n    assert True\n",
+                                           encoding="utf-8")
+
+
+_M_ACC_BODY = "\n## 验收标准（EARS-lite）\n\n- When 发起请求，则 返回 200（验：curl -sf localhost:8000/health）\n"
+
+
+def test_acceptance_missing_blocks(project):
+    """M 档缺验收标准节：测试全绿也不许盖章（acceptance_missing）。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL)  # 有 scan 三件，规则A 过；无验收节
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "验收标准" in err
+    assert any(e.get("reason") == "acceptance_missing" for e in read_history(project))
+
+
+def test_acceptance_open_blocks(project):
+    """M 档验收 EARS 行未勾（行尾无 ✅）：拦（acceptance_open）。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _M_ACC_BODY)
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "验收未勾" in err
+    assert any(e.get("reason") == "acceptance_open" for e in read_history(project))
+
+
+def test_acceptance_placeholder_blocks(project):
+    """占位行（{{}}）= 没写：拦。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL +
+                    "\n## 验收标准\n\n- When {{例：发起对讲}}，则 {{3s 内建流}}（验：{{human_check}}）\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "验收未勾" in err
+
+
+def test_acceptance_all_checked_stamps_done(project):
+    """M 档验收行全带 ✅ 且测试绿：盖章 done 放行（行尾标记+（验：）双全）。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _M_ACC_BODY.replace(
+        "（验：curl -sf localhost:8000/health）",
+        "（验：python3 -m pytest test_smoke.py -q）✅"))
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 0, err
+    body = (project / ".regress" / "manifests" / "R1.md").read_text(encoding="utf-8")
+    assert "status: done" in body and "test_verified_by: hook" in body
+
+
+def test_acceptance_exempt_s_tier(project):
+    """S 档轻量合法：无验收节照样盖章（豁免位与规则A 同构）。"""
+    _passing_runner(project)
+    _write_manifest(project, "---\nid: R1\nstatus: in-progress\ntier: S\n"
+                             "rollback: git revert 即回滚\n"
+                             "planned_changes: []\nactual_changes: []\n---\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 0, err
+
+
+def test_acceptance_two_line_bullet_joined(project):
+    """两行式判据（- When… + 缩进（验：…）续行）合并成逻辑行再判：
+    ✅ 在续行尾=已勾；无标记=未勾。live 清单的真实形态。"""
+    _passing_runner(project)
+    body = (_M_FULL + "\n## 验收标准\n\n"
+            "- When 发起请求，则 返回 200\n"
+            "  （验：python3 -m pytest test_smoke.py -q）\n"
+            "- When 查健康，则 200\n"
+            "  （验：python3 -m pytest test_smoke.py -q）✅\n")
+    _write_manifest(project, body)
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "验收未勾" in err and "1 行" in err  # 只第一行未勾
