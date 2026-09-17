@@ -45,8 +45,44 @@ def emit_pass():
 # 手机才是人所在的屏。评审病例：history 6 个 blocked 事件期间 wecom 台账 0 条
 _NOTIFY_STATE = {"project_dir": None, "manifest_id": ""}
 
+# 拦截现场召回（v1.54）：拦截给"新问题的新信息"，召回附"老问题的老答案"。
+# 只接高频3点——stderr 越长越被忽略（顾问），扩展留给字段数据说话
+_RECALL_REASONS = ("test_failed", "fragile_verify_failed", "scan_missing")
 
-def emit_block(msg):
+
+def _recall_hint(reason_key, msg):
+    """召回段（v1.54 稠密反馈：骨架库从写多读少接到失败现场）。
+
+    只进 stderr（Agent 必读），不进手机推送（首行是给人的摘要）；
+    RG_RECALL=off 一键关；任何异常静默降级——召回是增强不是依赖。
+    开火记 rule_recall 事件（量测位：先计数，有没有用等字段说话）。
+    """
+    if reason_key not in _RECALL_REASONS or os.environ.get("RG_RECALL") == "off":
+        return ""
+    pd = _NOTIFY_STATE.get("project_dir")
+    if not pd:
+        return ""
+    try:
+        from rules_ledger import match
+        res = match(pd, f"{reason_key} {msg[:300]}", top=3)
+        if not res:
+            return ""
+        try:
+            record(os.path.join(pd, ".regress"), "rule_recall",
+                   _NOTIFY_STATE.get("manifest_id") or "?",
+                   reason=reason_key, n=len(res),
+                   sigs=[r["sig"][:60] for r in res])
+        except Exception:
+            pass
+        lines = ["\n📚 相关历史规律（骨架库召回——提示不是行动，采纳前对照本次现场）："]
+        lines += [f"  {i}. 「{r['sig'][:70]}」 命中×{r['hits']}（最近 {r['last_hit']}）"
+                  for i, r in enumerate(res, 1)]
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def emit_block(msg, reason_key=""):
     if _NOTIFY_STATE["project_dir"] and not os.environ.get("RG_NO_NOTIFY"):
         try:
             from notify import notify as _notify
@@ -56,7 +92,7 @@ def emit_block(msg):
                     source_id=_NOTIFY_STATE["manifest_id"])  # v1.38：合并键/自动回流的 ref
         except Exception:
             pass  # 推送是增强不是依赖
-    print(f"REGRESS-GUARD: {msg}", file=sys.stderr)
+    print(f"REGRESS-GUARD: {msg}{_recall_hint(reason_key, msg)}", file=sys.stderr)
     sys.exit(2)
 
 def emit_warn(msg):
@@ -356,7 +392,8 @@ def main():
                 + "\n补法：清单 frontmatter 加\n  scan:\n    entry: <入口在哪>\n"
                   "    test: <测试怎么跑>\n    card: <动的是哪张模块卡>\n"
                   "  understood_intent:\n    复述/边界/判据 各一行非空\n"
-                  "（对标 spec-first：理解是强制产物——看不全就对不准）"
+                  "（对标 spec-first：理解是强制产物——看不全就对不准）",
+                reason_key="scan_missing"
             )
 
     # 规则B（全档含 S/quick——结构变更本就不是轻量内部，028 标本即 S 可绕的洞）：
@@ -681,7 +718,7 @@ def main():
                reason="fragile_verify_failed",
                failed_ids=[vid for vid, _, _ in verify_failed])
         if strict:
-            emit_block(msg)
+            emit_block(msg, reason_key="fragile_verify_failed")
         else:
             emit_warn(msg)
 
@@ -771,7 +808,8 @@ def main():
                failed=result.get("failed", 0), passed=result.get("passed", 0))
         emit_block(
             f"commit 被阻断。测试未通过（runner: {runner}）：\n\n{fail_str}\n\n"
-            "请修复失败用例后重新 commit。测试通过后 hook 会自动放行。"
+            "请修复失败用例后重新 commit。测试通过后 hook 会自动放行。",
+            reason_key="test_failed"
         )
 
     emit_pass()

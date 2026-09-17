@@ -574,3 +574,55 @@ def test_supply_chain_secrets_disabled(project):
     _stage(project, "src/env.js", "key = '" + "AKIA" + "ABCDEFGHIJKLMNOP" + "'\n")
     code, err, _ = run_guard("git commit -m x", project)
     assert "密钥泄漏" not in err
+
+
+# ─── v1.54 拦截现场召回（B2：骨架库接进失败现场） ────────────────
+
+_LEDGER_SIG = {"k1": {"sig": "scan 三行缺失 M 档全貌产物没写", "captured_at": "2026-09-01",
+                      "last_hit": "2026-09-10", "hits": 3, "occurrences": 5}}
+
+
+def _write_ledger(project, data):
+    (project / ".regress" / "rules-ledger.json").write_text(
+        json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+
+def test_block_recall_shows_history_rules(project):
+    """scan_missing 拦截现场附带召回段（≤3 条）+ rule_recall 落账。"""
+    _write_manifest(project, "---\nid: R1\nstatus: in-progress\ntier: M\n"
+                             "planned_changes: []\nactual_changes: []\n---\n")
+    _write_ledger(project, _LEDGER_SIG)
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "全貌产物" in err
+    assert "📚 相关历史规律" in err and "scan 三行缺失" in err
+    assert err.count("命中×") <= 3  # TOP-3 封顶（stderr 防稀释）
+    assert any(e.get("event") == "rule_recall" and e.get("reason") == "scan_missing"
+               for e in read_history(project))
+
+
+def test_block_recall_off_switch(project):
+    """RG_RECALL=off 一键关：同场景无召回段（召回是增强不是依赖）。"""
+    _write_manifest(project, "---\nid: R1\nstatus: in-progress\ntier: M\n"
+                             "planned_changes: []\nactual_changes: []\n---\n")
+    _write_ledger(project, _LEDGER_SIG)
+    code, err, _ = run_guard("git commit -m x", project, extra_env={"RG_RECALL": "off"})
+    assert code == 2 and "📚" not in err
+
+
+def test_block_recall_not_wired_reason(project):
+    """未接线拦截点（untracked_files）不召回——选择性接线，不是万物都挂。"""
+    _write_ledger(project, {"k2": {"sig": "staged 文件不在回归清单中漏 track",
+                                   "captured_at": "2026-09-01",
+                                   "last_hit": "2026-09-05", "hits": 2, "occurrences": 3}})
+    _stage(project, "src/extra.js", "y = 1\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "不在回归清单" in err and "📚" not in err
+
+
+def test_block_recall_corrupt_ledger_degrades(project):
+    """账本坏 JSON：门禁照常拦（召回链路静默降级，不拖垮门禁）。"""
+    _write_manifest(project, "---\nid: R1\nstatus: in-progress\ntier: M\n"
+                             "planned_changes: []\nactual_changes: []\n---\n")
+    (project / ".regress" / "rules-ledger.json").write_text("{不是json", encoding="utf-8")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "全貌产物" in err and "📚" not in err
