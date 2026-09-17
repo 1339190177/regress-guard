@@ -864,6 +864,11 @@ def main():
                     "通过后行尾加 ✅（或表格式状态列写 pass/done/locked）；\n"
                     "判据行本身缺（验：命令）= 不完整判据（三件齐才算一条），补全再勾"
                 )
+            else:
+                # 通过也留痕（v1.60）：拦截/通过频次比 = FP2（✅ 自证谎报）
+                # 要不要上验命令复跑执行器的决策数据——先有开火数据再谈执行器
+                record(regress_dir, "acceptance_passed", manifest_id,
+                       rows=total, tier=_tier)
         passed = f"{result['passed']}/{result['total']}"
         try:
             update_frontmatter(manifest, {

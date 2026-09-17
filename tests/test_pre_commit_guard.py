@@ -680,6 +680,9 @@ def test_acceptance_all_checked_stamps_done(project):
     assert code == 0, err
     body = (project / ".regress" / "manifests" / "R1.md").read_text(encoding="utf-8")
     assert "status: done" in body and "test_verified_by: hook" in body
+    # v1.60：通过也落账（拦截/通过频次比 = FP2 决策数据）
+    assert any(e.get("event") == "acceptance_passed" and e.get("rows") == 1
+               for e in read_history(project))
 
 
 def test_acceptance_exempt_s_tier(project):
