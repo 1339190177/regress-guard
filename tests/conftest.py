@@ -49,7 +49,16 @@ def _isolate_chat_fold_state(monkeypatch, tmp_path):
     """chat 折叠状态默认指向 tmp（v1.64）。
 
     病例：折叠状态走真机 ~/.zcode/regress-chat-fold.json 时，同标题 chat
-    跨测试/跨收集顺序串味——先发的测试把状态写进真机，后跑的 stop_notify
+    跨测试/收集顺序串味——先发的测试把状态写进真机，后跑的 stop_notify
     用例被折叠掉通道副作用（marker 文件不落）→ FileNotFoundError，
     且 shell 与门禁两种收集顺序表现不同（订单依赖假绿）。"""
     monkeypatch.setenv("RG_CHAT_STATE", str(tmp_path / "chat-fold.json"))
+
+
+@pytest.fixture(autouse=True)
+def _trust_project_channels_by_default(monkeypatch):
+    """v1.66 供应链加固的测试缝：既有夹具大量用项目级 channels（模拟受信项目）。
+
+    顾问②：autouse 会把默认拒路径测没了——加固自身的用例必须显式
+    monkeypatch.delenv 本缝，断言默认拒绝真实生效（见 test_notify trust 组）。"""
+    monkeypatch.setenv("RG_TRUST_PROJECT_CHANNELS", "1")

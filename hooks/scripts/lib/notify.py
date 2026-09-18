@@ -113,11 +113,41 @@ def machine_conf_path():
         os.path.expanduser("~/.zcode"), "regress-notify.json")
 
 
+def trusted_projects_path():
+    """机器侧信任表（v1.66 供应链加固）：abs 路径 → 信任时间。"""
+    return os.environ.get("RG_TRUSTED_PROJECTS") or os.path.join(
+        os.path.expanduser("~/.zcode"), "regress-trusted-projects.json")
+
+
+def _trusted_projects():
+    """读信任表（坏 JSON 从零重建；realpath 防软链绕过比较）。"""
+    try:
+        data = json.load(open(trusted_projects_path(), encoding="utf-8"))
+        return {os.path.realpath(k): v for k, v in data.items()} \
+            if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _project_channels_allowed(project_dir):
+    """项目级 channels 是否可执行（v1.66，哨兵首轮 055）。
+
+    2026-04 PyPI 蠕虫同款攻击面：克隆仓库携带 .regress/config.json，其
+    notify.channels 模板会被 shell=True 执行——信任决定必须落机器侧
+    （顾问否决项目内 trust 开关：攻击者自授权）。测试缝
+    RG_TRUST_PROJECT_CHANNELS=1 仅供 conftest 保全既有夹具。
+    """
+    if os.environ.get("RG_TRUST_PROJECT_CHANNELS") == "1":
+        return True
+    return os.path.realpath(os.path.abspath(project_dir)) in _trusted_projects()
+
+
 def load_conf(project_dir):
     """两层合并（v1.31.3）：机器级 ~/.zcode/regress-notify.json 为底，
     项目 .regress/config.json 按键覆盖——其他项目零配置即得手机推送。
     wecom/events 按键深合并（项目可只覆盖 agentid/单个开关），其余浅合并项目胜；
-    项目级只该放差异键（name/事件微调），凭据放机器级一处改处处生效。"""
+    项目级只该放差异键（name/事件微调），凭据放机器级一处改处处生效。
+    channels 是唯一执行面（v1.66）：未受信项目的 channels 在 notify() 里回退。"""
     merged = _read_notify_block(machine_conf_path())
     proj = _read_notify_block(os.path.join(project_dir, ".regress", "config.json"))
     for k, v in proj.items():
@@ -142,6 +172,15 @@ def notify(project_dir, event, title, body="", source_id=""):
     cfg = load_conf(project_dir)
     if cfg.get("enabled", True) is False:
         return 0
+    # v1.66 供应链加固（哨兵 055）：项目级 channels 是执行面，未受信即回退
+    # 机器级/默认——克隆来的仓库携带 config 不再能借推送执行任意命令
+    if cfg.get("channels") and not _project_channels_allowed(project_dir):
+        mconf = _read_notify_block(machine_conf_path())
+        cfg["channels"] = mconf.get("channels")  # None → 走 _default_channels()
+        print("notify: 项目级通道未受信已回退（v1.66 供应链加固）——"
+              "信任出口：python3 notify.py trust <项目目录>（仿 direnv allow，"
+              "写 ~/.zcode/regress-trusted-projects.json）；克隆来的仓库别信任",
+              file=sys.stderr)
     events = cfg.get("events", {})
     if event != "test" and events and not events.get(event, True):
         return 0
@@ -277,6 +316,21 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "stats":
         _stats()
+        return 0
+    if argv and argv[0] == "trust":
+        # v1.66 机器侧信任出口（仿 direnv allow）：notify.py trust <项目目录>
+        if len(argv) < 2:
+            print("用法：notify.py trust <项目目录>", file=sys.stderr)
+            return 1
+        import datetime as _dt
+        target = os.path.realpath(os.path.abspath(argv[1]))
+        table = _trusted_projects()
+        table[target] = _dt.datetime.now().isoformat(timespec="seconds")
+        path = trusted_projects_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(table, f, ensure_ascii=False, indent=1, sort_keys=True)
+        print(f"✅ 已信任项目级通道：{target}（表：{path}）")
         return 0
     ap = argparse.ArgumentParser(description="人类介入通知")
     ap.add_argument("project_dir", help="项目目录（. 通常够用）")

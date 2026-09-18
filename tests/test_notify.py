@@ -71,6 +71,62 @@ def test_progress_event_default_on_toggleable(tmp_path):
     assert nt.notify(str(proj2), "progress", "t") == 0
 
 
+# ─── v1.66 供应链加固（哨兵 055：项目级 channels 机器侧信任制） ────────
+# 顾问②：以下用例全部显式 delenv 测试缝——autouse 不许把默认拒路径测没了
+
+def test_trust_default_denied(tmp_path, monkeypatch, capsys):
+    """未受信项目的 channels 不执行（回退默认），stderr 给信任出口（蠕虫防线）。"""
+    nt = _load()
+    monkeypatch.delenv("RG_TRUST_PROJECT_CHANNELS", raising=False)
+    monkeypatch.setenv("RG_TRUSTED_PROJECTS", str(tmp_path / "nope.json"))
+    marker = tmp_path / "evil-marker"
+    evil = tmp_path / "evil.sh"
+    evil.write_text("#!/bin/sh\ntouch %s\n" % marker, encoding="utf-8")
+    evil.chmod(0o700)
+    proj = _mk(tmp_path, {"channels": [str(evil)]})  # 模拟克隆来的恶意仓库 config
+    nt.notify(str(proj), "done", "t")
+    assert not marker.exists()  # 项目通道没执行（回退默认通道，返回值不定）
+    err = capsys.readouterr().err
+    assert "未受信" in err and "trust" in err
+
+
+def test_trusted_executes(tmp_path, monkeypatch):
+    """项目路径在机器信任表中 → 项目通道照常执行。"""
+    nt = _load()
+    monkeypatch.delenv("RG_TRUST_PROJECT_CHANNELS", raising=False)
+    tp = tmp_path / "trusted.json"
+    proj = _mk(tmp_path, {"channels": [_channel_stub(tmp_path, tmp_path / "m13") + " {title}"]})
+    tp.write_text(json.dumps({str(proj.resolve()): "2026-09-18T09:00:00"}),
+                  encoding="utf-8")
+    monkeypatch.setenv("RG_TRUSTED_PROJECTS", str(tp))
+    assert nt.notify(str(proj), "done", "✅ 信任项目") == 1
+
+
+def test_trust_cli(tmp_path, monkeypatch):
+    """notify.py trust <dir> 写表后通道可执行（direnv allow 式出口）。"""
+    nt = _load()
+    monkeypatch.delenv("RG_TRUST_PROJECT_CHANNELS", raising=False)
+    tp = tmp_path / "trusted.json"
+    monkeypatch.setenv("RG_TRUSTED_PROJECTS", str(tp))
+    m14 = tmp_path / "m14"
+    proj = _mk(tmp_path, {"channels": [_channel_stub(tmp_path, m14) + " {title}"]})
+    nt.notify(str(proj), "done", "t")
+    assert not m14.exists()  # 未信任：项目通道不执行
+    assert nt.main(["trust", str(proj)]) == 0
+    assert json.load(open(tp, encoding="utf-8"))  # 表已落盘
+    assert nt.notify(str(proj), "done", "t") == 1  # 信任后执行
+    assert m14.exists()
+
+
+def test_trust_seam_env_passthrough(tmp_path, monkeypatch):
+    """测试缝 RG_TRUST_PROJECT_CHANNELS=1 直通（既有夹具语义）。"""
+    nt = _load()
+    monkeypatch.setenv("RG_TRUST_PROJECT_CHANNELS", "1")
+    monkeypatch.setenv("RG_TRUSTED_PROJECTS", str(tmp_path / "nope.json"))
+    proj = _mk(tmp_path, {"channels": [_channel_stub(tmp_path, tmp_path / "m15") + " {title}"]})
+    assert nt.notify(str(proj), "done", "t") == 1
+
+
 # ─── v1.64 chat 折叠（B9：哨兵上线后的噪音防御） ────────
 
 def test_chat_fold_same_title(tmp_path, monkeypatch, capsys):
