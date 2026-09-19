@@ -102,20 +102,37 @@ def test_trusted_executes(tmp_path, monkeypatch):
     assert nt.notify(str(proj), "done", "✅ 信任项目") == 1
 
 
-def test_trust_cli(tmp_path, monkeypatch):
-    """notify.py trust <dir> 写表后通道可执行（direnv allow 式出口）。"""
+def test_trust_cli_readonly_never_writes(tmp_path, monkeypatch, capsys):
+    """v1.67 trust 转只读（顾问 B）：打印现表+人工编辑指引；任何形态不写文件。"""
     nt = _load()
     monkeypatch.delenv("RG_TRUST_PROJECT_CHANNELS", raising=False)
     tp = tmp_path / "trusted.json"
     monkeypatch.setenv("RG_TRUSTED_PROJECTS", str(tp))
-    m14 = tmp_path / "m14"
-    proj = _mk(tmp_path, {"channels": [_channel_stub(tmp_path, m14) + " {title}"]})
-    nt.notify(str(proj), "done", "t")
-    assert not m14.exists()  # 未信任：项目通道不执行
-    assert nt.main(["trust", str(proj)]) == 0
-    assert json.load(open(tp, encoding="utf-8"))  # 表已落盘
-    assert nt.notify(str(proj), "done", "t") == 1  # 信任后执行
-    assert m14.exists()
+    proj = _mk(tmp_path, {"channels": []})
+    assert nt.main(["trust", str(proj)]) == 0  # 退出码 0（只读视图成功）
+    out = capsys.readouterr().out
+    assert "只读" in out and str(tp) in out  # 表路径可见
+    assert "人工" in out and "realpath" in out and "ISO" in out  # 编辑指引齐三件
+    assert not tp.exists()  # 表不存在也不被创建
+
+
+def test_trust_cli_table_unchanged(tmp_path, monkeypatch, capsys):
+    """已有受信行：只读视图列出且前后字节不变；查询目标不在表给未受信提示。"""
+    nt = _load()
+    monkeypatch.delenv("RG_TRUST_PROJECT_CHANNELS", raising=False)
+    tp = tmp_path / "trusted.json"
+    existing = tmp_path / "already"
+    existing.mkdir()
+    tp.write_text(json.dumps({str(existing): "2026-09-18T09:00:00"}),
+                  encoding="utf-8")
+    before = tp.read_bytes()
+    monkeypatch.setenv("RG_TRUSTED_PROJECTS", str(tp))
+    outsider = _mk(tmp_path, {"channels": []})
+    assert nt.main(["trust", str(outsider)]) == 0
+    out = capsys.readouterr().out
+    assert str(existing) in out and "2026-09-18T09:00:00" in out  # 现表逐行
+    assert "不在表中" in out  # 未受信提示
+    assert tp.read_bytes() == before  # 表字节不变
 
 
 def test_trust_seam_env_passthrough(tmp_path, monkeypatch):

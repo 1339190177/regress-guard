@@ -318,19 +318,26 @@ def main(argv=None):
         _stats()
         return 0
     if argv and argv[0] == "trust":
-        # v1.66 机器侧信任出口（仿 direnv allow）：notify.py trust <项目目录>
-        if len(argv) < 2:
-            print("用法：notify.py trust <项目目录>", file=sys.stderr)
-            return 1
-        import datetime as _dt
-        target = os.path.realpath(os.path.abspath(argv[1]))
-        table = _trusted_projects()
-        table[target] = _dt.datetime.now().isoformat(timespec="seconds")
+        # v1.67 trust 转只读（顾问高置信 B）：授信=人的决定，CLI 不留写路径——
+        # 被提示注入诱导的 agent 一句 trust 自授信的洞（llms.txt/克隆仓库注入野外
+        # 实证）就此关闭。共残差（A/B 同有，如实记档不做假承诺）：agent 直接
+        # Write 表文件仍在台面（transcript 可见；缓解=人侧定期 diff 此表）。
         path = trusted_projects_path()
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(table, f, ensure_ascii=False, indent=1, sort_keys=True)
-        print(f"✅ 已信任项目级通道：{target}（表：{path}）")
+        target = (os.path.realpath(os.path.abspath(argv[1]))
+                  if len(argv) > 1 else None)
+        table = _trusted_projects()
+        print(f"信任表（只读视图）：{path}")
+        if not table:
+            print("（空——尚无受信项目）")
+        for k in sorted(table):
+            mark = " ←" if target and k == target else ""
+            print(f"  {k}  授信于 {table[k]}{mark}")
+        print(
+            "\n授信是人的决定，本命令不写表。人工授信/撤销：直接编辑上述文件，\n"
+            f'  授信一行：  "<项目 realpath>": "<ISO 时间>"\n'
+            "  （JSON 对象，键=项目绝对路径，值=授信时间；删行即撤销）")
+        if target and target not in table:
+            print(f"\n提示：{target} 当前不在表中（未受信）")
         return 0
     ap = argparse.ArgumentParser(description="人类介入通知")
     ap.add_argument("project_dir", help="项目目录（. 通常够用）")

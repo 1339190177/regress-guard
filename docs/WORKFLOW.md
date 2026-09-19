@@ -270,6 +270,7 @@ ui-ux-pro-max。
 | secret_scan（gitleaks-lite 零依赖） | 扫 staged **新增行**（历史密钥是全仓审计工具的职责）：高精度模式（AKIA/ghp_/私钥块/xox/AIza/sk-）不豁免任何路径——真密钥漏在测试里也是漏；通用 key=value 对 tests/ 与 *.md 豁免；命中 → **拦**（bypass 唯一出口）；文档示例串内置允许表 |
 | 依赖审计（best-effort） | 锁文件 staged 才触发 `npm audit --json --package-lock-only`（解析漏洞计数只认 high/critical，不信 exit code——顾问修正）；**infra fail-open**（工具缺/超时/网络败 → warn+留痕），**findings fail-closed**（高危才拦）；非 npm 锁 v1 提示人工审计 |
 | 降级 | `supply_chain.secrets/deps=false`（沿用 strict 降级先例）；`supply_chain.allowlist` 项目级追加 |
+| 项目级 channels 信任（v1.66/1.67） | 项目 channels 仅机器侧信任表（`~/.zcode/regress-trusted-projects.json`）内项目可用，未受信回退机器级通道+stderr 提示；**授信=人工编辑该表**（`notify.py trust` 只读视图——被诱导 agent 一句授信的洞已封，2026-09 野外注入实证）；共残差=agent 直接写表文件（transcript 可见，人侧定期 diff 此表） |
 
 ## 机器事实卡（v1.32：跨项目地层，三层结构）
 
