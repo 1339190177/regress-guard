@@ -882,6 +882,17 @@ def main():
         record(regress_dir, "commit_passed", manifest_id,
                runner=runner, passed=result.get("passed"), total=result.get("total"),
                base_head=_git_head_sha(), coverage_pct=result.get("coverage_pct"))
+        # v1.71 待决自动回流（run4 R3）：同清单过门禁=该清单的 blocked 告警自然
+        # 闭环——唯一自动策略（顾问禁令：不跨策略不批量不推断，只 resolve 同 ref
+        # 未决）；resolved 单列不进误报率分母（校准口径 human-only 不变）。
+        try:
+            from pending import resolve_by_ref
+            _n = resolve_by_ref(manifest_id, outcome="resolved")
+            if _n:
+                print(f"REGRESS-GUARD: 待决自动回流 {_n} 笔"
+                      f"（同清单 {manifest_id} 过门禁 → 闭环）", file=sys.stderr)
+        except Exception:
+            pass  # 回流是增强不是依赖
         cov_note = f"，覆盖率 {result['coverage_pct']}%" if result.get("coverage_pct") is not None else ""
         print(f"REGRESS-GUARD: ✅ 测试通过 ({passed}){cov_note}，清单已标记 done", file=sys.stderr)
         _mark_expected(regress_dir, "gated")

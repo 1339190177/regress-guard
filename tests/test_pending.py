@@ -287,3 +287,14 @@ def test_newest_open_matches_triple_key(tmp_path, monkeypatch):
     assert pd.newest_open("Q", "R1", "aa") is None       # 项目不同
     pd.resolve(1, "ignored")
     assert pd.newest_open("P", "R1", "aa") is None       # 已决=窗口重置
+
+
+def test_resolved_outcome_single_bucket(tmp_path, monkeypatch):
+    """v1.71（060）：resolved 自动闭环单列计数，不入误报率分母。"""
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "p.jsonl"))
+    pd = _load(PENDING, "pd-rs")
+    pd.add("P", "blocked", "⛔ 拦 R1", ref="R1")
+    assert pd.resolve_by_ref("R1", outcome="resolved") == 1
+    s = pd.stats()
+    assert s["auto_resolved"] == 1 and s["pending"] == 0
+    assert s["fp_rate"] is None  # human 裁决为零 → 分母空（口径不变）

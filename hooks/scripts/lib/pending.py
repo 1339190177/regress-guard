@@ -160,8 +160,10 @@ def stats():
                     e["ts"])).total_seconds() / 86400 for e in open_p]
         oldest = f"{max(ages):.1f}天"
     decided = by["useful"] + by["fp"] + by["ignored"]
+    auto = sum(1 for e in res if e.get("outcome") == "resolved")
     return {"total": len(adds), "pending": len(open_p), "oldest_pending": oldest,
-            "resolved": by, "fp_rate": (by["fp"] / decided) if decided else None,
+            "resolved": by, "auto_resolved": auto,
+            "fp_rate": (by["fp"] / decided) if decided else None,
             "merged": count_merged(), "open": open_p}
 
 
@@ -190,7 +192,8 @@ def main(argv=None):
         # v1.38：旧版判定查 adds 记录里的 resolve_id（永远不存在）→ 全显 ⏳，
         # 已决结局不可见（病例：18 行全 ⏳、stats 未决 14 对不上）
         adds, resolves = _load()
-        _zh = {"useful": "有用", "fp": "误报", "ignored": "忽略"}
+        _zh = {"useful": "有用", "fp": "误报", "ignored": "忽略",
+               "resolved": "闭环(自动)"}
         open_ids = sorted(k for k in adds if k not in resolves)
         for k in open_ids:
             print(_fmt_row(adds[k], "⏳"))

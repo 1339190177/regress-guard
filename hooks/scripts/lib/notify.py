@@ -344,6 +344,9 @@ def _stats():
           f"忽略{s['resolved']['ignored']}｜误报率 {fp}")
     if s.get("merged"):
         print(f"blocked 折叠：{s['merged']} 次（同键 30 分钟窗口内降噪）")
+    if s.get("auto_resolved"):
+        print(f"自动闭环：{s['auto_resolved']} 笔（同清单过门禁自动 resolve，"
+              f"不计入误报率）")
     for e in s["open"][-5:]:
         print(f"  ⏳ #{e['id']} {e['ts'][:16]} [{e['event']}] {e['title'][:40]}")
 

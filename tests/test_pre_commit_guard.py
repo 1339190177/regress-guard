@@ -710,3 +710,28 @@ def test_acceptance_two_line_bullet_joined(project):
     _write_manifest(project, body)
     code, err, _ = run_guard("git commit -m x", project)
     assert code == 2 and "验收未勾" in err and "1 行" in err  # 只第一行未勾
+
+
+# ─── v1.71 待决自动回流（060：同清单过门禁即闭环） ────────────────
+
+_M_ACC_PASS = ("\n## 验收标准（EARS-lite）\n\n"
+               "- When 发起请求，则 返回 200（验：curl -sf localhost:8000/health）pass ✅\n")
+
+
+def test_auto_reflow_pending_on_gate_pass(project, tmp_path, monkeypatch):
+    """同清单过门禁 → 该 ref 未决 blocked 自动闭环；异 ref 不动（唯一策略）。"""
+    led = tmp_path / "p.jsonl"
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(led))
+    import importlib.util as ilu
+    _L = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), "..", "hooks", "scripts", "lib"))
+    spec = ilu.spec_from_file_location("pd-ar", os.path.join(_L, "pending.py"))
+    pd = ilu.module_from_spec(spec); spec.loader.exec_module(pd)
+    pd.add("P", "blocked", "⛔ 提交被拦 R1", ref="R1")
+    pd.add("P", "blocked", "⛔ 提交被拦 R9", ref="R9")
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _M_ACC_PASS)
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 0 and "自动回流 1 笔" in err
+    s = pd.stats()
+    assert s["auto_resolved"] == 1 and s["pending"] == 1  # R9 未被动
