@@ -201,10 +201,8 @@ def summarize(regress_dir):
             if e.get("event") == "commit_passed" and e.get("coverage_pct") is not None]
     avg_coverage = round(sum(covs) / len(covs)) if covs else None
 
-    # 门禁外提交：外部直提 + 历史回填（zcode-gate/zcode-bypass 是门禁放行的，不算）
-    outside_commits = sum(1 for e in events
-                          if e.get("event") == "commit_observed"
-                          and e.get("source") in ("git-hook", "git-backfill"))
+    # （v1.75：外部提交观测消费段已删——写端模板早删，真机 252 事件零发射，
+    #  恒零计数是死码；观测器复活条件=install 接线 post-commit 观测+攻击面评估）
 
     # Ch21 阻断原因分布
     block_reasons = {}
@@ -219,8 +217,7 @@ def summarize(regress_dir):
         "top_f3_files": top_f3,
         "top_f3_patterns": top_patterns,
         "top_f3_noise": sorted(f3_noise.items(), key=lambda x: -x[1])[:5],  # 已过滤的噪声
-        "avg_coverage_pct": avg_coverage,  # 平均行覆盖率（None=无覆盖率数据）
-        "outside_gate_commits": outside_commits,  # 未走门禁的提交数（IDE/终端直提）
+        "avg_coverage_pct": avg_coverage,  # 平均行覆盖率（None=无覆盖率数据）  # 未走门禁的提交数（IDE/终端直提）
         "frequent_failures": top_failures,
         "test_runner": main_runner,
         "bypass_rate": round(bypass_rate, 2),
@@ -349,20 +346,9 @@ def build_trace(regress_dir):
         first = evts[0]
         lines.append(f"📌 {mid}  ({first.get('timestamp', '?')[:19]})")
 
-        # git 观测的提交（非本清单会话产生）单列
-        observed = [e for e in evts if e.get("event") == "commit_observed"]
-        worked = [e for e in evts if e.get("event") != "commit_observed"]
-        if observed:
-            lines.append(f"   └─ 外部提交（IDE/终端，{len(observed)} 次，未走门禁测试）")
-            for e in observed[:5]:
-                ts = e.get("timestamp", "")[5:16]
-                lines.append(f"       📤 {ts} {e.get('commit_sha','')} {e.get('subject','')[:40]}")
-            if len(observed) > 5:
-                lines.append(f"       … 共 {len(observed)} 次")
-
         # 按 session 分组（过程锚点）
         by_session = {}
-        for e in worked:
+        for e in evts:
             sid = e.get("session_id") or "?"
             by_session.setdefault(sid, []).append(e)
 

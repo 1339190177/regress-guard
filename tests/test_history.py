@@ -141,25 +141,7 @@ def test_avg_coverage(regress_dir):
     assert s["avg_coverage_pct"] == 90
 
 
-def test_commit_observed_counted(regress_dir):
-    """git 观测事件计入 outside_gate_commits。"""
-    record(regress_dir, "commit_observed", "", commit_sha="a1", subject="s", source="git-hook")
-    record(regress_dir, "commit_passed", "R1", runner="jest")
-    s = summarize(regress_dir)
-    assert s["outside_gate_commits"] == 1
 
-
-def test_observed_source_distinction(regress_dir):
-    """来源区分：门禁放行(zcode-gated)不算未走门禁；直提/回填算。"""
-    record(regress_dir, "commit_observed", "", commit_sha="g1", subject="s", source="zcode-gated")
-    record(regress_dir, "commit_observed", "", commit_sha="g2", subject="s", source="zcode-bypass")
-    record(regress_dir, "commit_observed", "", commit_sha="h1", subject="s", source="git-hook")
-    record(regress_dir, "commit_observed", "", commit_sha="h2", subject="s", source="git-backfill")
-    s = summarize(regress_dir)
-    assert s["outside_gate_commits"] == 2  # 只有外部直提+回填
-
-
-# ─── v1.47 块消息有效性（B2 影子采集，GEPA 评分环） ────────
 
 def _block(regress_dir, mid, reason, session, ts):
     """直写事件（record 的 timestamp/session 由 env 推断，测试要显式控制）。"""
