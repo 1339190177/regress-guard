@@ -735,3 +735,28 @@ def test_auto_reflow_pending_on_gate_pass(project, tmp_path, monkeypatch):
     assert code == 0 and "自动回流 1 笔" in err
     s = pd.stats()
     assert s["auto_resolved"] == 1 and s["pending"] == 1  # R9 未被动
+
+
+# ─── v1.73 验收解析宽松化（062：✅ 任意位置计勾） ────────────────
+
+def test_acceptance_mark_anywhere_counts(project):
+    """✅ 后拖文字（非行尾）计勾——056 两次被 endswith 咬的狗粮根治。"""
+    _passing_runner(project)
+    body = _M_FULL + (
+        "\n## 验收标准（EARS-lite）\n\n"
+        "- When 发起请求，则 返回 200（验：curl -sf localhost:8000/health）"
+        "5/5 passed ✅\n")
+    _write_manifest(project, body)
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 0  # 宽松化后计勾放行
+
+
+def test_acceptance_mark_without_verify_still_blocks(project):
+    """有 ✅ 但缺（验：命令）= 不完整判据，仍拦（防假勾）。"""
+    _passing_runner(project)
+    body = _M_FULL + (
+        "\n## 验收标准（EARS-lite）\n\n"
+        "- When 发起请求，则 返回 200 ✅ 好了\n")
+    _write_manifest(project, body)
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 2 and "验收未勾" in err

@@ -176,7 +176,10 @@ def _acceptance_state(manifest_path):
             total += 1
             if "{{" in s:
                 open_rows.append(s.strip("- ").split("（")[0][:40] + "（占位未填）")
-            elif not (s.rstrip().endswith(_ACC_END_MARKS) and "（验：" in s):
+            elif not ("（验：" in s and any(m in s for m in _ACC_END_MARKS)):
+                # v1.73 宽松化：通过标记任意位置计勾（标记本身即人的验证声明，
+                # 位置无语义——056 两次被 endswith 咬的狗粮）；缺（验：命令）
+                # 仍=未勾（三件齐才算一条，防假勾）
                 open_rows.append(s.strip("- ")[:40])
     return True, total, open_rows
 
@@ -861,7 +864,8 @@ def main():
                     f"M/L 清单有 {len(open_rows)} 行验收未勾（v1.55 验收入环）：<id {manifest_id}>\n\n"
                     f"{_rows}\n\n"
                     "验收行没验证过就盖章 done = 纸面反馈。补法：逐行跑（验：命令），"
-                    "通过后行尾加 ✅（或表格式状态列写 pass/done/locked）；\n"
+                    "通过后行内加 ✅/已验/通过（v1.73 起任意位置计勾，如"
+                    "（验：命令）5/5 passed ✅；表格式状态列写 pass/done/locked）；\n"
                     "判据行本身缺（验：命令）= 不完整判据（三件齐才算一条），补全再勾"
                 )
             else:
