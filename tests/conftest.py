@@ -55,10 +55,7 @@ def _isolate_chat_fold_state(monkeypatch, tmp_path):
     monkeypatch.setenv("RG_CHAT_STATE", str(tmp_path / "chat-fold.json"))
 
 
-@pytest.fixture(autouse=True)
-def _trust_project_channels_by_default(monkeypatch):
-    """v1.66 供应链加固的测试缝：既有夹具大量用项目级 channels（模拟受信项目）。
-
-    顾问②：autouse 会把默认拒路径测没了——加固自身的用例必须显式
-    monkeypatch.delenv 本缝，断言默认拒绝真实生效（见 test_notify trust 组）。"""
-    monkeypatch.setenv("RG_TRUST_PROJECT_CHANNELS", "1")
+# v1.68：_trust_project_channels_by_default autouse 夹具已删——env 缝即
+# 生产旁路（RG_TRUST_PROJECT_CHANNELS 可被 git commit 前缀注入，057 收口）。
+# 项目级 channels 测试改 monkeypatch notify 模块 _TRUST_TABLE_PATH 属性
+# （helper 见各测试文件 _trusted()），默认拒路径从此是真默认。

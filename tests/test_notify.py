@@ -17,8 +17,8 @@ def _load():
     return nt
 
 
-def _mk(tmp_path, conf=None):
-    proj = tmp_path / "proj"
+def _mk(tmp_path, conf=None, name="proj"):
+    proj = tmp_path / name
     (proj / ".regress").mkdir(parents=True, exist_ok=True)
     if conf is not None:
         (proj / ".regress" / "config.json").write_text(
@@ -27,15 +27,30 @@ def _mk(tmp_path, conf=None):
 
 
 def _channel_stub(tmp_path, marker):
-    stub = tmp_path / "stub.sh"
+    # 文件名含 marker——一测多 stub 时互不覆盖（057 迁移时暴露：原共享
+    # stub.sh 名，先建全部再发送的顺序会把前一个 marker 顶掉）
+    stub = tmp_path / f"stub-{marker.name}.sh"
     stub.write_text("#!/bin/sh\necho \"$@\" >> %s\n" % marker, encoding="utf-8")
     stub.chmod(stat.S_IRWXU)
     return str(stub)
 
 
+def _trusted(nt, tmp_path, *projects):
+    """v1.68 受信设置唯一出口：把项目写进 tmp 表并指给模块常量属性。
+    env 缝已按 057 收口（RG_TRUSTED_PROJECTS/RG_TRUST_PROJECT_CHANNELS
+    生产零影响）——nt 是每测新载的模块对象，直改属性即隔离即复原。"""
+    import pathlib
+    tp = tmp_path / "trust.json"
+    tp.write_text(json.dumps(
+        {str(pathlib.Path(p).resolve()): "2026-09-20T09:00:00" for p in projects},
+        ensure_ascii=False), encoding="utf-8")
+    nt._TRUST_TABLE_PATH = str(tp)
+
+
 def test_channel_runs_with_quoted_placeholders(tmp_path):
     nt = _load()
     proj = _mk(tmp_path, {"channels": [_channel_stub(tmp_path, tmp_path / "m1") + " {title} {body}"]})
+    _trusted(nt, tmp_path, proj)
     assert nt.notify(str(proj), "plan_approval", "📋 待批准 REGRESS-1", "改动 3 文件") == 1
     out = (tmp_path / "m1").read_text(encoding="utf-8")  # body 带 🕐 换行，全文断言
     assert "待批准 REGRESS-1" in out and "改动 3 文件" in out
@@ -47,16 +62,17 @@ def test_project_name_prefix_and_time_suffix(tmp_path):
     nt = _load()
     proj = _mk(tmp_path, {"name": "会场助手",
                           "channels": [_channel_stub(tmp_path, tmp_path / "m7") + " {title} {body}"]})
-    nt.notify(str(proj), "done", "🏁 完成 R1", "干净收尾")
-    out = (tmp_path / "m7").read_text(encoding="utf-8")
-    assert "【会场助手】🏁 完成 R1" in out
-    assert _re.search(r"🕐 \d{2}-\d{2} \d{2}:\d{2}", out)
-    # 无 name 配置 → 目录名兜底
     proj2 = tmp_path / "myproj"
     (proj2 / ".regress").mkdir(parents=True, exist_ok=True)
     (proj2 / ".regress" / "config.json").write_text(
         json.dumps({"notify": {"channels": [_channel_stub(tmp_path, tmp_path / "m8") + " {title} {body}"]}}),
         encoding="utf-8")
+    _trusted(nt, tmp_path, proj, proj2)
+    nt.notify(str(proj), "done", "🏁 完成 R1", "干净收尾")
+    out = (tmp_path / "m7").read_text(encoding="utf-8")
+    assert "【会场助手】🏁 完成 R1" in out
+    assert _re.search(r"🕐 \d{2}-\d{2} \d{2}:\d{2}", out)
+    # 无 name 配置 → 目录名兜底
     nt.notify(str(proj2), "blocked", "🛑 受阻")
     assert "【myproj】🛑 受阻" in (tmp_path / "m8").read_text(encoding="utf-8")
 
@@ -65,49 +81,53 @@ def test_progress_event_default_on_toggleable(tmp_path):
     """v1.33 长任务心跳：progress 事件存量配置默认开、可显式关。"""
     nt = _load()
     stub = _channel_stub(tmp_path, tmp_path / "m9")
-    proj = _mk(tmp_path, {"channels": [stub + " {title}"]})
+    proj = _mk(tmp_path, {"channels": [stub + " {title}"]}, name="proj-a")
+    proj2 = _mk(tmp_path, {"channels": [stub + " {title}"], "events": {"progress": False}},
+                name="proj-b")
+    _trusted(nt, tmp_path, proj, proj2)
     assert nt.notify(str(proj), "progress", "⏳ 进度 R1：F1 完成") == 1
-    proj2 = _mk(tmp_path, {"channels": [stub + " {title}"], "events": {"progress": False}})
     assert nt.notify(str(proj2), "progress", "t") == 0
 
 
-# ─── v1.66 供应链加固（哨兵 055：项目级 channels 机器侧信任制） ────────
-# 顾问②：以下用例全部显式 delenv 测试缝——autouse 不许把默认拒路径测没了
+# ─── v1.66/1.68 供应链加固（055 项目 channels 信任制 + 057 env 缝收口） ────────
 
 def test_trust_default_denied(tmp_path, monkeypatch, capsys):
-    """未受信项目的 channels 不执行（回退默认），stderr 给信任出口（蠕虫防线）。"""
+    """未受信项目的 channels 不执行（回退默认），stderr 给信任出口（蠕虫防线）。
+    v1.68 攻击重放（057）：模拟被注入诱导的 agent 在 git commit 前缀注入
+    RG_TRUSTED_PROJECTS/RG_TRUST_PROJECT_CHANNELS/HOME——生产路径零 env 影响，
+    恶意 channels 仍被拒。"""
     nt = _load()
-    monkeypatch.delenv("RG_TRUST_PROJECT_CHANNELS", raising=False)
-    monkeypatch.setenv("RG_TRUSTED_PROJECTS", str(tmp_path / "nope.json"))
+    atk = tmp_path / "atk"
+    atk.mkdir()
+    (atk / "regress-trusted-projects.json").write_text(
+        json.dumps({str(tmp_path): "2099-01-01T00:00:00"}), encoding="utf-8")
+    monkeypatch.setenv("RG_TRUSTED_PROJECTS", str(atk / "regress-trusted-projects.json"))
+    monkeypatch.setenv("RG_TRUST_PROJECT_CHANNELS", "1")
+    monkeypatch.setenv("HOME", str(atk))  # expanduser 间接层同批封（表改 passwd 派生）
     marker = tmp_path / "evil-marker"
     evil = tmp_path / "evil.sh"
     evil.write_text("#!/bin/sh\ntouch %s\n" % marker, encoding="utf-8")
     evil.chmod(0o700)
     proj = _mk(tmp_path, {"channels": [str(evil)]})  # 模拟克隆来的恶意仓库 config
     nt.notify(str(proj), "done", "t")
-    assert not marker.exists()  # 项目通道没执行（回退默认通道，返回值不定）
+    assert not marker.exists()  # env 三重注入全部无效：项目通道没执行
     err = capsys.readouterr().err
     assert "未受信" in err and "trust" in err
 
 
-def test_trusted_executes(tmp_path, monkeypatch):
-    """项目路径在机器信任表中 → 项目通道照常执行。"""
+def test_trusted_executes(tmp_path):
+    """项目路径在机器信任表中 → 项目通道照常执行（表经 _TRUST_TABLE_PATH 属性注入）。"""
     nt = _load()
-    monkeypatch.delenv("RG_TRUST_PROJECT_CHANNELS", raising=False)
-    tp = tmp_path / "trusted.json"
     proj = _mk(tmp_path, {"channels": [_channel_stub(tmp_path, tmp_path / "m13") + " {title}"]})
-    tp.write_text(json.dumps({str(proj.resolve()): "2026-09-18T09:00:00"}),
-                  encoding="utf-8")
-    monkeypatch.setenv("RG_TRUSTED_PROJECTS", str(tp))
+    _trusted(nt, tmp_path, proj)
     assert nt.notify(str(proj), "done", "✅ 信任项目") == 1
 
 
-def test_trust_cli_readonly_never_writes(tmp_path, monkeypatch, capsys):
+def test_trust_cli_readonly_never_writes(tmp_path, capsys):
     """v1.67 trust 转只读（顾问 B）：打印现表+人工编辑指引；任何形态不写文件。"""
     nt = _load()
-    monkeypatch.delenv("RG_TRUST_PROJECT_CHANNELS", raising=False)
     tp = tmp_path / "trusted.json"
-    monkeypatch.setenv("RG_TRUSTED_PROJECTS", str(tp))
+    nt._TRUST_TABLE_PATH = str(tp)
     proj = _mk(tmp_path, {"channels": []})
     assert nt.main(["trust", str(proj)]) == 0  # 退出码 0（只读视图成功）
     out = capsys.readouterr().out
@@ -116,17 +136,16 @@ def test_trust_cli_readonly_never_writes(tmp_path, monkeypatch, capsys):
     assert not tp.exists()  # 表不存在也不被创建
 
 
-def test_trust_cli_table_unchanged(tmp_path, monkeypatch, capsys):
+def test_trust_cli_table_unchanged(tmp_path, capsys):
     """已有受信行：只读视图列出且前后字节不变；查询目标不在表给未受信提示。"""
     nt = _load()
-    monkeypatch.delenv("RG_TRUST_PROJECT_CHANNELS", raising=False)
     tp = tmp_path / "trusted.json"
     existing = tmp_path / "already"
     existing.mkdir()
     tp.write_text(json.dumps({str(existing): "2026-09-18T09:00:00"}),
                   encoding="utf-8")
+    nt._TRUST_TABLE_PATH = str(tp)
     before = tp.read_bytes()
-    monkeypatch.setenv("RG_TRUSTED_PROJECTS", str(tp))
     outsider = _mk(tmp_path, {"channels": []})
     assert nt.main(["trust", str(outsider)]) == 0
     out = capsys.readouterr().out
@@ -135,13 +154,8 @@ def test_trust_cli_table_unchanged(tmp_path, monkeypatch, capsys):
     assert tp.read_bytes() == before  # 表字节不变
 
 
-def test_trust_seam_env_passthrough(tmp_path, monkeypatch):
-    """测试缝 RG_TRUST_PROJECT_CHANNELS=1 直通（既有夹具语义）。"""
-    nt = _load()
-    monkeypatch.setenv("RG_TRUST_PROJECT_CHANNELS", "1")
-    monkeypatch.setenv("RG_TRUSTED_PROJECTS", str(tmp_path / "nope.json"))
-    proj = _mk(tmp_path, {"channels": [_channel_stub(tmp_path, tmp_path / "m15") + " {title}"]})
-    assert nt.notify(str(proj), "done", "t") == 1
+# （v1.68：test_trust_seam_env_passthrough 已删——RG_TRUST_PROJECT_CHANNELS
+#  缝随 057 收口，env 直通不再是被测行为；攻击重放断言反向覆盖见上组）
 
 
 # ─── v1.64 chat 折叠（B9：哨兵上线后的噪音防御） ────────
@@ -152,6 +166,7 @@ def test_chat_fold_same_title(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("RG_CHAT_STATE", str(tmp_path / "fold.json"))
     stub = _channel_stub(tmp_path, tmp_path / "m10")
     proj = _mk(tmp_path, {"channels": [stub + " {title}"]})
+    _trusted(nt, tmp_path, proj)
     assert nt.notify(str(proj), "chat", "📡 哨兵日报") == 1
     assert nt.notify(str(proj), "chat", "📡 哨兵日报") == 0  # 折叠
     assert "chat 折叠" in capsys.readouterr().err
@@ -167,6 +182,7 @@ def test_chat_fold_off_switch(tmp_path, monkeypatch):
     monkeypatch.setenv("RG_CHAT_FOLD", "off")
     stub = _channel_stub(tmp_path, tmp_path / "m11")
     proj = _mk(tmp_path, {"channels": [stub + " {title}"]})
+    _trusted(nt, tmp_path, proj)
     assert nt.notify(str(proj), "chat", "📡 哨兵日报") == 1
     assert nt.notify(str(proj), "chat", "📡 哨兵日报") == 1  # 关折叠照发
 
@@ -178,6 +194,7 @@ def test_chat_fold_corrupt_state(tmp_path, monkeypatch):
     (tmp_path / "fold.json").write_text("{不是json", encoding="utf-8")
     stub = _channel_stub(tmp_path, tmp_path / "m12")
     proj = _mk(tmp_path, {"channels": [stub + " {title}"]})
+    _trusted(nt, tmp_path, proj)
     assert nt.notify(str(proj), "chat", "📡 主题") == 1
     assert json.load(open(tmp_path / "fold.json", encoding="utf-8"))
 
@@ -263,11 +280,12 @@ def test_machine_fallback_and_keywise_merge(tmp_path, monkeypatch):
 def test_event_toggle_and_master_switch(tmp_path):
     nt = _load()
     stub = _channel_stub(tmp_path, tmp_path / "m2")
-    proj = _mk(tmp_path, {"channels": [stub], "events": {"blocked": False}})
+    proj = _mk(tmp_path, {"channels": [stub], "events": {"blocked": False}}, name="proj-a")
+    proj2 = _mk(tmp_path, {"enabled": False, "channels": [stub]}, name="proj-b")
+    proj3 = _mk(tmp_path, {"channels": [stub]}, name="proj-c")
+    _trusted(nt, tmp_path, proj, proj2, proj3)
     assert nt.notify(str(proj), "blocked", "t") == 0
-    proj2 = _mk(tmp_path, {"enabled": False, "channels": [stub]})
     assert nt.notify(str(proj2), "plan_approval", "t") == 0
-    proj3 = _mk(tmp_path, {"channels": [stub]})
     assert nt.notify(str(proj3), "sensory", "t") == 1
 
 
@@ -275,9 +293,10 @@ def test_done_event_default_on_and_toggleable(tmp_path):
     """done（v1.31.1 离场召回）：存量配置无 done 键默认开；显式关掉则静默。"""
     nt = _load()
     stub = _channel_stub(tmp_path, tmp_path / "m6")
-    proj = _mk(tmp_path, {"channels": [stub]})  # events 无 done 键
+    proj = _mk(tmp_path, {"channels": [stub]}, name="proj-a")  # events 无 done 键
+    proj2 = _mk(tmp_path, {"channels": [stub], "events": {"done": False}}, name="proj-b")
+    _trusted(nt, tmp_path, proj, proj2)
     assert nt.notify(str(proj), "done", "🏁 完成 R1") == 1
-    proj2 = _mk(tmp_path, {"channels": [stub], "events": {"done": False}})
     assert nt.notify(str(proj2), "done", "t") == 0
 
 
@@ -286,6 +305,7 @@ def test_test_event_bypasses_toggles(tmp_path):
     nt = _load()
     stub = _channel_stub(tmp_path, tmp_path / "m5")
     proj = _mk(tmp_path, {"channels": [stub], "events": {"blocked": False, "sensory": False}})
+    _trusted(nt, tmp_path, proj)
     assert nt.notify(str(proj), "test", "🔔 通道测试") == 1
 
 
@@ -293,12 +313,18 @@ def test_failing_channel_never_raises(tmp_path):
     nt = _load()
     proj = _mk(tmp_path, {"channels": ["definitely-not-a-command-xyz {title}",
                                        _channel_stub(tmp_path, tmp_path / "m3")]})
+    _trusted(nt, tmp_path, proj)
     ran = nt.notify(str(proj), "finish_open", "t", "b")  # 不抛即过
     assert ran == 1
 
 
-def test_cli_smoke(tmp_path):
-    proj = _mk(tmp_path, {"channels": [_channel_stub(tmp_path, tmp_path / "m4") + " {title} {body}"]})
+def test_cli_smoke(tmp_path, monkeypatch):
+    proj = _mk(tmp_path, {})
+    mach = tmp_path / "machine.json"
+    mach.write_text(json.dumps(
+        {"notify": {"channels": [_channel_stub(tmp_path, tmp_path / "m4") + " {title} {body}"]}}),
+        encoding="utf-8")
+    monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))  # 子进程改走机器级（057 后项目级须信任表）
     r = subprocess.run([sys.executable, NOTIFY, str(proj), "blocked",
                         "--title", "🛑 受阻", "--body", "需要：白名单"],
                        capture_output=True, text=True, timeout=15)

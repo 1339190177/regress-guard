@@ -113,10 +113,28 @@ def machine_conf_path():
         os.path.expanduser("~/.zcode"), "regress-notify.json")
 
 
+def _pwuid_home():
+    """家目录取 passwd 数据库而非 HOME env（v1.68）——expanduser('~') 读
+    HOME，被注入诱导的 agent 前缀 HOME=/tmp/x git commit 即可换信任表/
+    机器配置路径（同族旁路）；getpwuid 是系统账本不受进程环境操纵。
+    非 POSIX 兜底 expanduser（本插件面向 Linux/mac 用户级）。"""
+    try:
+        import pwd
+        return pwd.getpwuid(os.getuid()).pw_dir
+    except (ImportError, KeyError):
+        return os.path.expanduser("~")
+
+
+_TRUST_TABLE_PATH = os.path.join(_pwuid_home(), ".zcode",
+                                 "regress-trusted-projects.json")
+
+
 def trusted_projects_path():
-    """机器侧信任表（v1.66 供应链加固）：abs 路径 → 信任时间。"""
-    return os.environ.get("RG_TRUSTED_PROJECTS") or os.path.join(
-        os.path.expanduser("~/.zcode"), "regress-trusted-projects.json")
+    """机器侧信任表（v1.66 供应链加固）：abs 路径 → 信任时间。
+    v1.68 起零环境覆盖（顾问裁定：env 缝=生产旁路——RG_TRUSTED_PROJECTS
+    可被 git commit 前缀注入换表自授信，HOME 间接层同罪）。测试控制=
+    monkeypatch 本模块 _TRUST_TABLE_PATH 属性，不留 env 缝。"""
+    return _TRUST_TABLE_PATH
 
 
 def _trusted_projects():
@@ -134,11 +152,9 @@ def _project_channels_allowed(project_dir):
 
     2026-04 PyPI 蠕虫同款攻击面：克隆仓库携带 .regress/config.json，其
     notify.channels 模板会被 shell=True 执行——信任决定必须落机器侧
-    （顾问否决项目内 trust 开关：攻击者自授权）。测试缝
-    RG_TRUST_PROJECT_CHANNELS=1 仅供 conftest 保全既有夹具。
-    """
-    if os.environ.get("RG_TRUST_PROJECT_CHANNELS") == "1":
-        return True
+    （顾问否决项目内 trust 开关：攻击者自授权）。v1.68 起唯一判据=表内
+    realpath（RG_TRUST_PROJECT_CHANNELS 直通缝已删——env 可被
+    git commit 前缀注入，缝即旁路；同族 RG_TRUSTED_PROJECTS 同批收口）。"""
     return os.path.realpath(os.path.abspath(project_dir)) in _trusted_projects()
 
 

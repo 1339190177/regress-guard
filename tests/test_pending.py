@@ -33,6 +33,16 @@ def _mk_proj(tmp_path, channels):
 
 # ─── 台账本体 ────────────────────────────────────────────
 
+def _trusted(nt, tmp_path, proj):
+    """v1.68（057）：项目 channels 受信——写 tmp 表+setattr 模块常量（env 缝已收口）。"""
+    import pathlib
+    tp = tmp_path / "trust.json"
+    tp.write_text(json.dumps(
+        {str(pathlib.Path(proj).resolve()): "2026-09-20T09:00:00"}),
+        encoding="utf-8")
+    nt._TRUST_TABLE_PATH = str(tp)
+
+
 def test_add_returns_incrementing_ids(tmp_path, monkeypatch):
     monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "p.jsonl"))
     pd = _load(PENDING, "pd")
@@ -81,6 +91,7 @@ def test_decision_push_creates_pending_with_id_in_body(tmp_path, monkeypatch):
     nt = _load(NOTIFY, "nt2")
     marker = tmp_path / "m"
     proj = _mk_proj(tmp_path, [_stub_channel(tmp_path, marker) + " {title} {body}"])
+    _trusted(nt, tmp_path, proj)
     assert nt.notify(str(proj), "plan_approval", "📋 待批准", "x") == 1
     out = marker.read_text(encoding="utf-8")
     assert "〔待决#1〕" in out and "有用/误报/忽略" in out
@@ -95,6 +106,7 @@ def test_info_push_creates_no_pending(tmp_path, monkeypatch):
     nt = _load(NOTIFY, "nt3")
     marker = tmp_path / "m"
     proj = _mk_proj(tmp_path, [_stub_channel(tmp_path, marker) + " {title} {body}"])
+    _trusted(nt, tmp_path, proj)
     nt.notify(str(proj), "done", "🏁 完成", "y")
     nt.notify(str(proj), "progress", "⏳ 进度", "z")
     out = marker.read_text(encoding="utf-8")
@@ -181,6 +193,7 @@ def test_bad_channel_template_isolated(tmp_path):
             "awk '{print}' /nope",               # 坏模板：花括号炸 format
             str(stub) + " {title} {body}",       # 好通道必须仍然跑到
         ]}}, ensure_ascii=False), encoding="utf-8")
+    _trusted(nt, tmp_path, proj)
     ran = nt.notify(str(proj), "done", "隔离验证", "x")
     assert ran >= 1
     assert marker.exists()
@@ -194,6 +207,7 @@ def test_blocked_coalesces_same_key_within_window(tmp_path, monkeypatch):
     nt = _load(NOTIFY, "nt-c1")
     marker = tmp_path / "m"
     proj = _mk_proj(tmp_path, [_stub_channel(tmp_path, marker) + " {title} {body}"])
+    _trusted(nt, tmp_path, proj)
     assert nt.notify(str(proj), "blocked", "⛔ 拦 R1", "同因甲", source_id="R1") == 1
     assert nt.notify(str(proj), "blocked", "⛔ 拦 R1", "同因甲", source_id="R1") == 0
     pd = _load(PENDING, "pd-c1")

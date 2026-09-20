@@ -299,17 +299,20 @@ def test_garbage_yaml_manifest_blocks(project):
 
 # ─── P1#5：blocked 推送接线（评审批次二） ─────────────────
 
-def test_blocked_pushes_via_configured_channel(project, tmp_path):
+def test_blocked_pushes_via_configured_channel(project, tmp_path, monkeypatch):
     """门禁阻断 → notify blocked 事件真发出（评审病例：history 6 个 blocked
-    期间 wecom 台账 0 条——record 只留本机痕，通道才是人所在的屏）。"""
+    期间 wecom 台账 0 条——record 只留本机痕，通道才是人所在的屏）。
+    v1.68 起通道走机器级配置（项目级 channels 受 057 信任门约束，子进程
+    测试无法 monkeypatch 模块属性——机器级本就是人写配置设计即信任）。"""
     import stat as _stat
     stub = tmp_path / "stub.sh"
     marker = tmp_path / "blocked-marker"
     stub.write_text("#!/bin/sh\necho \"$@\" >> " + str(marker) + "\n", encoding="utf-8")
     stub.chmod(_stat.S_IRWXU)
-    (project / ".regress" / "config.json").write_text(
-        json.dumps({"notify": {"channels": [str(stub) + " {title}"]}}),
-        encoding="utf-8")
+    mach = tmp_path / "machine.json"
+    mach.write_text(json.dumps(
+        {"notify": {"channels": [str(stub) + " {title}"]}}), encoding="utf-8")
+    monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
     code, err, _ = run_guard("git commit -m x", project)  # no-runner 阻断路径
     assert code == 2
     out = marker.read_text(encoding="utf-8")
