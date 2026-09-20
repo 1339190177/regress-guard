@@ -173,6 +173,26 @@ def load_conf(project_dir):
             merged[k] = sub
         else:
             merged[k] = v
+    # v1.70 wecom 凭据字段门（run4 R2，顾问字段级裁定）：corpid/secret/
+    # api_base_allowlist 三键=凭据与外发目标决定，未受信项目的覆盖回退机器级
+    # （机器无该键则剔除）——克隆仓库携假凭据把通知发往自己企微的洞就此关闭；
+    # agentid/touser/name/事件开关不受限（绑机器凭据的合法差异覆盖）。
+    _pw = proj.get("wecom") or {}
+    _SENS = ("corpid", "secret", "api_base_allowlist")
+    if any(k in _pw for k in _SENS) and not _project_channels_allowed(project_dir):
+        _mw = _read_notify_block(machine_conf_path()).get("wecom") or {}
+        _wec = dict(merged.get("wecom") or {})
+        for k in _SENS:
+            if k in _pw:
+                if k in _mw:
+                    _wec[k] = _mw[k]
+                else:
+                    _wec.pop(k, None)
+        merged["wecom"] = _wec
+        print("notify: 项目级 wecom 凭据字段未受信已回退机器级（v1.70 供应链加固）——"
+              "corpid/secret/allowlist 覆盖须项目先受信（人工编辑信任表）；"
+              "agentid/touser/事件开关不受限",
+              file=sys.stderr)
     return merged
 
 

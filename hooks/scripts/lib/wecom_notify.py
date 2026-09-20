@@ -116,6 +116,28 @@ def push(c, title, body, api):
         raise RuntimeError(f"send {d.get('errcode')}: {d.get('errmsg')}")
 
 
+def _api_base(wecom_conf):
+    """API 基域钉住（v1.70，059）：凭据会被 POST 到该域，重定向=凭据外泄面
+    （顾问字段级裁定）——WECOM_API_BASE 仅许本机测试桩（127.0.0.1/localhost/
+    ::1）或机器配置 wecom.api_base_allowlist 条目（URL 或 host 精确匹配；
+    allowlist 键本身在 notify.load_conf 属凭据类，未受信项目注入无效）。"""
+    env = os.environ.get("WECOM_API_BASE")
+    default = "https://qyapi.weixin.qq.com/cgi-bin"
+    if not env:
+        return default
+    try:
+        import urllib.parse
+        host = urllib.parse.urlparse(env).hostname or ""
+    except ValueError:
+        host = ""
+    allow = set(wecom_conf.get("api_base_allowlist") or [])
+    if host in ("127.0.0.1", "localhost", "::1") or env in allow or host in allow:
+        return env
+    print(f"wecom_notify: WECOM_API_BASE={env} 非本机且未在 allowlist，"
+          "已钉回官方域（凭据外泄防护）", file=sys.stderr)
+    return default
+
+
 def main(argv=None):
     args = list(sys.argv[1:] if argv is None else argv)
     if len(args) < 3:
@@ -129,7 +151,7 @@ def main(argv=None):
     if not (c.get("corpid") and c.get("secret") and c.get("agentid")):
         print("wecom_notify: notify.wecom 未配置（corpid/secret/agentid）", file=sys.stderr)
         return 1
-    api = os.environ.get("WECOM_API_BASE", "https://qyapi.weixin.qq.com/cgi-bin")
+    api = _api_base(c)
     try:
         push(c, title, body, api)
     except Exception as e:  # best-effort：不炸调用方

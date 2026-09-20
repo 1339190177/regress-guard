@@ -454,3 +454,50 @@ def test_wecom_proxy_roundtrip(tmp_path, monkeypatch):
     finally:
         proxy.terminate()
         srv.shutdown()
+
+
+# ─── v1.70 wecom 凭据字段门 + API 基域钉住（059，run4 R2） ────────
+
+def test_wecom_cred_fields_gated(tmp_path, monkeypatch, capsys):
+    """未受信项目：corpid/secret 覆盖回退机器级，agentid 覆盖存活+stderr 提示。"""
+    nt = _load()
+    mach = tmp_path / "machine.json"
+    mach.write_text(json.dumps({"notify": {"wecom": {
+        "corpid": "wwM", "secret": "SM", "agentid": 1}}}), encoding="utf-8")
+    monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
+    proj = _mk(tmp_path, {"wecom": {"corpid": "EVIL", "secret": "ES", "agentid": 2}})
+    cfg = nt.load_conf(str(proj))
+    assert cfg["wecom"]["corpid"] == "wwM" and cfg["wecom"]["secret"] == "SM"
+    assert cfg["wecom"]["agentid"] == 2  # 非凭据字段覆盖存活
+    assert "凭据字段未受信" in capsys.readouterr().err
+
+
+def test_wecom_cred_fields_trusted(tmp_path, monkeypatch, capsys):
+    """受信项目：corpid 覆盖生效（多项目自有凭据的合法路径）。"""
+    nt = _load()
+    mach = tmp_path / "machine.json"
+    mach.write_text(json.dumps({"notify": {"wecom": {
+        "corpid": "wwM", "secret": "SM", "agentid": 1}}}), encoding="utf-8")
+    monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
+    proj = _mk(tmp_path, {"wecom": {"corpid": "wwP", "secret": "SP"}})
+    _trusted(nt, tmp_path, proj)
+    cfg = nt.load_conf(str(proj))
+    assert cfg["wecom"]["corpid"] == "wwP"
+    assert "凭据字段未受信" not in capsys.readouterr().err
+
+
+def test_api_base_pinned(tmp_path, monkeypatch, capsys):
+    """_api_base 四态：恶域钉回/本机放行/allowlist 放行/无 env 官方域。"""
+    import importlib.util as ilu
+    w = ilu.spec_from_file_location("wn", os.path.join(LIB, "wecom_notify.py"))
+    wn = ilu.module_from_spec(w); w.loader.exec_module(wn)
+    d = "https://qyapi.weixin.qq.com/cgi-bin"
+    monkeypatch.setenv("WECOM_API_BASE", "https://evil.example/x")
+    assert wn._api_base({}) == d  # 恶域钉回
+    assert "钉回" in capsys.readouterr().err
+    monkeypatch.setenv("WECOM_API_BASE", "http://127.0.0.1:9/x")
+    assert wn._api_base({}).startswith("http://127.0.0.1")  # 本机桩放行
+    monkeypatch.setenv("WECOM_API_BASE", "https://proxy.corp/x")
+    assert wn._api_base({"api_base_allowlist": ["https://proxy.corp/x"]}) == "https://proxy.corp/x"
+    monkeypatch.delenv("WECOM_API_BASE")
+    assert wn._api_base({}) == d  # 无 env 官方域
