@@ -147,6 +147,60 @@ def _trusted_projects():
         return {}
 
 
+# v1.72 内容钉（run4 R4，顾问部署期自举裁定）：同路径静默换内容防线
+_TRUST_FPR_PATH = os.path.join(_pwuid_home(), ".zcode",
+                               "regress-trusted-projects.fpr.json")
+_PIN_SENSITIVE = ("channels",)
+_PIN_WECOM_SENSITIVE = ("corpid", "secret", "api_base_allowlist")
+
+
+def _notify_block_of(project_dir):
+    try:
+        return _read_notify_block(
+            os.path.join(project_dir, ".regress", "config.json")) or {}
+    except Exception:
+        return {}
+
+
+def _sensitive_changed(old, new):
+    """敏感面（执行通道+凭据+外发域名单）是否变动——含出现/消失。"""
+    for k in _PIN_SENSITIVE:
+        if old.get(k) != new.get(k):
+            return True
+    ow, nw = old.get("wecom") or {}, new.get("wecom") or {}
+    return any(ow.get(k) != nw.get(k) for k in _PIN_WECOM_SENSITIVE)
+
+
+def _load_fpr():
+    """读边车；None=文件整体缺失（部署自举信号），{}=存在但空。"""
+    try:
+        with open(_TRUST_FPR_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return {}
+
+
+def _save_fpr(side):
+    try:
+        os.makedirs(os.path.dirname(_TRUST_FPR_PATH), exist_ok=True)
+        with open(_TRUST_FPR_PATH, "w", encoding="utf-8") as f:
+            json.dump(side, f, ensure_ascii=False, indent=1, sort_keys=True)
+    except Exception:
+        pass  # 边车是增强：写不进=下次重判，不阻断通知
+
+
+def _dt_now():
+    import datetime as _dt
+    return _dt.datetime.now().isoformat(timespec="seconds")
+
+
+def _pin_entry(side, key, notify_block):
+    side[key] = {"ts": _dt_now(), "notify": notify_block}
+    _save_fpr(side)
+
+
 def _project_channels_allowed(project_dir):
     """项目级 channels 是否可执行（v1.66，哨兵首轮 055）。
 
@@ -154,8 +208,39 @@ def _project_channels_allowed(project_dir):
     notify.channels 模板会被 shell=True 执行——信任决定必须落机器侧
     （顾问否决项目内 trust 开关：攻击者自授权）。v1.68 起唯一判据=表内
     realpath（RG_TRUST_PROJECT_CHANNELS 直通缝已删——env 可被
-    git commit 前缀注入，缝即旁路；同族 RG_TRUSTED_PROJECTS 同批收口）。"""
-    return os.path.realpath(os.path.abspath(project_dir)) in _trusted_projects()
+    git commit 前缀注入，缝即旁路；同族 RG_TRUSTED_PROJECTS 同批收口）。
+    v1.72 内容钉：表内还须过边车指纹——敏感面（channels/wecom 凭据/外发
+    名单）变更即拒，人工出口=刷新信任表时间戳；非敏感变更 TOFU 重钉；
+    部署自举=边车整体缺失时一次钉住现状（攻击窗口=部署前换内容，记档）。"""
+    key = os.path.realpath(os.path.abspath(project_dir))
+    table = _trusted_projects()
+    if key not in table:
+        return False
+    new = _notify_block_of(key)
+    side = _load_fpr()
+    if side is None:  # v1.72 首跑：一次钉住全部受信项目现状（顾问高把握）
+        side = {k: {"ts": _dt_now(), "notify": _notify_block_of(k)}
+                for k in table}
+        _save_fpr(side)
+        print(f"notify: 信任指纹边车首次部署——已钉住 {len(side)} 项受信项目配置"
+              f"现状（{_TRUST_FPR_PATH}）；此后敏感面变更将被拒",
+              file=sys.stderr)
+    ent = side.get(key)
+    if ent is None:  # 自举后又新增授信的项目：人工刚授信，钉住现状
+        _pin_entry(side, key, new)
+        return True
+    if _sensitive_changed(ent.get("notify") or {}, new):
+        # 人工出口：信任表时间戳晚于钉时间 = 人工重授信信号
+        if str(table.get(key, "")) > str(ent.get("ts", "")):
+            _pin_entry(side, key, new)
+            return True
+        print(f"notify: 受信项目配置的敏感面已变（{key}）——已拒并回退机器级"
+              "（v1.72 内容钉，防同路径换内容）。人工重授信=编辑信任表刷新"
+              "该项目时间戳", file=sys.stderr)
+        return False
+    if (ent.get("notify") or {}) != new:  # 非敏感变更：TOFU 自动重钉
+        _pin_entry(side, key, new)
+    return True
 
 
 def load_conf(project_dir):

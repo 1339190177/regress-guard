@@ -36,15 +36,27 @@ def _channel_stub(tmp_path, marker):
 
 
 def _trusted(nt, tmp_path, *projects):
-    """v1.68 受信设置唯一出口：把项目写进 tmp 表并指给模块常量属性。
-    env 缝已按 057 收口（RG_TRUSTED_PROJECTS/RG_TRUST_PROJECT_CHANNELS
-    生产零影响）——nt 是每测新载的模块对象，直改属性即隔离即复原。"""
+    """v1.68 受信设置唯一出口 + v1.72 内容钉预置：表+边车双写。
+    表时间戳（09:00）早于钉时间戳（09:30）——钉=授信后首次使用所钉；人工重授信=刷新表时间戳晚于钉。
+    env 缝已按 057 收口——nt 是每测新载模块对象，直改属性即隔离即复原。"""
     import pathlib
     tp = tmp_path / "trust.json"
     tp.write_text(json.dumps(
         {str(pathlib.Path(p).resolve()): "2026-09-20T09:00:00" for p in projects},
         ensure_ascii=False), encoding="utf-8")
     nt._TRUST_TABLE_PATH = str(tp)
+    fpr = tmp_path / "trust-fpr.json"
+    pins = {}
+    for p in projects:
+        conf = pathlib.Path(p) / ".regress" / "config.json"
+        try:
+            nb = json.loads(conf.read_text(encoding="utf-8")).get("notify") or {}
+        except Exception:
+            nb = {}
+        pins[str(pathlib.Path(p).resolve())] = {"ts": "2026-09-20T09:30:00",
+                                                "notify": nb}
+    fpr.write_text(json.dumps(pins, ensure_ascii=False), encoding="utf-8")
+    nt._TRUST_FPR_PATH = str(fpr)
 
 
 def test_channel_runs_with_quoted_placeholders(tmp_path):
@@ -134,6 +146,74 @@ def test_trust_cli_readonly_never_writes(tmp_path, capsys):
     assert "只读" in out and str(tp) in out  # 表路径可见
     assert "人工" in out and "realpath" in out and "ISO" in out  # 编辑指引齐三件
     assert not tp.exists()  # 表不存在也不被创建
+
+
+# ─── v1.72 内容钉（061：同路径换内容分级防线，run4 R4） ────────
+
+def test_pin_bootstrap_first_run(tmp_path, monkeypatch, capsys):
+    """边车整体缺失 + 项目在表 → 首跑自举钉现状+放行+stderr 告知。"""
+    import pathlib
+    nt = _load()
+    proj = _mk(tmp_path, {"channels": [_channel_stub(tmp_path, tmp_path / "m20") + " {title}"]})
+    rp = str(pathlib.Path(proj).resolve())
+    tp = tmp_path / "t.json"
+    tp.write_text(json.dumps({rp: "2026-01-01T00:00:00"}), encoding="utf-8")
+    nt._TRUST_TABLE_PATH = str(tp)
+    fpr = tmp_path / "f.json"
+    nt._TRUST_FPR_PATH = str(fpr)
+    assert not fpr.exists()  # 自举前提
+    assert nt.notify(str(proj), "done", "t") == 1
+    assert "首次部署" in capsys.readouterr().err
+    side = json.loads(fpr.read_text(encoding="utf-8"))
+    assert side[rp]["notify"]["channels"]  # 现状已钉
+
+
+def test_pin_swap_sensitive_denied(tmp_path, capsys):
+    """同路径换 channels（敏感面）→ 拒+回退+人工出口提示。"""
+    import pathlib
+    nt = _load()
+    proj = _mk(tmp_path, {"channels": [_channel_stub(tmp_path, tmp_path / "m21") + " {title}"]})
+    _trusted(nt, tmp_path, proj)
+    assert nt.notify(str(proj), "done", "t") == 1  # 钉内正常
+    evil = tmp_path / "evil.sh"
+    (pathlib.Path(proj) / ".regress" / "config.json").write_text(
+        json.dumps({"notify": {"channels": [str(evil)]}}), encoding="utf-8")
+    marker_before = set(tmp_path.glob("m21*"))
+    nt.notify(str(proj), "done", "t")  # 敏感变更被拒（回退默认通道，返回值非宗量）
+    err = capsys.readouterr().err
+    assert "敏感面已变" in err and "时间戳" in err
+
+
+def test_pin_human_retrust_repin(tmp_path):
+    """人工刷新表时间戳（晚于钉时间）→ 重钉放行。"""
+    import pathlib
+    nt = _load()
+    proj = _mk(tmp_path, {"channels": [_channel_stub(tmp_path, tmp_path / "m22") + " {title}"]})
+    _trusted(nt, tmp_path, proj)
+    (pathlib.Path(proj) / ".regress" / "config.json").write_text(
+        json.dumps({"notify": {"channels": [_channel_stub(tmp_path, tmp_path / "m23") + " {title}"]}}),
+        encoding="utf-8")
+    nt.notify(str(proj), "done", "t")  # 先拒
+    assert not (tmp_path / "m23").exists()  # 新通道没跑
+    tp = tmp_path / "trust.json"
+    rp = str(pathlib.Path(proj).resolve())
+    tp.write_text(json.dumps({rp: "2099-01-01T00:00:00"}), encoding="utf-8")  # 人工重授信
+    assert nt.notify(str(proj), "done", "t") == 1  # 重钉放行
+    assert (tmp_path / "m23").exists()
+
+
+def test_pin_nonsensitive_repin(tmp_path):
+    """仅改 name（channels 逐字节不变）→ TOFU 自动重钉放行。"""
+    import pathlib
+    nt = _load()
+    stub = _channel_stub(tmp_path, tmp_path / "m24")
+    proj = _mk(tmp_path, {"name": "旧名", "channels": [stub + " {title}"]})
+    _trusted(nt, tmp_path, proj)
+    (pathlib.Path(proj) / ".regress" / "config.json").write_text(
+        json.dumps({"notify": {"name": "新名", "channels": [stub + " {title}"]}}),
+        encoding="utf-8")
+    assert nt.notify(str(proj), "done", "t") == 1  # 非敏感自动重钉
+    assert (tmp_path / "m24").exists()
 
 
 def test_trust_cli_table_unchanged(tmp_path, capsys):

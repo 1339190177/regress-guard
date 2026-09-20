@@ -34,13 +34,21 @@ def _mk_proj(tmp_path, channels):
 # ─── 台账本体 ────────────────────────────────────────────
 
 def _trusted(nt, tmp_path, proj):
-    """v1.68（057）：项目 channels 受信——写 tmp 表+setattr 模块常量（env 缝已收口）。"""
+    """v1.68（057）+v1.72（061）：表+边车双写（钉 09:30 晚于表 09:00——钉发生在授信后的首次使用）。"""
     import pathlib
+    rp = str(pathlib.Path(proj).resolve())
     tp = tmp_path / "trust.json"
-    tp.write_text(json.dumps(
-        {str(pathlib.Path(proj).resolve()): "2026-09-20T09:00:00"}),
-        encoding="utf-8")
+    tp.write_text(json.dumps({rp: "2026-09-20T09:00:00"}), encoding="utf-8")
     nt._TRUST_TABLE_PATH = str(tp)
+    conf = pathlib.Path(proj) / ".regress" / "config.json"
+    try:
+        nb = json.loads(conf.read_text(encoding="utf-8")).get("notify") or {}
+    except Exception:
+        nb = {}
+    fpr = tmp_path / "trust-fpr.json"
+    fpr.write_text(json.dumps({rp: {"ts": "2026-09-20T09:30:00", "notify": nb}},
+                              ensure_ascii=False), encoding="utf-8")
+    nt._TRUST_FPR_PATH = str(fpr)
 
 
 def test_add_returns_incrementing_ids(tmp_path, monkeypatch):
