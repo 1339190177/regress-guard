@@ -398,6 +398,42 @@ def build_trace(regress_dir):
     return "\n".join(lines) if lines else "（暂无历史事件）"
 
 
+def telemetry(regress_dir):
+    """遥测双文件统一视图（v1.74，063）：一屏看两套并行账本。
+
+    history.jsonl = guard record() 所写（字段 event/timestamp——门禁拦截/通过/
+    自检类）；journal/events.jsonl = journal.py 所写（字段 kind/ts——生命周期/
+    顾问/哨兵类）。grep 前先认对文件（2026-09-20 哨兵误切文件烧四刀的教训）。
+    """
+    import glob
+    out = {}
+    hp = os.path.join(regress_dir, "history.jsonl")
+    try:
+        evs = [json.loads(l) for l in
+               open(hp, encoding="utf-8").read().splitlines() if l.strip()]
+        out["history"] = {"file": "history.jsonl", "fields": "event/timestamp",
+                          "events": len(evs),
+                          "last": evs[-1].get("event") if evs else None,
+                          "last_ts": evs[-1].get("timestamp") if evs else None}
+    except FileNotFoundError:
+        out["history"] = {"file": "history.jsonl", "missing": True}
+    jp = os.path.join(regress_dir, "journal", "events.jsonl")
+    try:
+        evs = [json.loads(l) for l in
+               open(jp, encoding="utf-8").read().splitlines() if l.strip()]
+        out["journal"] = {"file": "journal/events.jsonl", "fields": "kind/ts",
+                          "events": len(evs),
+                          "last": evs[-1].get("kind") if evs else None,
+                          "last_ts": evs[-1].get("ts") if evs else None}
+    except FileNotFoundError:
+        out["journal"] = {"file": "journal/events.jsonl", "missing": True}
+    arch = sorted(os.path.basename(a) for a in
+                  glob.glob(os.path.join(regress_dir, "history-archive*.jsonl")))
+    if arch:
+        out["history"]["archives"] = arch
+    return out
+
+
 if __name__ == "__main__":
     import sys
     regress_dir = sys.argv[1] if len(sys.argv) > 1 else ".regress"
@@ -405,6 +441,8 @@ if __name__ == "__main__":
     if cmd == "summary":
         s = summarize(regress_dir)
         print(json.dumps(s, ensure_ascii=False, indent=2))
+    elif cmd == "telemetry":
+        print(json.dumps(telemetry(regress_dir), ensure_ascii=False, indent=2))
     elif cmd == "raw":
         for e in load_history(regress_dir):
             print(json.dumps(e, ensure_ascii=False))

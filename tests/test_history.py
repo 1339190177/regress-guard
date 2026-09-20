@@ -8,7 +8,7 @@ import pytest
 LIB = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "lib")
 sys.path.insert(0, LIB)
 
-from history import record, load_history, summarize, _maybe_archive, build_trace
+from history import record, load_history, summarize, _maybe_archive, build_trace, telemetry
 
 
 @pytest.fixture
@@ -262,3 +262,27 @@ def test_block_heatmap_empty(regress_dir):
     """无拦截：空表不炸。"""
     from history import block_heatmap
     assert block_heatmap(regress_dir) == []
+
+
+# ─── v1.74 遥测双文件统一视图（063） ────────────────
+
+def test_telemetry_both_files(tmp_path):
+    rd = tmp_path / ".regress"
+    (rd / "journal").mkdir(parents=True)
+    (rd / "history.jsonl").write_text(
+        '{"timestamp": "2026-09-20T10:00:00", "event": "commit_passed"}\n',
+        encoding="utf-8")
+    (rd / "journal" / "events.jsonl").write_text(
+        '{"ts": "2026-09-20T10:01:00", "kind": "task_done"}\n', encoding="utf-8")
+    t = telemetry(str(rd))
+    assert t["history"]["events"] == 1 and t["history"]["last"] == "commit_passed"
+    assert t["history"]["fields"] == "event/timestamp"
+    assert t["journal"]["events"] == 1 and t["journal"]["last"] == "task_done"
+    assert t["journal"]["fields"] == "kind/ts"
+
+
+def test_telemetry_missing_journal(tmp_path):
+    rd = tmp_path / ".regress"
+    rd.mkdir()
+    t = telemetry(str(rd))
+    assert t["history"]["missing"] is True and t["journal"]["missing"] is True
