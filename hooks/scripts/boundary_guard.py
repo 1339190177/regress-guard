@@ -184,16 +184,43 @@ def active_manifests(project_dir):
     return out
 
 
+_HEREDOC_RE = re.compile(
+    r"(<<-?\s*['\"]?)(\w+)(['\"]?\n).*?\n[ \t]*\2(?:\n|$)", re.S)
+
+
+def _strip_heredoc_bodies(cmd):
+    """剔除 heredoc 体（v1.77，066）：体是文件内容不是命令——体内 rm/重定向
+    样文本曾成假目标；保留 << 定界行（其重定向目标仍可判）。"""
+    return _HEREDOC_RE.sub(r"\1\2\3", cmd)
+
+
+def _dequote(seg):
+    """引号内容置空保结构（v1.77，066）：命令词匹配跑在这份上——载荷/文档
+    内容里的英文命令词（活体：install smoke）不再被当命令，其后文本不再
+    成参数。重定向另有引号目标补充模式兜真写。"""
+    seg = re.sub(r"'[^']*'", "''", seg)
+    return re.sub(r'"[^"]*"', '""', seg)
+
+
 def _seg_write_targets(seg):
-    """单段命令的高置信写目标（原始字符串）。"""
+    """单段命令的高置信写目标（原始字符串）。
+
+    v1.77 误判根治：命令词/sed/of= 在去引号文本上匹配（引号内是数据不是
+    命令）；重定向在原文与去引号文本双轨（原文捕裸目标，另加引号目标模式
+    捕 > 'my file' 形态）。"""
     targets = set()
     for m in re.finditer(r'(?<![0-9])>{1,2}\s*([^\s;|&]+)', seg):
         targets.add(m.group(1))
     for m in re.finditer(r'&>{1,2}\s*([^\s;|&]+)', seg):
         targets.add(m.group(1))
+    for m in re.finditer(r">(?<!\d)>{0,1}\s*'([^']+)'", seg):
+        targets.add(m.group(1))
+    for m in re.finditer(r">{1,2}\s*\"([^\"]+)\"", seg):
+        targets.add(m.group(1))
+    dq = _dequote(seg)
     for m in re.finditer(
             r'(?:^|[;|&\s])(rm|rmdir|mv|cp|tee|truncate|touch|install|shred)\s+([^;|&\n]+)',
-            seg):
+            dq):
         name, rest = m.group(1), m.group(2)
         toks = [t for t in rest.split() if not t.startswith("-")]
         if not toks:
@@ -203,11 +230,11 @@ def _seg_write_targets(seg):
                 targets.add(toks[-1])
         else:
             targets.update(toks)
-    for m in re.finditer(r'(?:^|[;|&\s])sed\s+(?:-[^\s]*i[^\s]*\s+)?(?:-[^\s]*\s+)*([^;|&\n]+)', seg):
+    for m in re.finditer(r'(?:^|[;|&\s])sed\s+(?:-[^\s]*i[^\s]*\s+)?(?:-[^\s]*\s+)*([^;|&\n]+)', dq):
         toks = [t for t in m.group(1).split() if not t.startswith("-")]
         if toks:
             targets.add(toks[-1])
-    for m in re.finditer(r'\bof=([^\s;|&]+)', seg):
+    for m in re.finditer(r'\bof=([^\s;|&]+)', dq):
         targets.add(m.group(1))
     return targets
 
@@ -223,7 +250,7 @@ def extract_write_targets(cmd, project_dir):
     out, seen = [], set()
     cwd = None
     cwd_known = True
-    for seg in re.split(r"&&|\|\||;", cmd):
+    for seg in re.split(r"&&|\|\||;", _strip_heredoc_bodies(cmd)):
         seg = seg.strip()
         m = re.match(r"^cd\s+([^\s;&|]+)", seg)
         if m:

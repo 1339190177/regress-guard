@@ -460,3 +460,42 @@ def test_unstamped_manifest_stays_shared(tmp_path):
     r = run_guard(proj, proj / "src/auth/login.ts",
                   extra_env={"CLAUDE_SESSION_ID": "sess-mine-00002"})
     assert r.returncode == 0
+
+
+# ─── v1.77（066）：写目标提取误判根治——引号内容/heredoc 体 ────────
+
+def _bg():
+    import importlib.util as ilu
+    spec = ilu.spec_from_file_location("bg-unit", GUARD)
+    m = ilu.module_from_spec(spec); spec.loader.exec_module(m)
+    return m
+
+
+def test_dequoted_payload_command_word_not_target():
+    """活体回放：载荷引号内英文命令词（install…）不再把后续文本当写目标。"""
+    m = _bg()
+    payload = '\'{"summary":"B9 install smoke 按顾问提醒保留 无新决策点"}\''
+    cmd = "python3 tool.py . add r " + payload
+    assert m.extract_write_targets(cmd, "/tmp/p") == []
+
+
+def test_heredoc_body_not_targets_but_redir_is():
+    """heredoc 体内的 rm/重定向样文本不收；cat 的重定向本体仍收。"""
+    m = _bg()
+    cmd = ("cat > /tmp-decoy/out.sh <<'EOF'\n"
+           "cd /x && rm -rf important\n"
+           "echo hi > inner.txt\n"
+           "EOF\n"
+           "echo done")
+    ts = m.extract_write_targets(cmd, "/tmp/p")
+    assert any(t.endswith("out.sh") for t in ts)
+    assert not any("important" in t or "inner.txt" in t for t in ts)
+
+
+def test_quoted_redirection_target_still_caught():
+    """真写不漏：引号目标形态仍被收。"""
+    m = _bg()
+    ts = m.extract_write_targets("echo x > 'my file.txt'", "/tmp/p")
+    assert any(t.endswith("my file.txt") for t in ts)
+    ts = m.extract_write_targets('echo x > "另一档.txt"', "/tmp/p")
+    assert any(t.endswith("另一档.txt") for t in ts)
