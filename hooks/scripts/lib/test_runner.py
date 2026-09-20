@@ -132,7 +132,20 @@ def _detect(project_dir):
     return None, None, project_dir
 
 
-def run_tests(project_dir, timeout=120):
+def _timeout_for(project_dir):
+    """超时配置钮（v1.69，058-F4）：项目 .regress/config.json 的
+    test_runner.timeout 可调（秒）；缺省 120。套件规模增长越过硬编码
+    窗口时门禁会误杀（本批活体：458 例 155s vs 120s 窗口 0 通过超时）。"""
+    try:
+        with open(os.path.join(project_dir, ".regress", "config.json"),
+                  encoding="utf-8") as f:
+            v = (json.load(f).get("test_runner") or {}).get("timeout")
+        return int(v) if v else 120
+    except Exception:
+        return 120
+
+
+def run_tests(project_dir, timeout=None):
     """运行测试，返回结果 dict。
 
     Returns:
@@ -145,6 +158,8 @@ def run_tests(project_dir, timeout=120):
             "raw_snippet": str  # 失败时的输出片段
         }
     """
+    if timeout is None:
+        timeout = _timeout_for(project_dir)
     runner, cmd, rcwd = _detect(project_dir)
 
     if runner is None:

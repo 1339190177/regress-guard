@@ -17,6 +17,30 @@ const guardPy = path.join(__dirname, "pre_commit_guard.py");
 // 候选 Python 解释器（按优先级）
 const candidates = ["python3", "python", "py"];
 
+// env 白名单（v1.69，run4 R1）：钩子入口构造洁净环境——RG_*/WECOM_*/GIT_* 等
+// 覆盖类变量不透传给守卫子进程（env 缝隙族的入口层根治：宿主进程 env 里任何
+// 对守卫行为/信任判定/git 读数的注入在此失效）。键按大写归一比较（Windows 不区分）。
+const ENV_KEEP = new Set([
+  // 系统基础：找解释器/git、编码、临时区、Windows python 依赖
+  "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TERM", "TMPDIR", "SYSTEMROOT",
+  // 代理（通知外发走系统代理语义）
+  "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+  // 宿主契约变量（ZCode 注入的会话/项目/插件根——守卫合法依赖）
+  "ZCODE_SESSION_ID", "CLAUDE_SESSION_ID",
+  "ZCODE_PROJECT_DIR", "CLAUDE_PROJECT_DIR",
+  "ZCODE_HOME", "ZCODE_PLUGIN_ROOT",
+]);
+
+function cleanEnv(env) {
+  const out = {};
+  for (const k of Object.keys(env)) {
+    if (ENV_KEEP.has(k) || ENV_KEEP.has(k.toUpperCase())) out[k] = env[k];
+  }
+  return out;
+}
+
+module.exports = { cleanEnv, ENV_KEEP };
+
 function tryPython(idx) {
   if (idx >= candidates.length) {
     console.error("REGRESS-GUARD: ❌ 找不到 Python 3 解释器。");
@@ -35,7 +59,7 @@ function tryPython(idx) {
   const py = candidates[idx];
   const child = spawn(py, [guardPy], {
     stdio: ["inherit", "inherit", "inherit"],
-    env: { ...process.env },
+    env: cleanEnv(process.env),
   });
 
   child.on("error", (err) => {
@@ -54,4 +78,7 @@ function tryPython(idx) {
   });
 }
 
-tryPython(0);
+// 直接运行才启动；被 require（测试）时只导出 cleanEnv，不 spawn
+if (require.main === module) {
+  tryPython(0);
+}

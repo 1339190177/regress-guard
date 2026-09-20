@@ -208,3 +208,20 @@ def test_hermetic_env_strips_host_identity(monkeypatch):
     env = hermetic_env()
     assert "CLAUDE_SESSION_ID" not in env and "ZCODE_PROJECT_DIR" not in env
     assert "PATH" in env
+
+
+# ─── v1.69（058-F4）：超时配置钮 test_runner.timeout ────────────
+
+def test_timeout_config_knob(tmp_path):
+    """缺省 120 / 配置生效 / 坏配置回退——套件越过硬编码窗口时门禁不误杀。"""
+    import importlib.util as ilu
+    spec = ilu.spec_from_file_location(
+        "tr-knob", os.path.join(LIB, "test_runner.py"))
+    tr = ilu.module_from_spec(spec); spec.loader.exec_module(tr)
+    d = tmp_path / "proj"; (d / ".regress").mkdir(parents=True)
+    assert tr._timeout_for(str(d)) == 120  # 无配置
+    (d / ".regress" / "config.json").write_text(
+        json.dumps({"test_runner": {"timeout": 300}}), encoding="utf-8")
+    assert tr._timeout_for(str(d)) == 300  # 配置生效
+    (d / ".regress" / "config.json").write_text("{bad", encoding="utf-8")
+    assert tr._timeout_for(str(d)) == 120  # 坏配置回退

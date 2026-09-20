@@ -271,6 +271,7 @@ ui-ux-pro-max。
 | 依赖审计（best-effort） | 锁文件 staged 才触发 `npm audit --json --package-lock-only`（解析漏洞计数只认 high/critical，不信 exit code——顾问修正）；**infra fail-open**（工具缺/超时/网络败 → warn+留痕），**findings fail-closed**（高危才拦）；非 npm 锁 v1 提示人工审计 |
 | 降级 | `supply_chain.secrets/deps=false`（沿用 strict 降级先例）；`supply_chain.allowlist` 项目级追加 |
 | 项目级 channels 信任（v1.66/1.67/1.68） | 项目 channels 仅机器侧信任表（`~/.zcode/regress-trusted-projects.json`）内项目可用，未受信回退机器级通道+stderr 提示；**授信=人工编辑该表**（`notify.py trust` 只读视图）；**信任解析零环境变量影响（v1.68）**——表路径经 passwd 数据库派生（HOME 间接层同封），RG_TRUST_PROJECT_CHANNELS/RG_TRUSTED_PROJECTS 缝已删（git commit 前缀注入即旁路，测试迁 monkeypatch 模块属性）；共残差=agent 直接写表文件（transcript 可见，人侧定期 diff 此表） |
+| 钩子入口 env 白名单（v1.69） | launcher.js 构造洁净子进程环境：白名单只透传系统基础（PATH/HOME/LANG/TZ/TMPDIR）+代理+宿主契约五变量（SESSION/PROJECT_DIR/ZCODE_HOME/PLUGIN_ROOT）——`RG_*`/`WECOM_*`/`GIT_*` 注入在入口层失效（宿主 env 的信任/git 读数干扰整族封死；直接 CLI 调用不受影响，其信任面由 v1.68 表制管） |
 
 ## 机器事实卡（v1.32：跨项目地层，三层结构）
 
