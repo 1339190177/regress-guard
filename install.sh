@@ -407,6 +407,15 @@ installed_at=$(date -Iseconds)
 META
 info "版本标记: v${SOURCE_VERSION}（源: ${PLUGIN_ROOT}）"
 
+# ─── v1.76 安装后自检：三查一屏，红即大声失败（装坏当场知） ──
+echo ""
+if ! python3 "${PLUGIN_ROOT}/scripts/post_install_check.py" \
+     "${PLUGIN_ROOT}" "${HOME}/.zcode/regress-guard-hooks"; then
+  echo ""
+  echo -e "${RED}❌ 安装后自检未过——按上方指引修复后再使用${NC}"
+  exit 1
+fi
+
 # ─── 完成 ────────────────────────────────────────────
 echo ""
 echo "════════════════════════════════════════════"
