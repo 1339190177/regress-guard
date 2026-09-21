@@ -209,15 +209,18 @@ def _seg_write_targets(seg):
     命令）；重定向在原文与去引号文本双轨（原文捕裸目标，另加引号目标模式
     捕 > 'my file' 形态）。"""
     targets = set()
-    for m in re.finditer(r'(?<![0-9])>{1,2}\s*([^\s;|&]+)', seg):
+    dq = _dequote(seg)
+    # v1.82（071）：裸重定向改跑去引号文本+断言 (?![<=]) 跳过比较符与
+    # herestring——第四标本（载荷 >=3 被捕 "=3"）根治；引号目标补充模式
+    # 保留在原文（> 'my file' 真写不因去引号而漏）。
+    for m in re.finditer(r'(?<![0-9])>{1,2}(?![<=])\s*([^\s;|&]+)', dq):
         targets.add(m.group(1))
-    for m in re.finditer(r'&>{1,2}\s*([^\s;|&]+)', seg):
+    for m in re.finditer(r'&>{1,2}\s*([^\s;|&]+)', dq):
         targets.add(m.group(1))
     for m in re.finditer(r">(?<!\d)>{0,1}\s*'([^']+)'", seg):
         targets.add(m.group(1))
     for m in re.finditer(r">{1,2}\s*\"([^\"]+)\"", seg):
         targets.add(m.group(1))
-    dq = _dequote(seg)
     for m in re.finditer(
             r'(?:^|[;|&\s])(rm|rmdir|mv|cp|tee|truncate|touch|install|shred)\s+([^;|&\n]+)',
             dq):

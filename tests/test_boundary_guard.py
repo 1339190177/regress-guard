@@ -492,6 +492,24 @@ def test_heredoc_body_not_targets_but_redir_is():
     assert not any("important" in t or "inner.txt" in t for t in ts)
 
 
+def test_redirect_dequoted_comparison_not_target():
+    """第四标本回放（071）：载荷引号内比较符 >=3 不再成写目标。"""
+    m = _bg()
+    payload = '\'{"summary":"hits 大于等于 3 即 >=3"}\''
+    assert m.extract_write_targets(
+        "python3 tool.py . add r " + payload, "/tmp/p") == []
+
+
+def test_redirect_herestring_and_real_writes():
+    """herestring 不中；裸目标与引号目标双形态真写仍收（不漏真写）。"""
+    m = _bg()
+    assert m.extract_write_targets("grep foo <<< 'word'", "/tmp/p") == []
+    ts = m.extract_write_targets("echo x > /tmp/out.txt", "/tmp/p")
+    assert any(t.endswith("/tmp/out.txt") for t in ts)
+    ts = m.extract_write_targets("echo x > 'my file.txt'", "/tmp/p")
+    assert any(t.endswith("my file.txt") for t in ts)
+
+
 def test_quoted_redirection_target_still_caught():
     """真写不漏：引号目标形态仍被收。"""
     m = _bg()
