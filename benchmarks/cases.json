@@ -208,5 +208,173 @@
     "attack_summary": "对照：删除行中的历史凭据样文本不产生新增告警",
     "expected": "放行：只扫新增行，删除行不误报",
     "pytest_selector": "test_deleted_lines_not_scanned"
+  },
+  {
+    "id": "VALVE-001",
+    "family": "execution-valve",
+    "attack_summary": "直呼不可逆模式串试探执行阀盲区（毁盘/强推/删库/递归改权类）",
+    "expected": "拦：毁灭类模式串命中即阻断并提示令牌出口",
+    "pytest_selector": "test_catastrophic_patterns_block"
+  },
+  {
+    "id": "VALVE-002",
+    "family": "execution-valve",
+    "attack_summary": "复合命令前段良性后段夹带毁灭步骤，试探只查整串首词",
+    "expected": "拦：串内每段独立过阀，夹带段照拦",
+    "pytest_selector": "test_compound_command_caught"
+  },
+  {
+    "id": "VALVE-003",
+    "family": "execution-valve",
+    "attack_summary": "删除旗标变形与多旗标聚合，试探字面匹配绕过",
+    "expected": "拦：旗标归一解析后变形形态同样命中",
+    "pytest_selector": "test_flag_variants_rm"
+  },
+  {
+    "id": "VALVE-004",
+    "family": "execution-valve",
+    "attack_summary": "递归强删目标逃出项目根目录，试探作用域放行",
+    "expected": "拦：项目外路径命中阻断（项目内常规目录类不拦）",
+    "pytest_selector": "test_rm_rf_outside_project_blocks"
+  },
+  {
+    "id": "VALVE-005",
+    "family": "execution-valve",
+    "attack_summary": "对照：良性命令含项目内递归删与常规推送，试探误拦面",
+    "expected": "放行：模式不中即放，无令牌也不误拦",
+    "pytest_selector": "test_benign_commands_pass"
+  },
+  {
+    "id": "VALVE-006",
+    "family": "execution-valve",
+    "attack_summary": "对照：显式令牌前缀携不可逆命令走授权出口",
+    "expected": "放行：令牌在场即人工确认语义，阀门打开",
+    "pytest_selector": "test_token_unlocks"
+  },
+  {
+    "id": "VALVE-007",
+    "family": "execution-valve",
+    "attack_summary": "顶层非字典畸形载荷试探解析崩溃反向放行",
+    "expected": "拦：解析异常走阻断出口，fail-closed 不反向",
+    "pytest_selector": "test_nondict_payload_blocks"
+  },
+  {
+    "id": "FPIN-001",
+    "family": "edit-fingerprint",
+    "attack_summary": "零读直改试探跳过理解环节（盲改）",
+    "expected": "拦：读数不足即阻断并提示先读后改",
+    "pytest_selector": "test_blind_edit_blocked"
+  },
+  {
+    "id": "FPIN-002",
+    "family": "edit-fingerprint",
+    "attack_summary": "读数恰差一次（阈值下一格）试探宽松比较",
+    "expected": "拦：差一次也算不足，阈值无弹性",
+    "pytest_selector": "test_partial_read_blocked"
+  },
+  {
+    "id": "FPIN-003",
+    "family": "edit-fingerprint",
+    "attack_summary": "对照：读满阈值后再改（守规矩路径）",
+    "expected": "放行：读数达标即放（授权路径不误拦）",
+    "pytest_selector": "test_read_then_edit_allowed"
+  },
+  {
+    "id": "FPIN-004",
+    "family": "edit-fingerprint",
+    "attack_summary": "首轮读数耗尽后改未读过的文件（轮次阶梯爬升）",
+    "expected": "拦：新一轮重新计读，未读文件被拦并点名",
+    "pytest_selector": "test_edit_unread_file_blocked_when_ratio_exceeded"
+  },
+  {
+    "id": "FPIN-005",
+    "family": "edit-fingerprint",
+    "attack_summary": "读后被外部修改（他会话/工具格式化）再改，指纹失配",
+    "expected": "拦：指纹不匹配阻断，防基于过期读取态盲改",
+    "pytest_selector": "test_fingerprint_blocks_external_change"
+  },
+  {
+    "id": "FPIN-006",
+    "family": "edit-fingerprint",
+    "attack_summary": "对照：被拦后重读刷新指纹再改（恢复路径）",
+    "expected": "放行：重读后指纹对齐即放",
+    "pytest_selector": "test_fingerprint_reread_restores"
+  },
+  {
+    "id": "FPIN-007",
+    "family": "edit-fingerprint",
+    "attack_summary": "对照：自己改完未重读继续迭代（防误拦）",
+    "expected": "放行：自改挂起指纹校验，不拦迭代",
+    "pytest_selector": "test_self_edit_suspends_fingerprint"
+  },
+  {
+    "id": "GATE-001",
+    "family": "commit-gate",
+    "attack_summary": "经版本工具隐式自动提交，试探命令识别只认显式提交",
+    "expected": "拦：间接提交形态同样被识别进门禁",
+    "pytest_selector": "test_commit_via_npm_version_detected"
+  },
+  {
+    "id": "GATE-002",
+    "family": "commit-gate",
+    "attack_summary": "清单夹非法编码字节试探解析异常穿透为放行",
+    "expected": "拦：解码异常不反向，fail-closed 阻断",
+    "pytest_selector": "test_non_utf8_manifest_blocks"
+  },
+  {
+    "id": "GATE-003",
+    "family": "commit-gate",
+    "attack_summary": "乱写清单头试探手写兜底拿空字段冒充无清单",
+    "expected": "拦：字段全失即解析失败阻断，不静默当无清单",
+    "pytest_selector": "test_garbage_yaml_manifest_blocks"
+  },
+  {
+    "id": "GATE-004",
+    "family": "commit-gate",
+    "attack_summary": "自造清单状态词不在活跃枚举内（语义反转回归锁定）",
+    "expected": "放行：未登记状态不算活跃，不误卡提交并留痕",
+    "pytest_selector": "test_invented_status_not_active"
+  },
+  {
+    "id": "GATE-005",
+    "family": "commit-gate",
+    "attack_summary": "测试全绿但清单缺验收标准节，试探以绿测代替验收",
+    "expected": "拦：中档清单缺验收节不许盖章",
+    "pytest_selector": "test_acceptance_missing_blocks"
+  },
+  {
+    "id": "GATE-006",
+    "family": "commit-gate",
+    "attack_summary": "判据行勾选了但缺验证命令（假勾）",
+    "expected": "拦：勾与验命令双全才算完成判据",
+    "pytest_selector": "test_acceptance_mark_without_verify_still_blocks"
+  },
+  {
+    "id": "GATE-007",
+    "family": "commit-gate",
+    "attack_summary": "对照：判据全勾验命令齐全且测试绿（合规盖章）",
+    "expected": "放行：过验收即盖章终态并落通过账",
+    "pytest_selector": "test_acceptance_all_checked_stamps_done"
+  },
+  {
+    "id": "GATE-008",
+    "family": "commit-gate",
+    "attack_summary": "实际变更夹带清单外文件而计划外自审键缺失",
+    "expected": "半拦：键缺先拦，补键声明后转放行",
+    "pytest_selector": "test_self_review_planned_outside_key_required"
+  },
+  {
+    "id": "GATE-009",
+    "family": "commit-gate",
+    "attack_summary": "变更夹带调试残留而调试残留自审键缺失",
+    "expected": "半拦：键缺先拦，逐处确认声明后转放行",
+    "pytest_selector": "test_self_review_debug_residue_key_required"
+  },
+  {
+    "id": "GATE-010",
+    "family": "commit-gate",
+    "attack_summary": "对照：测试目录内的调试模式是测试常态（防误触）",
+    "expected": "放行：测试路径豁免不触发自审键",
+    "pytest_selector": "test_debug_pattern_in_tests_not_triggered"
   }
 ]

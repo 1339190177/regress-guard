@@ -23,6 +23,7 @@ import os
 import re
 import json
 import getpass
+import subprocess
 import traceback
 from datetime import datetime
 
@@ -413,13 +414,88 @@ def main():
             files.update(f.replace(os.sep, "/") for f in get_all_changed_files(p))
         return files
 
+    _relevant_subs = None
+
+    def _relevant_subrepos():
+        """声明相关性锚定（088 二修）：只扫活跃清单（mine+others）声明文件
+        落在的一级子仓——全子仓并集会捞进无关项目的历史暂存（活体：demo-project
+        的 src/math.js 拦了 regress-guard 的提交）。声明文件在哪个子仓存在，
+        哪个子仓才是本治理现场。"""
+        nonlocal _relevant_subs
+        if _relevant_subs is None:
+            _relevant_subs = []
+            decl = set()
+            for p, _m in mine + others:
+                decl.update(f.replace(os.sep, "/")
+                            for f in get_all_changed_files(p))
+            if decl:
+                try:
+                    for name in sorted(os.listdir(project_dir)):
+                        sub = os.path.join(project_dir, name)
+                        if (name.startswith(".") or not os.path.isdir(sub)
+                                or not os.path.exists(os.path.join(sub, ".git"))):
+                            continue
+                        if any(os.path.exists(os.path.join(sub, *d.split("/")))
+                               for d in decl):
+                            _relevant_subs.append(sub)
+                except Exception:
+                    pass
+        return _relevant_subs
+
     def _staged_list():
-        # .regress/ 是治理数据（清单/历史/考古地层），不是业务改动，不参与 F3 检查
-        return [s for s in filter_files(get_staged_files(project_dir))
+        """暂存清单（088 拓扑补：并集工作区仓+相关子仓）。
+
+        .regress/ 是治理数据不参与 F3；嵌套仓拓扑下提交发生在子仓——只读
+        工作区仓暂存恒空（088 活体标本：交集归因两连退回 fallback），故并入
+        相关子仓（声明锚定）的暂存，路径保持子仓相对=清单声明空间。
+        F3/跨会话冲突检查同获此修正——它们此前对嵌套仓提交同盲。"""
+        base = [s for s in filter_files(get_staged_files(project_dir))
                 if not s.replace(os.sep, "/").startswith(".regress/")]
+        for sub in _relevant_subrepos():
+            try:
+                r = subprocess.run(
+                    ["git", "-C", sub, "diff", "--cached", "--name-only"],
+                    capture_output=True, text=True, timeout=10)
+                if r.returncode == 0:
+                    base += [l.strip().replace(os.sep, "/")
+                             for l in r.stdout.splitlines()
+                             if l.strip()
+                             and not l.strip().replace(os.sep, "/").startswith(".regress/")]
+            except Exception:
+                pass  # 子仓扫描是增强：失败回到仅工作区仓（老行为）
+        return base
 
     if mine:
-        manifest, manifest_id = mine[0]
+        def _attribute_mine(mine_list, staged):
+            """归因（v1.86.2，088）：多活跃清单在场按 staged 交集选归因者。
+
+            run8 双标本根治：旧 mine[0]（文件名倒序首个）与提交文件无关且不筛
+            临行状态——planning 清单被路过盖 done（084）、真清单反漏盖
+            （081/082/083）。planning（未临行）不参与交集归因；全无交集=异常态
+            回退有 provisional 戳者保检查面（弱化不允许），再退旧序。"""
+            staged_set = {s.replace(os.sep, "/") for s in staged}
+            best, best_n = None, 0
+            for p, mid in mine_list:
+                parsed = parse_frontmatter(p) or {}
+                if str(parsed.get("status") or "") == "planning":
+                    continue
+                declared = {f.replace(os.sep, "/")
+                            for f in get_all_changed_files(p)}
+                n = len(declared & staged_set)
+                if n > best_n:
+                    best, best_n = (p, mid), n
+            if best:
+                return best
+            for p, mid in mine_list:
+                if (parse_frontmatter(p) or {}).get("provisional"):
+                    return (p, mid)
+            return mine_list[0]
+
+        manifest, manifest_id = _attribute_mine(mine, _staged_list())
+        if len(mine) > 1:
+            record(regress_dir, "note", manifest_id,
+                   note="co_active", co_active=len(mine),
+                   attributed=manifest_id or "planning_fallback")
         _NOTIFY_STATE["manifest_id"] = manifest_id  # blocked 推送带清单号
 
     if not manifest:
@@ -889,15 +965,23 @@ def main():
                 record(regress_dir, "acceptance_passed", manifest_id,
                        rows=total, tier=_tier)
         passed = f"{result['passed']}/{result['total']}"
-        try:
-            update_frontmatter(manifest, {
-                "status": "done",
-                "test_verified_by": "hook",
-                "test_result": f"{passed} passed",
-            })
-        except Exception as e:
-            # 写清单失败不阻断（测试已通过，清单写入是辅助记录）
-            print(f"REGRESS-GUARD: ⚠️ 清单更新失败（不影响放行）: {e}", file=sys.stderr)
+        _attrib_status = str((parse_frontmatter(manifest) or {}).get("status") or "")
+        if _attrib_status == "planning":
+            # 未临行的计划不接 done 盖章（088：084 被路过盖章标本的兜底闸）
+            record(regress_dir, "note", manifest_id,
+                   note="planning_not_stamped")
+            print("REGRESS-GUARD: 归因清单为 planning（未临行）——不盖 done，仅放行留痕",
+                  file=sys.stderr)
+        else:
+            try:
+                update_frontmatter(manifest, {
+                    "status": "done",
+                    "test_verified_by": "hook",
+                    "test_result": f"{passed} passed",
+                })
+            except Exception as e:
+                # 写清单失败不阻断（测试已通过，清单写入是辅助记录）
+                print(f"REGRESS-GUARD: ⚠️ 清单更新失败（不影响放行）: {e}", file=sys.stderr)
         record(regress_dir, "commit_passed", manifest_id,
                runner=runner, passed=result.get("passed"), total=result.get("total"),
                base_head=_git_head_sha(), coverage_pct=result.get("coverage_pct"),

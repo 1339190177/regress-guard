@@ -810,3 +810,91 @@ def test_cache_env_off_bypasses(project, monkeypatch):
     _write_manifest(project, _M_FULL + _ACC_OK)
     c2, e2, _ = run_guard("git commit -m x", project)
     assert c2 == 0 and "♻️" not in e2
+
+
+# ─── v1.86.2 归因修复（088：run8 双标本根治）─────────
+
+def _write_manifest_named(project, name, body):
+    (project / ".regress" / "manifests" / name).write_text(body, encoding="utf-8")
+
+
+def test_attribution_picks_intersecting_manifest(project):
+    """双活跃清单各声明不同文件：归因落交集者，另一清单不动（旧 mine[0] 必错）。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)  # R1 声明 src/app.js，验收全勾
+    (project / "src" / "other.js").write_text("y = 1\n", encoding="utf-8")
+    _write_manifest_named(project, "R2.md", _M_FULL.replace(
+        "id: R1", "id: R2").replace('file: "src/app.js"', 'file: "src/other.js"'))
+    _stage(project, "src/app.js", "x = 2\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 0, err
+    cp = [e for e in read_history(project) if e.get("event") == "commit_passed"
+          and e.get("manifest_id")]
+    assert cp[-1]["manifest_id"] == "R1"
+    assert "status: done" in (project / ".regress" / "manifests" / "R1.md").read_text(
+        encoding="utf-8")
+    assert "in-progress" in (project / ".regress" / "manifests" / "R2.md").read_text(
+        encoding="utf-8")
+    assert any(e.get("event") == "note" and e.get("note") == "co_active"
+               for e in read_history(project))
+
+
+def test_planning_manifest_not_stamped(project):
+    """planning（未临行）清单即使被归因也不接 done 盖章（084 标本兜底闸）。"""
+    _passing_runner(project)
+    body = ("---\nid: RP\nstatus: planning\ntier: S\nmode: quick\n"
+            "rollback: git revert\nplanned_changes:\n  - id: F1\n    file: src/app.js\n"
+            "actual_changes: []\n---\n")
+    _write_manifest(project, body)
+    _stage(project, "src/app.js", "x = 3\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 0, err
+    m = (project / ".regress" / "manifests" / "R1.md").read_text(encoding="utf-8")
+    assert "status: planning" in m and "status: done" not in m
+    assert any(e.get("event") == "note" and e.get("note") == "planning_not_stamped"
+               for e in read_history(project))
+
+
+def test_attribution_fallback_prefers_provisional(project):
+    """无交集异常态：回退有 provisional 戳者（文件名倒序故意反排防旧序巧合）。"""
+    _passing_runner(project)
+    body_z = ("---\nid: ZC\nstatus: in-progress\ntier: S\nrollback: git revert\n"
+              "planned_changes: []\nactual_changes: []\n---\n")
+    body_a = ("---\nid: PD\nstatus: in-progress\ntier: S\n"
+              "provisional:\n  at: '2026-09-21T00:00:00'\n  advisor: t\n"
+              "rollback: git revert\nplanned_changes: []\n"
+              "actual_changes:\n  - id: F1\n    file: src/app.js\n    note: x\n"
+              "self_review:\n  计划外: 'src/app.js 计划外已看过'\n  调试残留: 无\n---\n")
+    _write_manifest_named(project, "RZ.md", body_z)   # 文件名大=旧序 mine[0]
+    _write_manifest_named(project, "RA.md", body_a)   # 有 provisional=新回退目标
+    _stage(project, "src/app.js", "x = 9\n")
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 0, err
+    cp = [e for e in read_history(project) if e.get("event") == "commit_passed"
+          and e.get("manifest_id")]
+    assert cp[-1]["manifest_id"] == "PD"
+
+
+def test_attribution_nested_repo_staging(project, tmp_path):
+    """嵌套仓拓扑（088 拓扑补）：子仓暂存可见，交集归因到声明子仓路径的清单。"""
+    import subprocess as sp
+    _passing_runner(project)
+    sub = project / "nested"
+    (sub / "src").mkdir(parents=True)
+    sp.run(["git", "init", "-q"], cwd=str(sub), check=True)
+    sp.run(["git", "config", "user.email", "t@t.com"], cwd=str(sub), check=True)
+    sp.run(["git", "config", "user.name", "t"], cwd=str(sub), check=True)
+    (sub / "src" / "n.js").write_text("n = 1\n", encoding="utf-8")
+    sp.run(["git", "add", "-A"], cwd=str(sub), check=True)
+    sp.run(["git", "commit", "-qm", "init"], cwd=str(sub), check=True)
+    body = ("---\nid: RN\nstatus: in-progress\ntier: S\nrollback: git revert\n"
+            "planned_changes:\n  - id: F1\n    file: src/n.js\n"
+            "actual_changes: []\n---\n")
+    _write_manifest_named(project, "RN.md", body)
+    (sub / "src" / "n.js").write_text("n = 2\n", encoding="utf-8")
+    sp.run(["git", "add", "-A"], cwd=str(sub), check=True)  # 子仓暂存（工作区仓无暂存）
+    code, err, _ = run_guard("git commit -m x", project)
+    assert code == 0, err
+    cp = [e for e in read_history(project) if e.get("event") == "commit_passed"
+          and e.get("manifest_id")]
+    assert cp[-1]["manifest_id"] == "RN"

@@ -1,8 +1,8 @@
 # 公开攻击回放基准（benchmarks/cases.json）
 
 对 regress-guard 既有攻击回放测试的**策展索引**：把散在 `tests/` 里的供应链注入、
-信任旁路、缓存伪造、边界旁路、密钥外发等真实翻车标本，整理为可独立引用的
-基准用例集（当前 30 例 / 6 族）。
+信任旁路、缓存伪造、边界旁路、密钥外发、执行阀、先读后改指纹、提交门禁等
+真实翻车标本，整理为可独立引用的基准用例集（当前 54 例 / 9 族）。
 
 ## 非新披露声明
 
@@ -47,7 +47,9 @@ python3 -m pytest tests/ -k "test_trust_default_denied"
 python3 -m pytest tests/ -k "test_poison_env_fully_stripped or test_mixed_env_exact_output or test_whitelist_exact_set"
 
 # 全族回放：按 cases.json 的 pytest_selector 逐条跑，或直接跑源测试文件
-python3 -m pytest tests/test_notify.py tests/test_test_cache.py tests/test_boundary_guard.py tests/test_secret_scan.py tests/test_launcher_env.py -q
+python3 -m pytest tests/test_notify.py tests/test_test_cache.py tests/test_boundary_guard.py \
+  tests/test_secret_scan.py tests/test_launcher_env.py tests/test_execution_valve.py \
+  tests/test_read_before_edit.py tests/test_pre_commit_guard.py -q
 ```
 
 清单自身的健康校验（schema / selector 真实可命中 / 摘要长度上限）：
@@ -66,6 +68,9 @@ python3 -m pytest tests/test_benchmark_manifest.py -q
 | test-cache | 门禁测试缓存完整性（键敏感 / 伪造拒绝 / 生存期 / 防死循环对照） | 6 |
 | boundary-guard | 开发边界与 shell 写目标提取（越界 / 工具旁路 / 跨会话 / 误报防御） | 8 |
 | secret-scan | 提交密钥扫描（高精度命中 / 私钥块 / 目录豁免边界 / 删除行对照） | 4 |
+| execution-valve | 不可逆命令执行阀（毁灭类模式 / 复合命令夹带 / 旗标变形 / 令牌授权对照） | 7 |
+| edit-fingerprint | 先读后改与文件指纹守卫（盲改 / 读数阈值 / 外部改动失配 / 重读恢复对照） | 7 |
+| commit-gate | 提交门禁本体（间接提交识别 / 清单解析 fail-closed / 验收拦截 / 自审键） | 10 |
 
 schema 冻结为五字段（增删须同步 `tests/test_benchmark_manifest.py` 与本文档）：
 
