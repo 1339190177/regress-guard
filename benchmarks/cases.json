@@ -1,0 +1,212 @@
+[
+  {
+    "id": "TRUST-001",
+    "family": "notify-trust",
+    "attack_summary": "环境变量三重注入重定向通知信任面，诱导未受信项目通道执行",
+    "expected": "拒：生产路径零环境变量影响，恶意通道不执行且给出人工信任出口",
+    "pytest_selector": "test_trust_default_denied"
+  },
+  {
+    "id": "TRUST-002",
+    "family": "notify-trust",
+    "attack_summary": "诱导信任管理子命令代写信任表，绕过人工授信",
+    "expected": "拒：信任视图只读，任何形态不写表文件",
+    "pytest_selector": "test_trust_cli_readonly_never_writes"
+  },
+  {
+    "id": "CRED-001",
+    "family": "notify-trust",
+    "attack_summary": "克隆仓库配置覆盖通知凭据字段，劫持凭据外发",
+    "expected": "剥离：未受信项目凭据字段覆盖回退机器级并告警",
+    "pytest_selector": "test_wecom_cred_fields_gated"
+  },
+  {
+    "id": "APIBASE-001",
+    "family": "notify-trust",
+    "attack_summary": "环境变量劫持通知推送 API 基域指向恶域",
+    "expected": "钉回：非白名单域被重置为官方域并告警",
+    "pytest_selector": "test_api_base_pinned"
+  },
+  {
+    "id": "HOME-001",
+    "family": "notify-trust",
+    "attack_summary": "注入家目录变量重定向机器级通知配置读取路径",
+    "expected": "剥离：默认路径仍按系统账户数据库派生，注入路径无效",
+    "pytest_selector": "test_machine_conf_path_home_injection_neutralized"
+  },
+  {
+    "id": "PIN-001",
+    "family": "notify-pin",
+    "attack_summary": "同路径换内容替换通知通道敏感配置（同址调包）",
+    "expected": "拒：敏感面变更被拦，回退已钉配置并提示人工重授信",
+    "pytest_selector": "test_pin_swap_sensitive_denied"
+  },
+  {
+    "id": "PIN-002",
+    "family": "notify-pin",
+    "attack_summary": "同址调包后人工已重新授信的对照路径",
+    "expected": "放行：人工重授信后重钉新配置（授权路径不误拦）",
+    "pytest_selector": "test_pin_human_retrust_repin"
+  },
+  {
+    "id": "ENV-001",
+    "family": "launcher-env",
+    "attack_summary": "全污染环境（覆盖类/凭据类/自定义变量）传入守卫子进程",
+    "expected": "剥离：白名单外变量全部不出现在子进程环境",
+    "pytest_selector": "test_poison_env_fully_stripped"
+  },
+  {
+    "id": "ENV-002",
+    "family": "launcher-env",
+    "attack_summary": "混合环境中夹带覆盖类与凭据类变量，试探精确输出",
+    "expected": "剥离：输出恰等于白名单子集，多留一个即红",
+    "pytest_selector": "test_mixed_env_exact_output"
+  },
+  {
+    "id": "ENV-003",
+    "family": "launcher-env",
+    "attack_summary": "白名单自身被放宽（增条目漂移）的试探",
+    "expected": "钉死：白名单全集双向等值，增删条目即红",
+    "pytest_selector": "test_whitelist_exact_set"
+  },
+  {
+    "id": "ENV-004",
+    "family": "launcher-env",
+    "attack_summary": "以小写形态夹带覆盖类与凭据类变量绕过比较",
+    "expected": "剥离：归一比较命中白名单外小写形态仍被剥离",
+    "pytest_selector": "test_case_normalized_comparison_keeps_original_key"
+  },
+  {
+    "id": "ENV-005",
+    "family": "launcher-env",
+    "attack_summary": "对照：白名单变量夹带在污染环境中传递",
+    "expected": "保留：白名单变量原键原值到达，同环境毒变量被剥离",
+    "pytest_selector": "test_whitelist_var_kept"
+  },
+  {
+    "id": "CACHE-001",
+    "family": "test-cache",
+    "attack_summary": "已跟踪文件内容被篡改后重放旧缓存冒充门禁通过",
+    "expected": "拒：缓存键随内容变化，旧记录失效",
+    "pytest_selector": "test_key_sensitive_tracked_edit"
+  },
+  {
+    "id": "CACHE-002",
+    "family": "test-cache",
+    "attack_summary": "新增未跟踪文件后重放旧缓存冒充门禁通过",
+    "expected": "拒：未跟踪新增同样入键，旧记录失效",
+    "pytest_selector": "test_key_sensitive_untracked_add"
+  },
+  {
+    "id": "CACHE-003",
+    "family": "test-cache",
+    "attack_summary": "删除已跟踪文件后重放旧缓存冒充门禁通过",
+    "expected": "拒：删除使键变化，旧记录失效",
+    "pytest_selector": "test_key_sensitive_tracked_delete"
+  },
+  {
+    "id": "CACHE-004",
+    "family": "test-cache",
+    "attack_summary": "伪造失败结果写入缓存冒充通过",
+    "expected": "拒：仅通过结果可落账，失败不写入",
+    "pytest_selector": "test_record_rejects_fail"
+  },
+  {
+    "id": "CACHE-005",
+    "family": "test-cache",
+    "attack_summary": "篡改缓存时间戳使陈旧记录永生",
+    "expected": "拒：超生存期记录查询失效",
+    "pytest_selector": "test_lookup_ttl_expiry"
+  },
+  {
+    "id": "CACHE-006",
+    "family": "test-cache",
+    "attack_summary": "对照：门禁自身运行时目录写入不得改键（防死循环）",
+    "expected": "放行：运行时目录不入键，同树缓存命中",
+    "pytest_selector": "test_key_ignores_regress_runtime"
+  },
+  {
+    "id": "BOUND-001",
+    "family": "boundary-guard",
+    "attack_summary": "编辑活跃清单边界外文件，绕过任务声明面",
+    "expected": "拦：越界编辑被阻断并指路回写命令",
+    "pytest_selector": "test_outside_boundary_blocked"
+  },
+  {
+    "id": "BOUND-002",
+    "family": "boundary-guard",
+    "attack_summary": "待批准计划期内经 shell 删除边界内文件（工具旁路）",
+    "expected": "拦：计划未批准时 shell 写路径与编辑同等拦截",
+    "pytest_selector": "test_bash_rm_inside_planning_boundary_blocked"
+  },
+  {
+    "id": "BOUND-003",
+    "family": "boundary-guard",
+    "attack_summary": "经 shell 重定向写边界内文件（工具旁路）",
+    "expected": "拦：重定向目标被识别为写目标并阻断",
+    "pytest_selector": "test_bash_redirection_write_blocked"
+  },
+  {
+    "id": "BOUND-004",
+    "family": "boundary-guard",
+    "attack_summary": "经移动/原地编辑/低级块拷贝类命令写边界内文件",
+    "expected": "拦：多形态写命令均被识别为写目标",
+    "pytest_selector": "test_bash_mv_sed_dd_blocked"
+  },
+  {
+    "id": "BOUND-005",
+    "family": "boundary-guard",
+    "attack_summary": "他会话活跃清单边界内的文件被本会话编辑（竞态）",
+    "expected": "拦：跨会话编辑被阻断并给出对焦提示",
+    "pytest_selector": "test_cross_session_edit_blocked"
+  },
+  {
+    "id": "BOUND-006",
+    "family": "boundary-guard",
+    "attack_summary": "任务受阻后利用既往批准戳短路拦截",
+    "expected": "拦：受阻拦截不被既往批准戳短路",
+    "pytest_selector": "test_approved_then_blocked_still_blocks"
+  },
+  {
+    "id": "BOUND-007",
+    "family": "boundary-guard",
+    "attack_summary": "载荷文本中嵌入命令词样字符串，试探写目标误判（防误报）",
+    "expected": "放行：引号载荷内容不判为写目标，无误拦",
+    "pytest_selector": "test_dequoted_payload_command_word_not_target"
+  },
+  {
+    "id": "BOUND-008",
+    "family": "boundary-guard",
+    "attack_summary": "文档体内嵌入删除与重定向样文本，试探写目标误判",
+    "expected": "半拦：文档体不判写目标，真实重定向目标仍收",
+    "pytest_selector": "test_heredoc_body_not_targets_but_redir_is"
+  },
+  {
+    "id": "SECRET-001",
+    "family": "secret-scan",
+    "attack_summary": "新增行夹带高精度形态云凭据",
+    "expected": "拦：命中并给出文件与行号",
+    "pytest_selector": "test_high_precision_hit_and_lineno"
+  },
+  {
+    "id": "SECRET-002",
+    "family": "secret-scan",
+    "attack_summary": "新增行夹带私钥块头",
+    "expected": "拦：私钥块命中",
+    "pytest_selector": "test_private_key_block"
+  },
+  {
+    "id": "SECRET-003",
+    "family": "secret-scan",
+    "attack_summary": "把真凭据藏进测试目录试探豁免",
+    "expected": "拦：高精度模式不豁免测试目录",
+    "pytest_selector": "test_high_precision_not_exempt_in_tests"
+  },
+  {
+    "id": "SECRET-004",
+    "family": "secret-scan",
+    "attack_summary": "对照：删除行中的历史凭据样文本不产生新增告警",
+    "expected": "放行：只扫新增行，删除行不误报",
+    "pytest_selector": "test_deleted_lines_not_scanned"
+  }
+]

@@ -35,11 +35,15 @@ Edit 的 old_string 必须逐字符匹配（含缩进）。不中时禁止基于
 不是误报——074 又验证了一次）。
 标本：074 加 `test_key_staged_equals_unstaged` 后忘了重新 gen，全量 1 failed。
 
-### #4 git 三步分立：add / status / commit 各自独立调用
-复合命令（`git add … && git commit …`）会被 PreToolUse 拦截，**整条没跑**但
-你以为是 add 成了 commit 没成——暂存悄悄丢失。纪律：add → `git status --short`
-核对 → commit，三个独立 Bash 调用。
-标本：run5 某批暂存丢失，发布前才发现树不对。
+### #4 git 三步分立 + 被拦重试必须重新 add
+复合命令（add 与 commit 串在一起）会被 PreToolUse 拦截，**整条没跑**但
+你以为是 add 成了 commit 没成——暂存悄悄丢失。纪律：暂存 → `git status --short`
+核对 → 提交，三个独立 Bash 调用。**被拦后重试尤其危险**：重试命令必须重新
+暂存并重新 status 验证——077 标本：重试只跑提交命令，提交里只剩旧暂存
+（ac0bdf1 实际只含 playbook 8 行，清单宣称的测试文件漏提交，run8 边界检查才逮住）。
+标本：run5 某批暂存丢失；run7 077 重试丢暂存（更隐蔽）。
+姊妹坑：**文档文本里出现提交命令字样同样触发门禁**（heredoc 写文档被拦实证）——
+文档写入用 Edit 工具或改措辞。
 
 ### #5 门禁跑的是已装副本：install.sh 先于门禁
 门禁钩子从安装位（~/.zcode/...）执行，不是从工作树。改了代码不 `bash install.sh`
@@ -93,6 +97,12 @@ _mk 类工厂函数加 name= 参数。
 不含 git commit），下一提交调用才会命中；把 seed 和 commit 放同一复合命令 =
 seed 与门禁全量并行双跑（想省的以并发形态重演）。
 标本：076 取证（guard_version 1.85.1 事件与 0 秒计时矛盾旋梯）。
+
+### #14 gen_reference 无 dry-run：任何调用都是真写
+`scripts/gen_reference.py` 不校验未知参数——`--dry-run` 会被静默忽略并**真执行
+刷新**（改 README 派生区=边界外写入）。想检查一致性用 `--check`；别的 flag 一律
+别传。
+标本：run8 波1-C 臂（--dry-run 真写后外科还原）。
 
 ## 三、批流程七步（你在第 4 步）
 

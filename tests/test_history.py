@@ -285,3 +285,36 @@ def test_heatmap_newkey_mark(tmp_path):
     assert rows["new_reason"]["new"] is True
     assert rows["new_reason"]["first"].startswith(fresh[:10])
     assert rows["old_reason"]["new"] is False
+
+
+# ─── v1.85.3（077）：缓存命中遥测 ────────────────
+
+def test_cache_stats_empty(regress_dir):
+    """空历史：零除安全，rate=0.0，零节省。"""
+    from history import cache_stats
+    s = cache_stats(regress_dir)
+    assert s == {"total": 0, "hits": 0, "misses": 0,
+                 "rate": 0.0, "est_saved_seconds": 0}
+
+
+def test_cache_stats_all_miss(regress_dir):
+    """纯 miss：cached=false + 旧事件无 cached 字段都计 miss；blocked 不进分母。"""
+    from history import cache_stats
+    record(regress_dir, "commit_passed", "R1", runner="pytest", cached=False)
+    record(regress_dir, "commit_blocked", "R1", reason="test_failed")  # 非过门禁，不计
+    record(regress_dir, "commit_passed", "R2", runner="pytest")  # 旧事件无 cached 字段
+    s = cache_stats(regress_dir)
+    assert s["total"] == 2 and s["hits"] == 0 and s["misses"] == 2
+    assert s["rate"] == 0.0 and s["est_saved_seconds"] == 0
+
+
+def test_cache_stats_mixed(regress_dir):
+    """1 命中 2 未命中：hits=1 misses=2 rate≈0.333 est≥118（=1×118）。"""
+    from history import cache_stats
+    record(regress_dir, "commit_passed", "R1", runner="pytest", cached=True)
+    record(regress_dir, "commit_passed", "R2", runner="pytest", cached=False)
+    record(regress_dir, "commit_passed", "R3", runner="pytest", cached=False)
+    s = cache_stats(regress_dir)
+    assert s["total"] == 3 and s["hits"] == 1 and s["misses"] == 2
+    assert abs(s["rate"] - 1 / 3) < 0.001
+    assert s["est_saved_seconds"] >= 118
