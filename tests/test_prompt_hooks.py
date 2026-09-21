@@ -142,3 +142,81 @@ def test_approval_delegation_not_counted_as_prod():
     assert pi.is_content_free_prod("继续，直接做") is False
     assert pi.is_content_free_prod("继续") is True            # 真空催促仍计
     assert pi.is_content_free_prod("go") is True
+
+
+# ─── v1.80（069）：UserPromptSubmit 治理上下文前置注入 ────────────────
+
+import importlib.util as _ilu
+
+
+def _pi():
+    spec = _ilu.spec_from_file_location(
+        "pi-gov", os.path.join(os.path.dirname(__file__), "..",
+                               "hooks", "scripts", "prompt_intercept.py"))
+    m = _ilu.module_from_spec(spec); spec.loader.exec_module(m)
+    return m
+
+
+def _run_prompt(pi, monkeypatch, proj, text):
+    import io, json as _json
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
+    import pytest as _pytest
+    with _pytest.raises(SystemExit) as e:
+        pi.main.__globals__["sys"].stdin = io.StringIO(_json.dumps({"prompt": text}))
+        import builtins
+        real_input = builtins.input
+        pi.main()
+    return e.value.code
+
+
+def test_governance_active_manifest_line(tmp_path, monkeypatch, capsys):
+    proj = tmp_path / "proj"; (proj / ".regress" / "manifests").mkdir(parents=True)
+    (proj / ".regress" / "manifests" / "R1.md").write_text(
+        "---\nid: REGRESS-9\nstatus: in-progress\ntier: M\n---\n"
+        "planned_changes:\n- id: F1\n- id: F2\n", encoding="utf-8")
+    pi = _pi()
+    import io, json as _json, pytest
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
+    monkeypatch.setattr("sys.stdin", io.StringIO(_json.dumps({"prompt": "改一下登录逻辑"})))
+    with pytest.raises(SystemExit):
+        pi.main()
+    out = capsys.readouterr().out
+    assert "REGRESS-9" in out and "边界 2 文件" in out and "治理上下文" in out
+
+
+def test_governance_no_manifest_silent(tmp_path, monkeypatch, capsys):
+    proj = tmp_path / "proj"; (proj / ".regress").mkdir(parents=True)
+    pi = _pi()
+    import io, json as _json, pytest
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
+    monkeypatch.setattr("sys.stdin", io.StringIO(_json.dumps({"prompt": "你好"})))
+    with pytest.raises(SystemExit):
+        pi.main()
+    assert capsys.readouterr().out == ""
+
+
+def test_governance_rule_recall_line(tmp_path):
+    pi = _pi()
+    (tmp_path / ".regress").mkdir(parents=True)
+    (tmp_path / ".regress" / "rules-ledger.json").write_text(json.dumps(
+        {"r1": {"id": "R1", "sig": "zsh pipefail 假绿 pytest 管道",
+                "hits": 4, "last_hit": "2099-01-01"}}, ensure_ascii=False),
+        encoding="utf-8")
+    lines = pi._rule_recall_line(str(tmp_path), "zsh 下 pytest 管道假绿 pipefail 教训")
+    assert lines and "相似规律" in lines[0]
+    assert pi._rule_recall_line(str(tmp_path), "完全无关的天气话题") == []
+
+
+def test_governance_off_escape(tmp_path, monkeypatch, capsys):
+    proj = tmp_path / "proj"; (proj / ".regress" / "manifests").mkdir(parents=True)
+    (proj / ".regress" / "manifests" / "R1.md").write_text(
+        "---\nid: REGRESS-9\nstatus: in-progress\n---\n", encoding="utf-8")
+    pi = _pi()
+    import io, json as _json, pytest
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
+    monkeypatch.setenv("RG_PROMPT_CONTEXT", "off")
+    monkeypatch.setattr("sys.stdin", io.StringIO(_json.dumps({"prompt": "改进一下性能"})))
+    with pytest.raises(SystemExit):
+        pi.main()
+    out = capsys.readouterr().out
+    assert "治理上下文" not in out  # off 逃生：治理段不出（需求入口检查仍可出）

@@ -213,6 +213,9 @@ planning ──批准/临行──→ in-progress ──→ verifying ──门�
 
 ## 无感层（自动，零操作）
 
+（v1.80）UserPromptSubmit 治理上下文前置：每轮对话注入活跃清单边界行+规律账本
+TOP-1 召回行（`RG_PROMPT_CONTEXT=off` 逃生）——防线从"拦截时才教育"前移到"开工前就看见"。
+
 （v1.78）Stop 级版本漂移警示：每轮收尾顺带比对已装副本与源仓版本，新漂移对
 首次出现 stderr+chat 各一（消除前不重复）——SessionStart 只跑一次的时代盲区补上。
 

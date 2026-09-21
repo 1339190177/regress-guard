@@ -259,6 +259,52 @@ def analyze_prompt(text):
     return reminders
 
 
+
+
+def _active_manifests(project_dir, limit=3):
+    """活跃清单行（v1.80，069）：id+status+tier+边界文件数——治理上下文前置。"""
+    import glob
+    lines = []
+    try:
+        for path in sorted(glob.glob(
+                os.path.join(project_dir, ".regress", "manifests", "*.md"))):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    head = f.read(4000)
+            except OSError:
+                continue
+            m = re.search(r"^status:\s*(\S+)", head, re.M)
+            if not m or m.group(1) not in ("planning", "in-progress"):
+                continue
+            mid = re.search(r"^id:\s*(\S+)", head, re.M)
+            tier = re.search(r"^tier:\s*(\S+)", head, re.M)
+            n_files = len(re.findall(r"^\s*-\s*id:\s*F\d+", head, re.M))
+            lines.append(f"📋 {mid.group(1) if mid else path}（{m.group(1)}"
+                         f"{',' + tier.group(1) if tier else ''}，"
+                         f"边界 {n_files} 文件）")
+            if len(lines) >= limit:
+                break
+    except Exception:
+        pass
+    return lines
+
+
+def _rule_recall_line(project_dir, prompt_text):
+    """规律召回 TOP-1（v1.80）：match 现成地板 min_shared=3 兜噪声，
+    再要求 top hits>=3 才出（顾问缓解：假阳性高就退边界单行）。"""
+    try:
+        from rules_ledger import match
+        hits = match(project_dir, prompt_text[:200], top=1)
+        if hits:
+            top = hits[0]
+            if (top.get("hits") or 0) >= 3:
+                sig = str(top.get("sig") or "")[:60]
+                return [f"📚 相似规律：{sig}（hits {top['hits']}——开工前看一眼历史教训）"]
+    except Exception:
+        pass
+    return []
+
+
 def main():
     raw = sys.stdin.read() if not sys.stdin.isatty() else ""
     if not raw:
@@ -299,9 +345,19 @@ def main():
         sys.exit(0)
 
     reminders = analyze_prompt(prompt_text)
+    gov_lines = []
+    if os.environ.get("RG_PROMPT_CONTEXT", "").lower() not in ("off", "0", "false"):
+        # v1.80（069）治理上下文前置：活跃清单边界+规律召回——防线从拦截点前移到开工前
+        pd = (os.environ.get("CLAUDE_PROJECT_DIR")
+              or os.environ.get("ZCODE_PROJECT_DIR") or os.getcwd())
+        gov_lines = _active_manifests(pd) + _rule_recall_line(pd, prompt_text)
+    parts = []
+    if gov_lines:
+        parts.append("【regress-guard 治理上下文】\n" + "\n".join(f"  {l}" for l in gov_lines))
     if reminders:
-        context = "【regress-guard 需求入口检查】\n" + "\n".join(f"  {r}" for r in reminders)
-        print(json.dumps({"additionalContext": context}))
+        parts.append("【regress-guard 需求入口检查】\n" + "\n".join(f"  {r}" for r in reminders))
+    if parts:
+        print(json.dumps({"additionalContext": "\n".join(parts)}, ensure_ascii=False))
 
     sys.exit(0)
 
