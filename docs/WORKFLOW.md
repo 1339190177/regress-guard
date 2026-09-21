@@ -136,6 +136,18 @@ python3 hooks/scripts/lib/notify.py stats   # 送达率 + event 分布 + 待决/
 git commit               ← 门禁跑测试，通过放行
 ```
 
+## 测试结果缓存（v1.85：同树重试不重跑全量）
+
+门禁跑全量前先查 `.regress/test-cache.jsonl`：键=测试目录所在 git 仓的
+组合哈希（HEAD+status porcelain+diff 补丁+未跟踪内容，`.regress/` 排除）。
+TTL 4h 内同键有通过记录 → 跳过全量（stderr ♻️ 复用 + `commit_passed` 事件
+带 `cached:true`/`cache_key`）；真跑通过才落账（只缓存通过，上限 50 条）。
+
+立场（顾问裁）：**优化位，非安全边界**——命中大声可审计；伪造缓存者本有
+更廉价的 `/regress:bypass`。关闭：环境变量 `RG_TEST_CACHE=off` 或
+`.regress/config.json` 的 `test_cache.enabled: false`（ttl_minutes/max_entries
+同节可调）。验收环（EARS 勾验）不受缓存影响——它读清单，不读树。
+
 ## 特征测试（v1.45：改无测试老代码前先钉住现状）
 
 `/regress:characterize <文件>` 五步：枚举公开入口（私有/外部服务依赖标"不可钉"）

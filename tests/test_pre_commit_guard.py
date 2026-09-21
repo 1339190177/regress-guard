@@ -760,3 +760,53 @@ def test_acceptance_mark_without_verify_still_blocks(project):
     _write_manifest(project, body)
     code, err, _ = run_guard("git commit -m x", project)
     assert code == 2 and "验收未勾" in err
+
+
+# ─── v1.85 测试结果缓存（074）────────────────────────
+
+_ACC_OK = ("\n## 验收标准（EARS-lite）\n\n"
+           "- When 发起请求，则 返回 200"
+           "（验：python3 -m pytest test_smoke.py -q）✅\n")
+
+
+def test_cache_hit_on_same_tree(project):
+    """同树二次过门禁：跳全量（stderr ♻️）+事件 cached:true+cache_key 留痕。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    c1, e1, _ = run_guard("git commit -m x", project)
+    assert c1 == 0, e1
+    assert "♻️" not in e1  # 首跑必是真跑
+    _write_manifest(project, _M_FULL + _ACC_OK)  # 重置 done 戳（.regress 不入键）
+    c2, e2, _ = run_guard("git commit -m x", project)
+    assert c2 == 0, e2
+    assert "♻️" in e2
+    cp = [e for e in read_history(project) if e.get("event") == "commit_passed"]
+    assert cp[-1].get("cached") is True and cp[-1].get("cache_key")
+    assert cp[0].get("cached") is not True
+
+
+def test_cache_miss_after_tree_change(project):
+    """树变更（未跟踪测试文件内容变）→ 键变 → 未命中照常全量。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    c1, e1, _ = run_guard("git commit -m x", project)
+    assert c1 == 0 and "♻️" not in e1
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    (project / "test_smoke.py").write_text(
+        "def test_ok():\n    assert 1 + 1 == 2\n", encoding="utf-8")
+    c2, e2, _ = run_guard("git commit -m x", project)
+    assert c2 == 0 and "♻️" not in e2
+    cp = [e for e in read_history(project) if e.get("event") == "commit_passed"]
+    assert cp[-1].get("cached") is not True
+
+
+def test_cache_env_off_bypasses(project, monkeypatch):
+    """RG_TEST_CACHE=off：整体旁路，两次都真跑（行为同 v1.84）。"""
+    monkeypatch.setenv("RG_TEST_CACHE", "off")
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    c1, e1, _ = run_guard("git commit -m x", project)
+    assert c1 == 0 and "♻️" not in e1
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    c2, e2, _ = run_guard("git commit -m x", project)
+    assert c2 == 0 and "♻️" not in e2

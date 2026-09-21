@@ -826,15 +826,30 @@ def main():
 
     # ─── 6. hook 自己跑测试 ───────────────────────────
     print("REGRESS-GUARD: 正在运行测试...", file=sys.stderr)
+    # v1.85 测试结果缓存（074）：同树重试三跑全量是最大浪费；顾问裁=优化位非安全
+    # 边界。命中只替代 6 节全量，6.5 验收入环照跑——验收读的是清单不是树。
+    _cache_hit = None
     try:
-        result = run_tests(project_dir)
-    except Exception as e:
-        record(regress_dir, "error", manifest_id, error=f"test_runner crashed: {e}")
-        emit_block(
-            f"测试运行器异常崩溃：{e}\n\n"
-            "fail-safe 原则：阻断 commit。请检查测试运行器配置。\n"
-            f"Traceback:\n{traceback.format_exc()[-500:]}"
-        )
+        from test_cache import lookup as _tc_lookup
+        _cache_hit = _tc_lookup(project_dir, regress_dir)
+    except Exception:
+        _cache_hit = None  # 缓存是增强不是依赖，任何异常=旁路
+    if _cache_hit:
+        result = dict(_cache_hit.get("result") or {})
+        result["cached"] = True
+        print(f"REGRESS-GUARD: ♻️ 测试缓存命中（同一棵树 "
+              f"{str(_cache_hit.get('key'))[:8]}, {str(_cache_hit.get('age_min'))} 分钟前"
+              f"的通过结果）——跳过全量重跑；RG_TEST_CACHE=off 可关", file=sys.stderr)
+    else:
+        try:
+            result = run_tests(project_dir)
+        except Exception as e:
+            record(regress_dir, "error", manifest_id, error=f"test_runner crashed: {e}")
+            emit_block(
+                f"测试运行器异常崩溃：{e}\n\n"
+                "fail-safe 原则：阻断 commit。请检查测试运行器配置。\n"
+                f"Traceback:\n{traceback.format_exc()[-500:]}"
+            )
     status = result.get("status", "fail")
     runner = result.get("runner", "unknown")
 
@@ -885,7 +900,16 @@ def main():
             print(f"REGRESS-GUARD: ⚠️ 清单更新失败（不影响放行）: {e}", file=sys.stderr)
         record(regress_dir, "commit_passed", manifest_id,
                runner=runner, passed=result.get("passed"), total=result.get("total"),
-               base_head=_git_head_sha(), coverage_pct=result.get("coverage_pct"))
+               base_head=_git_head_sha(), coverage_pct=result.get("coverage_pct"),
+               cached=bool(result.get("cached")),
+               cache_key=(str(_cache_hit.get("key")) if _cache_hit else None))
+        # 缓存落账（074）：真跑通过才写（命中路径不重写——条目已在）；增强位，失败静默
+        if not result.get("cached"):
+            try:
+                from test_cache import record as _tc_record
+                _tc_record(project_dir, regress_dir, result)
+            except Exception:
+                pass
         # v1.71 待决自动回流（run4 R3）：同清单过门禁=该清单的 blocked 告警自然
         # 闭环——唯一自动策略（顾问禁令：不跨策略不批量不推断，只 resolve 同 ref
         # 未决）；resolved 单列不进误报率分母（校准口径 human-only 不变）。
