@@ -87,6 +87,23 @@ def test_key_staged_equals_unstaged(tmp_path):
     assert test_cache.tree_key(str(r)) == k1
 
 
+def test_key_untracked_staged_equals(tmp_path):
+    """狗粮标本二号回归钉（076 翻车原景）：未跟踪→git add，键不变。"""
+    r = _git_repo(tmp_path)
+    (r / "new.txt").write_text("brand new\n", encoding="utf-8")  # 未跟踪
+    k1 = test_cache.tree_key(str(r))
+    subprocess.run(["git", "add", "-A"], cwd=str(r), check=True)
+    assert test_cache.tree_key(str(r)) == k1
+
+
+def test_key_sensitive_tracked_delete(tmp_path):
+    """tracked 文件删除（工作树缺失）键必变。"""
+    r = _git_repo(tmp_path)
+    k1 = test_cache.tree_key(str(r))
+    (r / "a.txt").unlink()
+    assert test_cache.tree_key(str(r)) != k1
+
+
 def test_key_none_outside_git(tmp_path):
     d = tmp_path / "plain"
     d.mkdir()

@@ -8,11 +8,13 @@
 /regress:bypass；命中必须大声可审计（stderr ♻️ + commit_passed 事件带
 cached/cache_key），TTL 收窄 4h 兜环境漂移窗。
 
-键设计：测试目录所在 git 仓的 sha256(HEAD + status porcelain + diff HEAD
-补丁 + 未跟踪文件内容)。.regress/ 整体排除——治理运行时产物（含本缓存
-文件自身与 history.jsonl）不得入键，否则写缓存即改键、永不命中（死循环）。
-只缓存通过结果（失败前必改树，fail 条目无消费者）。任何异常 = 旁路，
-行为与无缓存完全一致（缓存是增强不是依赖）。
+键设计：测试目录所在 git 仓的**内容规范形**——tracked ∪ 未跟踪全路径排序，逐文
+件哈希工作树内容。与暂存态/git diff 输出格式/HEAD 彻底解耦（074 两个狗粮标本
+的教训：porcelain 状态列与 diff 补丁格式都随暂存态变，同内容会误判不同树）。
+.regress/ 整体排除——治理运行时产物（含本缓存文件自身与 history.jsonl）不得
+入键，否则写缓存即改键、永不命中（死循环）。只缓存通过结果（失败前必改树，
+fail 条目无消费者）。任何异常 = 旁路，行为与无缓存完全一致（缓存是增强不是
+依赖）。
 """
 import hashlib
 import json
@@ -48,32 +50,43 @@ def _run_git(repo, *args):
 
 
 def tree_key(test_dir):
-    """测试目录所在 git 仓的组合哈希；非 git 仓/任何失败 → None（旁路）。"""
+    """测试目录所在 git 仓的内容规范形哈希；非 git 仓/任何失败 → None（旁路）。
+
+    键只认"哪些文件、什么内容"：tracked（ls-files）∪ 未跟踪（porcelain ??）
+    全路径排序后逐文件哈希工作树内容，缺失记 absent。与暂存态、git diff 输出
+    格式、HEAD 完全解耦——074 两个狗粮标本的根治：①porcelain 状态列区分暂存/
+    未暂存，②未跟踪以路径+哈希入键而暂存后以 unified diff 入键（格式不对称），
+    两种形态下"同内容不同暂存态"都会误判为不同树、门禁白跑全量。.regress/
+    整体排除（治理运行时产物：缓存自身/history/清单 done 戳——它们变了不算树变）。
+    """
     try:
         repo = _run_git(test_dir, "rev-parse", "--show-toplevel")
         if not repo or not repo.strip():
             return None
         repo = repo.strip()
-        h = hashlib.sha256()
-        head = _run_git(repo, "rev-parse", "HEAD")
-        h.update(("head:" + (head.strip() if head else "nohead")).encode())
-        # 只取未跟踪清单（内容自哈希）；tracked 变更由 diff HEAD 覆盖——
-        # status 原文不入键：porcelain 状态列区分暂存/未暂存，同内容不同
-        # 暂存态会被误判为不同树（074 狗粮标本一号：shell 播种未暂存、
-        # 门禁时已暂存，首版键不等、门禁白跑一遍全量）。
+        paths = set()
+        tracked = _run_git(repo, "ls-files") or ""
+        for p in tracked.splitlines():
+            p = p.strip().strip('"')
+            if p:
+                paths.add(p)
         status = _run_git(repo, "status", "--porcelain", "-uall") or ""
-        h.update((_run_git(repo, "diff", "HEAD", "--", ".",
-                           ":(exclude).regress") or "").encode())
         for line in status.splitlines():
             if not line.startswith("??"):
-                continue  # tracked 变更已由 diff 覆盖
-            path = line[3:].strip().strip('"')
-            if not path or path == ".regress" or path.startswith(".regress/"):
-                continue  # 治理运行时产物（含缓存自身/清单 done 戳）不入键
-            fp = os.path.join(repo, path)
+                continue  # tracked 变更的文件已在 ls-files 集合里（键看内容不看状态）
+            p = line[3:].strip().strip('"')
+            if p:
+                paths.add(p)
+        h = hashlib.sha256()
+        for p in sorted(paths):
+            if p == ".regress" or p.startswith(".regress/"):
+                continue
+            fp = os.path.join(repo, p)
             if os.path.isfile(fp):
                 with open(fp, "rb") as f:
-                    h.update((path + ":").encode() + hashlib.sha256(f.read()).digest())
+                    h.update(f"{p}:{hashlib.sha256(f.read()).hexdigest()}\n".encode())
+            else:
+                h.update(f"{p}:absent\n".encode())  # tracked 已删（工作树缺失）
         return h.hexdigest()[:16]
     except Exception:
         return None
