@@ -103,11 +103,57 @@ def should_notify(last_prompt, cooled=True):
     return bool(cooled)
 
 
+
+
+def _drift_notice_once():
+    """v1.78（067）：Stop 级版本漂移警示——SessionStart 每会话只跑一次（宿主
+    源码证实 resume 不重发），热会话全程旧版把关无人知（2026-09-20 夜宿主
+    3.14.0→3.14.1 漂移，次晨巡检才发现）。每对版本只警一次：stderr 当轮可见
+    （顾问精化④），chat 一条滞后可见；状态 tmp+rename 原子写（精化②）；
+    版本比较规范化（精化③，self_heal._ver_key）。全程 best-effort（精化①）。"""
+    try:
+        sys.path.insert(0, _HERE)
+        from self_heal import _drift_pair, _ver_key
+        pair = _drift_pair()
+        if not pair or _ver_key(pair[0]) == _ver_key(pair[1]):
+            return
+        installed, source_v = pair
+        import json as _json
+        import tempfile
+        state = os.path.join(tempfile.gettempdir(), "regress-drift-noticed.json")
+        key = f"{installed}->{source_v}"
+        try:
+            with open(state, encoding="utf-8") as f:
+                if _json.load(f).get("pair") == key:
+                    return  # 同对已警过：静默（零噪音）
+        except (OSError, ValueError):
+            pass
+        print(f"REGRESS-GUARD: ⚠️ 版本漂移（轮末巡检）：已装 v{installed} vs 源仓 "
+              f"v{source_v}——重启会话或跑 bash install.sh 激活；"
+              f"消除漂移前本轮警示不重复",
+              file=sys.stderr)
+        try:
+            tmp = state + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                _json.dump({"pair": key, "ts": time.strftime("%F %T")}, f)
+            os.replace(tmp, state)  # 原子写防并发会话撕裂
+        except OSError:
+            pass
+        try:
+            notify(_project_dir(), "chat", "⚠️ 插件版本漂移",
+                   f"已装 v{installed} 源仓 v{source_v}——重启会话或 install.sh 激活")
+        except Exception:
+            pass  # chat 滞后可见也行（stderr 已当轮可见）
+    except Exception:
+        pass  # 警示是增强不是依赖：不改退出码不阻塞
+
+
 def main():
     try:
         _ = sys.stdin.read()
     except Exception:
         pass
+    _drift_notice_once()  # v1.78：轮末漂移警示（自带节流，先于冷却判断）
     lp = _last_prompt()
     if not should_notify(lp, _cooled()):
         _log("SKIP", f"prompt={'有' if lp else '空'}")

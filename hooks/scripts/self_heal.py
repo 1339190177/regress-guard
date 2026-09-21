@@ -458,11 +458,8 @@ def check_bridge_registration():
         pass  # 警示是增强不是依赖
 
 
-def check_version_drift():
-    """v1.59 版本漂移警示（044 病例机制化）：源仓 plugin.json 新于已装副本
-    → 会话启动自愈本会同步，但热会话里的钩子仍是旧版在把关——警示一眼可见。
-    已装版本读 install.sh 落的 .source 戳（source_version= 行）。
-    只警示不自动改（升级走既有轨道：会话启动自愈 / install.sh）。"""
+def _drift_pair():
+    """(已装, 源仓) 版本对；任一缺失返回 None。v1.78 拆出供 Stop 级警示复用。"""
     try:
         installed = ""
         src_meta = os.path.join(HOOK_HOME, ".source")
@@ -472,20 +469,46 @@ def check_version_drift():
                     if line.startswith("source_version="):
                         installed = line.split("=", 1)[1].strip()
         if not installed:
-            return
+            return None
         for cand in SOURCE_CANDIDATES:
             pj = os.path.join(cand, ".zcode-plugin", "plugin.json")
             if os.path.isfile(pj):
                 with open(pj, encoding="utf-8") as f:
                     source_v = str(json.load(f).get("version") or "")
-                if source_v and source_v != installed:
-                    print(f"REGRESS-GUARD: ⚠️ 已装副本 v{installed} 与源仓 v{source_v} "
-                          f"版本漂移——重启会话（启动自愈会同步）或重跑 install.sh 激活，"
-                          f"期间钩子按旧版把关（事件已盖 guard_version 可查）",
-                          file=sys.stderr)
-                return
+                if source_v:
+                    return (installed, source_v)
     except Exception:
-        pass  # 警示是增强不是依赖
+        pass
+    return None
+
+
+def _ver_key(v):
+    """semver 规范化比较键（顾问精化③）：x.y.z 取整数元组，非数字段原样垫后。"""
+    body = str(v).lstrip("v").split("+")[0]
+    parts = body.split(".")
+    key = []
+    for p in parts[:3]:
+        key.append(int(p) if p.isdigit() else 0)
+    while len(key) < 3:
+        key.append(0)
+    key.append("-".join(parts[3:]) or ("-" in parts[-1] and not parts[-1].isdigit() and parts[-1] or ""))
+    return tuple(key)
+
+
+def check_version_drift():
+    """v1.59 版本漂移警示（044 病例机制化）：源仓 plugin.json 新于已装副本
+    → 会话启动自愈本会同步，但热会话里的钩子仍是旧版在把关——警示一眼可见。
+    已装版本读 install.sh 落的 .source 戳（source_version= 行）。
+    只警示不自动改（升级走既有轨道：会话启动自愈 / install.sh）。"""
+    pair = _drift_pair()
+    if not pair:
+        return
+    installed, source_v = pair
+    if _ver_key(source_v) != _ver_key(installed):
+        print(f"REGRESS-GUARD: ⚠️ 已装副本 v{installed} 与源仓 v{source_v} "
+              f"版本漂移——重启会话（启动自愈会同步）或重跑 install.sh 激活，"
+              f"期间钩子按旧版把关（事件已盖 guard_version 可查）",
+              file=sys.stderr)
 
 
 def main():

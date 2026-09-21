@@ -132,3 +132,41 @@ def test_chat_event_togglable_without_touching_done(tmp_path, monkeypatch):
     save_prompt("安静些")
     _run_main()
     assert not marker.exists()  # chat 关 → 轮末不响
+
+
+# ─── v1.78（067）：Stop 级版本漂移警示——每对版本只警一次 ────────────────
+
+def _drift_env(tmp_path, monkeypatch, pair):
+    import self_heal as sh
+    import tempfile
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(sh, "_drift_pair", lambda: pair)
+    return sh
+
+
+def test_drift_new_pair_warns_once(tmp_path, monkeypatch, capsys):
+    proj, mach = _mk_proj(tmp_path, [_channel_stub(tmp_path, tmp_path / "m1") + " {title} {body}"])
+    monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
+    _drift_env(tmp_path, monkeypatch, ("1.0.0", "1.1.0"))
+    _run_main()
+    err = capsys.readouterr().err
+    assert "版本漂移" in err and "install.sh" in err
+    assert (tmp_path / "regress-drift-noticed.json").exists()
+    assert "版本漂移" in (tmp_path / "m1").read_text(encoding="utf-8")  # chat 落标
+    _run_main()  # 同对第二轮：静默
+    err2 = capsys.readouterr().err
+    assert "版本漂移" not in err2
+    assert (tmp_path / "m1").read_text(encoding="utf-8").count("版本漂移") == 1
+
+
+def test_drift_equal_or_none_silent(tmp_path, monkeypatch, capsys):
+    proj, mach = _mk_proj(tmp_path, [_channel_stub(tmp_path, tmp_path / "m2") + " {title} {body}"])
+    monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
+    _drift_env(tmp_path, monkeypatch, ("1.78.0", "1.78"))
+    _run_main()
+    _drift_env(tmp_path, monkeypatch, None)
+    _run_main()
+    assert "版本漂移" not in capsys.readouterr().err
+    assert not (tmp_path / "regress-drift-noticed.json").exists()
