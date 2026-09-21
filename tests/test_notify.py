@@ -581,3 +581,25 @@ def test_api_base_pinned(tmp_path, monkeypatch, capsys):
     assert wn._api_base({"api_base_allowlist": ["https://proxy.corp/x"]}) == "https://proxy.corp/x"
     monkeypatch.delenv("WECOM_API_BASE")
     assert wn._api_base({}) == d  # 无 env 官方域
+
+
+# ─── v1.85.4 机器配置路径半收口（079）─────────────────
+
+def test_machine_conf_path_home_injection_neutralized(tmp_path, monkeypatch):
+    """攻击回放（v1.68 同族）：注入 HOME 指向 /tmp/pwn，默认路径仍 passwd 派生。"""
+    nt = _load()
+    monkeypatch.delenv("RG_MACHINE_NOTIFY", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path / "pwn"))
+    p = nt.machine_conf_path()
+    assert "pwn" not in p
+    import pwd
+    assert p == os.path.join(pwd.getpwuid(os.getuid()).pw_dir,
+                             ".zcode", "regress-notify.json")
+
+
+def test_machine_conf_path_env_seam_still_works(tmp_path, monkeypatch):
+    """运维缝语义：RG_MACHINE_NOTIFY 显式覆盖仍生效（明文化保留，非漏洞）。"""
+    nt = _load()
+    mach = tmp_path / "ops-notify.json"
+    monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
+    assert nt.machine_conf_path() == str(mach)

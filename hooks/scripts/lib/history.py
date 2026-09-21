@@ -217,7 +217,7 @@ def summarize(regress_dir):
         "top_f3_files": top_f3,
         "top_f3_patterns": top_patterns,
         "top_f3_noise": sorted(f3_noise.items(), key=lambda x: -x[1])[:5],  # 已过滤的噪声
-        "avg_coverage_pct": avg_coverage,  # 平均行覆盖率（None=无覆盖率数据）  # 未走门禁的提交数（IDE/终端直提）
+        "avg_coverage_pct": avg_coverage,  # 平均行覆盖率（None=无覆盖率数据）
         "frequent_failures": top_failures,
         "test_runner": main_runner,
         "bypass_rate": round(bypass_rate, 2),
@@ -432,6 +432,27 @@ def telemetry(regress_dir):
     return out
 
 
+def cache_stats(regress_dir):
+    """缓存命中遥测（v1.85.3，077）：commit_passed 的 cached 字段聚合。
+
+    v1.85 测试缓存上线但无观测面——命中几次/省了多少秒从这里查。
+    est_saved_seconds = hits × 118：118s 是本仓全量套件均时常数（估算常数，
+    不自欺——字段名带 est 即此意；真实节省要等未命中事件带实测时长才可替换）。
+    cached 字段缺位的旧事件计 miss（当时确实全量跑了，诚实计数）。
+    """
+    events = load_history(regress_dir)
+    passed = [e for e in events if e.get("event") == "commit_passed"]
+    hits = sum(1 for e in passed if e.get("cached"))
+    misses = len(passed) - hits
+    return {
+        "total": len(passed),
+        "hits": hits,
+        "misses": misses,
+        "rate": round(hits / len(passed), 3) if passed else 0.0,
+        "est_saved_seconds": hits * 118,
+    }
+
+
 if __name__ == "__main__":
     import sys
     regress_dir = sys.argv[1] if len(sys.argv) > 1 else ".regress"
@@ -484,3 +505,8 @@ if __name__ == "__main__":
                 print(f"  🔥 {r['reason']} ×{r['blocks']}"
                       f"（{r['manifests']} 清单，最近 {r['last'][:16]}"
                       f"，首现 {first or '?'}{new_mark}）")
+    elif cmd == "cache":
+        s = cache_stats(regress_dir)
+        print(f"缓存命中：{s['total']} 次过门禁｜命中 {s['hits']}"
+              f"（{s['rate']:.1%}）｜未命中 {s['misses']}"
+              f"｜估算节省 {s['est_saved_seconds']}s（hits×118s 估算常数）")

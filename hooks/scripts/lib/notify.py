@@ -109,8 +109,17 @@ def _read_notify_block(path):
 
 
 def machine_conf_path():
+    """机器级通知配置路径（v1.85.4，079 半收口）。
+
+    默认路径走 _pwuid_home()（passwd 账本）而非 expanduser——HOME env 可注入，
+    v1.68 同族旁路在此调用点的最后一处未转换债（docstring 点名过）。RG_MACHINE_NOTIFY
+    env 覆盖保留为明文运维缝（顾问裁）：生产钩子路径 launcher 白名单已剥离该变量
+    （tests/test_launcher_env.py 25 用例钉死），env 注入仅直连 CLI 可达，而能跑 CLI
+    者本可直接写真实配置文件——同效更响亮，env 不新增攻击面。改选全拆（信任表式
+    env 零影响）的触发条件：出现 env 可达但文件写不可达的新调用面，或采纳安全
+    配置统一 env 零影响审计口径。"""
     return os.environ.get("RG_MACHINE_NOTIFY") or os.path.join(
-        os.path.expanduser("~/.zcode"), "regress-notify.json")
+        _pwuid_home(), ".zcode", "regress-notify.json")
 
 
 def _pwuid_home():
