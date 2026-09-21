@@ -62,3 +62,27 @@ def test_syntax_error_fails(tmp_path, capsys):
     (tmp_path / "ins" / "guard.py").write_text("def broken(:\n", encoding="utf-8")
     assert m.main(src, ins) == 1
     assert "语法面" in capsys.readouterr().out
+
+
+def test_plugin_form_version_pass(tmp_path, capsys):
+    """插件形态（无戳+已装 plugin.json）版本一致 → 绿。"""
+    m = _load()
+    src, ins = _good_tree(tmp_path)
+    os.remove(os.path.join(ins, ".source"))
+    (tmp_path / "ins" / ".zcode-plugin").mkdir()
+    (tmp_path / "ins" / ".zcode-plugin" / "plugin.json").write_text(
+        json.dumps({"version": "9.9.9"}), encoding="utf-8")
+    assert m.main(src, ins) == 0
+    assert "plugin.json" in capsys.readouterr().out
+
+
+def test_plugin_form_version_mismatch(tmp_path, capsys):
+    """插件形态版本不一致 → 版本面红。"""
+    m = _load()
+    src, ins = _good_tree(tmp_path)
+    os.remove(os.path.join(ins, ".source"))
+    (tmp_path / "ins" / ".zcode-plugin").mkdir()
+    (tmp_path / "ins" / ".zcode-plugin" / "plugin.json").write_text(
+        json.dumps({"version": "0.0.1"}), encoding="utf-8")
+    assert m.main(src, ins) == 1
+    assert "版本面" in capsys.readouterr().out

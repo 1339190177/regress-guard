@@ -97,11 +97,25 @@ def main(src_root=None, installed=None):
                 stamp_ver = line.split("=", 1)[1].strip()
     except OSError:
         pass
+    form = ".source 戳"
+    if stamp_ver is None:
+        # 插件形态（v1.84，市场源安装无戳）：比已装 plugin.json（顾问缓：
+        # 探测不到软提示不计红）
+        try:
+            stamp_ver = json.load(open(
+                os.path.join(installed, ".zcode-plugin", "plugin.json"),
+                encoding="utf-8"))["version"]
+            form = "plugin.json"
+        except Exception:
+            if src_ver:
+                print("⚠️ 版本面：无 .source 戳也无已装 plugin.json"
+                      "（非本插件安装形态？）——软提示不计红")
     if src_ver and stamp_ver == src_ver:
-        print(f"✅ 版本面：已装 v{stamp_ver} == 源仓 v{src_ver}")
-    elif src_ver:
+        tag = f"（{form}）" if stamp_ver else ""
+        print(f"✅ 版本面：已装 v{stamp_ver} == 源仓 v{src_ver}{tag}")
+    elif src_ver and stamp_ver:
         fails.append("版本面")
-        print(f"❌ 版本面：已装戳 v{stamp_ver or '缺失'} != 源仓 v{src_ver}")
+        print(f"❌ 版本面：已装 v{stamp_ver}（{form}） != 源仓 v{src_ver}")
 
     if fails:
         print(f"\n自检未过（{'/'.join(fails)}）——请重跑 bash "
