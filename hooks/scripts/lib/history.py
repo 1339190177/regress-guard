@@ -310,17 +310,29 @@ def block_heatmap(regress_dir):
 
     用途：召回接线扩点判据的数据接口（v1.54 只挂高频3点——"扩点看数据"，
     高频 reason 即下一个该接召回的拦截点）。reason 缺失归 unknown 桶。
-    """
+    v1.83（072）新键标注：每 reason 附首现时间，14 天内首现标 new=True——
+    "老病复发"与"新病露头"一眼分开（顾问降级版：先量测可见性，淹没活体
+    出现再谈冻结）。"""
     from collections import defaultdict
+    import datetime as _dt
     groups = defaultdict(list)
     for e in load_history(regress_dir):
         if e.get("event") == "commit_blocked":
             groups[str(e.get("reason") or "unknown")].append(e)
+    now = _dt.datetime.now()
     rows = []
     for reason, es in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+        first = min((str(e.get("timestamp") or "") for e in es), default="")
+        is_new = False
+        if first:
+            try:
+                is_new = (now - _dt.datetime.fromisoformat(first)).days <= 14
+            except ValueError:
+                pass
         rows.append({"reason": reason, "blocks": len(es),
                      "manifests": len({str(e.get("manifest_id") or "") for e in es}),
-                     "last": max((str(e.get("timestamp") or "") for e in es), default="")})
+                     "last": max((str(e.get("timestamp") or "") for e in es), default=""),
+                     "first": first, "new": is_new})
     return rows
 
 
@@ -467,5 +479,8 @@ if __name__ == "__main__":
         else:
             print(f"拦截热力图（reason×频次，召回扩点看这里）：{len(rows)} 种原因")
             for r in rows[:10]:
+                new_mark = " 🆕" if r.get("new") else ""
+                first = str(r.get("first") or "")[:10]
                 print(f"  🔥 {r['reason']} ×{r['blocks']}"
-                      f"（{r['manifests']} 清单，最近 {r['last'][:16]}）")
+                      f"（{r['manifests']} 清单，最近 {r['last'][:16]}"
+                      f"，首现 {first or '?'}{new_mark}）")

@@ -8,7 +8,7 @@ import pytest
 LIB = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "lib")
 sys.path.insert(0, LIB)
 
-from history import record, load_history, summarize, _maybe_archive, build_trace, telemetry
+from history import record, load_history, summarize, _maybe_archive, build_trace, telemetry, block_heatmap
 
 
 @pytest.fixture
@@ -268,3 +268,20 @@ def test_telemetry_missing_journal(tmp_path):
     rd.mkdir()
     t = telemetry(str(rd))
     assert t["history"]["missing"] is True and t["journal"]["missing"] is True
+
+
+# ─── v1.83（072）：热图新键标注 ────────────────
+
+def test_heatmap_newkey_mark(tmp_path):
+    """14 天内首现 reason 标 new；>14 天老键不标。"""
+    import datetime as dt
+    rd = str(tmp_path)
+    now = dt.datetime.now()
+    fresh = (now - dt.timedelta(days=2)).isoformat()
+    old = (now - dt.timedelta(days=40)).isoformat()
+    record(rd, "commit_blocked", "R1", reason="new_reason", timestamp=fresh)
+    record(rd, "commit_blocked", "R2", reason="old_reason", timestamp=old)
+    rows = {r["reason"]: r for r in block_heatmap(rd)}
+    assert rows["new_reason"]["new"] is True
+    assert rows["new_reason"]["first"].startswith(fresh[:10])
+    assert rows["old_reason"]["new"] is False
