@@ -236,6 +236,23 @@ def is_git_commit(tool_input_str):
         return False
 
 
+def _message_from_cmd(tool_input_str):
+    """从命令串提取 -m 信息（v1.87.1，092）。
+
+    引号感知（双/单引号体与裸词）；-qm 类组合旗标同样命中。提取不到返回
+    空串（三查对空信息不生效——无 -m 的提交形态走编辑器，门禁层无文本）。"""
+    try:
+        data = json.loads(tool_input_str)
+        ti = data.get("tool_input", data) if isinstance(data, dict) else {}
+        cmd = ti.get("command", "") if isinstance(ti, dict) else ""
+    except Exception:
+        return ""
+    m = re.search(r'(?:^|\s)-\w*m\w*\s+("([^"]*)"|\'([^\']*)\'|(\S+))', cmd)
+    if not m:
+        return ""
+    return m.group(2) or m.group(3) or m.group(4) or ""
+
+
 def is_compound_stage_commit(tool_input_str):
     """同一命令串里既暂存又提交（v1.87，091：077/088 标本机器位收口）。
 
@@ -548,6 +565,41 @@ def main():
                    note="co_active", co_active=len(mine),
                    attributed=manifest_id or "planning_fallback")
         _NOTIFY_STATE["manifest_id"] = manifest_id  # blocked 推送带清单号
+
+        # ─── 2.6 提交信息早查（v1.87.1，092）────────────
+        # 行业空白位（探子 2026-09-21：无人做信息-实况对账）+077 标本（信息宣称
+        # 536/536+3 用例而树里没有，溜一周）。晚查（行尾计数对账）挂 pass 路径——
+        # 需门禁实测数。
+        _msg = _message_from_cmd(raw_input)
+        if _msg:
+            _mtier = str((parse_frontmatter(manifest) or {}).get("tier") or "")
+            _short = manifest_id.rsplit("-", 1)[-1] if manifest_id else ""
+            _has_ref = (manifest_id and manifest_id in _msg) or bool(
+                _short and re.search(r"[（(]" + re.escape(_short) + r"[）)]", _msg))
+            if not _has_ref:
+                if _mtier in ("M", "L"):
+                    record(regress_dir, "commit_blocked", manifest_id,
+                           reason="message_no_manifest_ref")
+                    emit_block(
+                        f"提交被拦：信息缺归因清单号（077 反谎报配套——git log 溯源锚）。\n\n"
+                        f"归因清单 <id {manifest_id}>，信息中嵌入全 ID 或缩写"
+                        f"「（{_short}）」形态即可。git log --grep 清单号=批的物理\n"
+                        "提交秒查（我们直提 main，提交信息是唯一溯源面——top1 有 PR 层"
+                        "放 PR body，拓扑不同）。"
+                    )
+                else:
+                    record(regress_dir, "note", manifest_id,
+                           note="message_no_manifest_ref_warn")
+                    print(f"REGRESS-GUARD: ⚠️ 信息缺清单号 {manifest_id}（S/quick 档告警，"
+                          "建议嵌入全 ID 或（缩写））", file=sys.stderr)
+            if "<" in _msg or ">" in _msg:
+                record(regress_dir, "commit_blocked", manifest_id,
+                       reason="message_angle_bracket")
+                emit_block(
+                    "提交被拦：信息含尖括号 < 或 >。\n\n"
+                    "运营实证双坑：边界守卫会把 <路径> 形态当重定向目标误判；"
+                    "发布链路的文案约定同样禁尖括号。改用「路径」或（路径）形态。"
+                )
 
     if not manifest:
         if others:
@@ -1016,6 +1068,30 @@ def main():
                 record(regress_dir, "acceptance_passed", manifest_id,
                        rows=total, tier=_tier)
         passed = f"{result['passed']}/{result['total']}"
+        # 行尾计数对账（v1.87.1，092 晚查）：「；N/N」结尾=套件计数宣称（家规
+        # 形态）——077 的「536/536」正是此形态，当场会被拦。非行尾 N/N（如
+        # 「清单健康 59/59」作用域计数）只告警留痕（090 不误伤）。
+        _msg_late = _message_from_cmd(raw_input)
+        _marker = re.search(r"[；;]\s*(\d+)\s*/\s*(\d+)\s*$", _msg_late.strip())
+        if _marker:
+            _cp, _ct = int(_marker.group(1)), int(_marker.group(2))
+            if not (_cp == result.get("passed") and _ct == result.get("total")):
+                record(regress_dir, "commit_blocked", manifest_id,
+                       reason="message_count_mismatch",
+                       claimed=f"{_cp}/{_ct}",
+                       actual=f"{result.get('passed')}/{result.get('total')}")
+                emit_block(
+                    f"提交被拦：信息行尾「；{_cp}/{_ct}」与门禁实测 "
+                    f"{result.get('passed')}/{result.get('total')} 不符。\n\n"
+                    "行尾「；N/N」是套件计数宣称（077 反谎报闸：信息宣称 536/536"
+                    "而树里没有的那次，溜了一周）。改法：改成实测数，或去掉行尾"
+                    "计数（作用域计数写中间位置不受此查）。"
+                )
+        else:
+            _claims = re.findall(r"\d+\s*/\s*\d+", _msg_late)
+            if _claims:
+                record(regress_dir, "note", manifest_id,
+                       note="message_count_claim", claims=_claims[:3])
         _attrib_status = str((parse_frontmatter(manifest) or {}).get("status") or "")
         if _attrib_status == "planning":
             # 未临行的计划不接 done 盖章（088：084 被路过盖章标本的兜底闸）

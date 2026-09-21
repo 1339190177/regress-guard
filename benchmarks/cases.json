@@ -376,5 +376,201 @@
     "attack_summary": "对照：测试目录内的调试模式是测试常态（防误触）",
     "expected": "放行：测试路径豁免不触发自审键",
     "pytest_selector": "test_debug_pattern_in_tests_not_triggered"
+  },
+  {
+    "id": "SCAN-001",
+    "family": "scan-freshness",
+    "attack_summary": "无产品架构卡片的仓库试探新鲜度判定崩溃或误判",
+    "expected": "判 absent：提示先建卡或声明纯库，不误判新鲜",
+    "pytest_selector": "test_absent_when_no_card"
+  },
+  {
+    "id": "SCAN-002",
+    "family": "scan-freshness",
+    "attack_summary": "对照：卡片随代码同步提交后的即时新鲜态",
+    "expected": "判 fresh：同步即新鲜，不误报重扫",
+    "pytest_selector": "test_fresh_right_after_card"
+  },
+  {
+    "id": "SCAN-003",
+    "family": "scan-freshness",
+    "attack_summary": "结构性新增模块文件后拿旧卡片冒充全貌仍新鲜",
+    "expected": "判 stale：结构性增删点名文件并要求重扫",
+    "pytest_selector": "test_stale_on_structural_add"
+  },
+  {
+    "id": "SCAN-004",
+    "family": "scan-freshness",
+    "attack_summary": "无结构变更但代码提交堆量，试探活动量代理失明",
+    "expected": "判 stale：代码提交数过阈即老化触发重扫",
+    "pytest_selector": "test_stale_on_commit_volume"
+  },
+  {
+    "id": "SCAN-005",
+    "family": "scan-freshness",
+    "attack_summary": "对照：仅新增测试与文档类元数据文件",
+    "expected": "判 fresh：元数据不算结构变更，不误判 stale",
+    "pytest_selector": "test_not_stale_on_metadata_only"
+  },
+  {
+    "id": "SCAN-006",
+    "family": "scan-freshness",
+    "attack_summary": "中档清单缺全貌扫描三行，以绿测试探跳过理解产物",
+    "expected": "拦：规则A 命中即阻断并点名全貌产物要求",
+    "pytest_selector": "test_ml_missing_scan_blocks"
+  },
+  {
+    "id": "SCAN-007",
+    "family": "scan-freshness",
+    "attack_summary": "全貌扫描行填模板占位值冒充已填，试探防绕校验",
+    "expected": "拦：占位值不算填过，规则A 照拦",
+    "pytest_selector": "test_scan_placeholder_rejected"
+  },
+  {
+    "id": "SCAN-008",
+    "family": "scan-freshness",
+    "attack_summary": "对照：全貌三行齐备的中档清单正常提交",
+    "expected": "放行：规则A 齐备即不因全貌拦（合规路径不误拦）",
+    "pytest_selector": "test_ml_with_scan_passes_rule_a"
+  },
+  {
+    "id": "SCAN-009",
+    "family": "scan-freshness",
+    "attack_summary": "对照：轻量档清单不带全貌仪式直接提交",
+    "expected": "放行：规则A 仅约束中重档，轻量档豁免",
+    "pytest_selector": "test_s_tier_exempt_from_rule_a"
+  },
+  {
+    "id": "ACC-001",
+    "family": "acceptance-gate",
+    "attack_summary": "验收判据行无勾选标记，试探以未验判据盖章",
+    "expected": "拦：验收未勾不许盖章并点名未勾行数",
+    "pytest_selector": "test_acceptance_open_blocks"
+  },
+  {
+    "id": "ACC-002",
+    "family": "acceptance-gate",
+    "attack_summary": "验收判据填模板占位值冒充已写",
+    "expected": "拦：占位行视同未写，验收照拦",
+    "pytest_selector": "test_acceptance_placeholder_blocks"
+  },
+  {
+    "id": "ACC-003",
+    "family": "acceptance-gate",
+    "attack_summary": "判据拆两行书写，试探行级解析漏看续行勾选",
+    "expected": "拦：续行合并成逻辑行再判，只报真实未勾行",
+    "pytest_selector": "test_acceptance_two_line_bullet_joined"
+  },
+  {
+    "id": "ACC-004",
+    "family": "acceptance-gate",
+    "attack_summary": "对照：勾选标记后拖验证输出文字（非行尾形态）",
+    "expected": "放行：任意位置计勾，真实验过不误拦",
+    "pytest_selector": "test_acceptance_mark_anywhere_counts"
+  },
+  {
+    "id": "ACC-005",
+    "family": "acceptance-gate",
+    "attack_summary": "对照：轻量档清单无验收节直接提交",
+    "expected": "放行：验收环仅约束中重档，轻量档豁免",
+    "pytest_selector": "test_acceptance_exempt_s_tier"
+  },
+  {
+    "id": "RECALL-001",
+    "family": "rule-recall",
+    "attack_summary": "重犯同类拦截时试探现场不给历史规律提示",
+    "expected": "召回：拦截输出附规律段封顶三条，召回事件落账",
+    "pytest_selector": "test_block_recall_shows_history_rules"
+  },
+  {
+    "id": "RECALL-002",
+    "family": "rule-recall",
+    "attack_summary": "关闭召回开关试探门禁依赖增强链路而失拦",
+    "expected": "降级：召回可一键关，门禁本体照拦不受拖累",
+    "pytest_selector": "test_block_recall_off_switch"
+  },
+  {
+    "id": "RECALL-003",
+    "family": "rule-recall",
+    "attack_summary": "未接线的拦截原因试探强挂召回段制造噪声",
+    "expected": "静默：选择性接线，未挂载拦截点不召回",
+    "pytest_selector": "test_block_recall_not_wired_reason"
+  },
+  {
+    "id": "RECALL-004",
+    "family": "rule-recall",
+    "attack_summary": "规律账本被写坏试探召回链路异常拖垮门禁",
+    "expected": "降级：坏账本静默跳过，拦截照常不反向",
+    "pytest_selector": "test_block_recall_corrupt_ledger_degrades"
+  },
+  {
+    "id": "RECALL-005",
+    "family": "rule-recall",
+    "attack_summary": "召回后事件序列混杂，试探有效性三态误判",
+    "expected": "分态：干净/影子/未决按事件序列精确归类",
+    "pytest_selector": "test_recall_clean_shadow_pending"
+  },
+  {
+    "id": "RECALL-006",
+    "family": "rule-recall",
+    "attack_summary": "他会话他清单拦截事件混入试探召回误判影子态",
+    "expected": "隔离：跨清单事件不污染本清单三态判定",
+    "pytest_selector": "test_recall_cross_manifest_events_ignored"
+  },
+  {
+    "id": "RECALL-007",
+    "family": "rule-recall",
+    "attack_summary": "拦截历史杂乱堆积，试探热力图排序聚合失真",
+    "expected": "聚合：按原因频次降序，含清单数与最近时间",
+    "pytest_selector": "test_block_heatmap_ranking"
+  },
+  {
+    "id": "RECALL-008",
+    "family": "rule-recall",
+    "attack_summary": "新拦截原因混入老原因，试探新增趋势失明",
+    "expected": "标注：近期首现原因标记为新键",
+    "pytest_selector": "test_heatmap_newkey_mark"
+  },
+  {
+    "id": "REFLOW-001",
+    "family": "pending-reflow",
+    "attack_summary": "同清单过门禁后旧拦截待决滞留，试探闭环失灵",
+    "expected": "回流：同锚点未决拦截自动闭环，异锚点不动",
+    "pytest_selector": "test_auto_reflow_pending_on_gate_pass"
+  },
+  {
+    "id": "REFLOW-002",
+    "family": "pending-reflow",
+    "attack_summary": "旧格式待决按标题兜底，试探相近编号误回流",
+    "expected": "精确：全字命中才回流，词边界防短编号吃长编号",
+    "pytest_selector": "test_resolve_by_ref_exact_and_legacy_fallback"
+  },
+  {
+    "id": "REFLOW-003",
+    "family": "pending-reflow",
+    "attack_summary": "多条待决标题同含目标编号，试探盲回流了结",
+    "expected": "不动：多义不兜底，宁挂起不误决",
+    "pytest_selector": "test_resolve_by_ref_no_ambig_no_hit"
+  },
+  {
+    "id": "REFLOW-004",
+    "family": "pending-reflow",
+    "attack_summary": "决策推送缺结构化锚点，试探回流链路失联",
+    "expected": "携带：推送落锚点字段，回流有数据前提",
+    "pytest_selector": "test_notify_source_id_flows_into_ref"
+  },
+  {
+    "id": "REFLOW-005",
+    "family": "pending-reflow",
+    "attack_summary": "已裁决拦截再发或锚点超窗，试探刷屏或该推不推",
+    "expected": "对称：裁决重置窗口可重推，超窗锚点照样重推",
+    "pytest_selector": "test_blocked_repush_after_resolve_or_expiry"
+  },
+  {
+    "id": "REFLOW-006",
+    "family": "pending-reflow",
+    "attack_summary": "自动闭环量混入人工裁决，试探误报率口径污染",
+    "expected": "单列：自动回流单独计数，不入误报率分母",
+    "pytest_selector": "test_resolved_outcome_single_bucket"
   }
 ]
