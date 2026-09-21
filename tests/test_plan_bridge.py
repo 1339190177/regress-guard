@@ -76,7 +76,10 @@ def test_post_creates_manifest_verbatim(tmp_path, monkeypatch, capsys):
     assert "docs/c.md" in content
     ev = _journal(proj)
     assert "plan_approved" in ev and "native-plan-bridge" in ev
-    assert capsys.readouterr().out == ""             # stdout 静默（schema 不冒险）
+    out = capsys.readouterr().out.strip()
+    import json as _json
+    _json.loads(out)                                # v1.79：stdout=恰一段合法回执 JSON
+    assert "additionalContext" in out               # （契约源码已证转正）
 
 
 def test_post_idempotent_same_plan_hash(tmp_path, monkeypatch):
@@ -193,22 +196,23 @@ def test_next_id_preserves_project_format(tmp_path):
     assert mid2 == "REGRESS-006"
 
 
-def test_bridge_receipt_opt_in(tmp_path, monkeypatch, capsys):
-    """B10 回执试验位：env=1 → 恰一行合法 JSON 含清单号；未设 → stdout 空。"""
+def test_bridge_receipt_default_on(tmp_path, monkeypatch, capsys):
+    """v1.79 转正：默认恰一行合法 JSON（hookEventName 严格匹配）；off 逃生静默。"""
     proj = _proj(tmp_path)
     _env(monkeypatch, proj)
     pb = _load()
     _run(pb, PAYLOAD1)
-    assert capsys.readouterr().out == ""          # default-off 静默
-    monkeypatch.setenv("RG_PLAN_BRIDGE_RECEIPT", "1")
-    _run(pb, {"tool_name": "ExitPlanMode",
-              "tool_input": {"plan": "# 桥测试计划\n改 src/z.py"}})  # 修订走更新分支
     out = capsys.readouterr().out.strip().splitlines()
-    assert len(out) == 1
+    assert len(out) == 1                          # 默认开：唯一 stdout JSON
     import json as _json
     payload = _json.loads(out[0])
-    ctx = payload["hookSpecificOutput"]["additionalContext"]
-    assert "REGRESS-" in ctx and "via:native-plan-bridge" in ctx
+    hso = payload["hookSpecificOutput"]
+    assert hso["hookEventName"] == "PostToolUse"  # 事件名严格匹配（源码契约）
+    assert "REGRESS-" in hso["additionalContext"]
+    monkeypatch.setenv("RG_PLAN_BRIDGE_RECEIPT", "off")
+    _run(pb, {"tool_name": "ExitPlanMode",
+              "tool_input": {"plan": "# 桥测试计划\n改 src/z.py"}})  # off 逃生
+    assert capsys.readouterr().out == ""
 
 
 # ─── v1.56 编号并发锁（B1：五标本之一机器收口） ────────────────

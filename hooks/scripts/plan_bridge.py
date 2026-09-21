@@ -237,12 +237,14 @@ def _active_by_session(manifests_dir, sid):
 
 
 def _receipt(mid, n=0):
-    """additionalContext 回执（v1.52，B10 试验位 default-off）。
+    """additionalContext 回执（v1.52 试验位 → v1.79 转默认开）。
 
-    PostToolUse 对 additionalContext 的支持未证——错键=整段输出被弃且
-    run 标 failed（zcode-guide pitfalls #8）。默认静默；活体原生批准时
-    RG_PLAN_BRIDGE_RECEIPT=1 开一次验 schema，证活后可转默认。"""
-    if os.environ.get("RG_PLAN_BRIDGE_RECEIPT") != "1":
+    契约已源码证实（2026-09-20 ZCode 3.14.0 开源仓考证）：PostToolUse 的
+    additionalContext 经 call-runner appendHookAdditionalContexts 拼进工具
+    结果尾；hookSpecificOutput.hookEventName 须严格匹配事件名（本实现合规）；
+    stdout 以 { 开头才被解析且须唯一 JSON 输出（本文件唯一 stdout print 即此）。
+    逃生：RG_PLAN_BRIDGE_RECEIPT=off/0/false。"""
+    if os.environ.get("RG_PLAN_BRIDGE_RECEIPT", "").lower() in ("off", "0", "false"):
         return
     print(json.dumps({
         "hookSpecificOutput": {
