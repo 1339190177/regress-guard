@@ -898,3 +898,61 @@ def test_attribution_nested_repo_staging(project, tmp_path):
     cp = [e for e in read_history(project) if e.get("event") == "commit_passed"
           and e.get("manifest_id")]
     assert cp[-1]["manifest_id"] == "RN"
+
+
+# ─── v1.87 复合暂存+提交形态机器拦（091：077/088 标本收口）─────────
+
+def test_compound_stage_commit_blocks(project):
+    """同一命令串既暂存又提交：拦（reason=compound_stage_commit）+教学消息。"""
+    code, err, _ = run_guard("git add src/app.js && git commit -m x", project)
+    assert code == 2 and "复合" in err and "分立" in err
+    assert any(e.get("event") == "commit_blocked"
+               and e.get("reason") == "compound_stage_commit"
+               for e in read_history(project))
+
+
+def test_pure_commit_not_caught_by_compound_rule(project):
+    """纯提交命令：不触发本规则（走正常管线——此处表现为常规放行/常规拦，非复合拦）。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    code, err, _ = run_guard("cd somewhere && git commit -m x", project)
+    assert code == 0, err
+    assert not any(e.get("reason") == "compound_stage_commit"
+                   for e in read_history(project))
+
+
+def test_heredoc_payload_not_false_positive(project):
+    """heredoc 体内的暂存字样是文档文本：不误拦。"""
+    cmd = ("cat > note.md <<'EOF'\n文档示例：先 git add 再提交的说明文字\nEOF\n"
+           "&& git commit -m x")
+    code, err, _ = run_guard(cmd, project)
+    assert "复合" not in err
+
+
+def test_quoted_payload_not_false_positive(project):
+    """引号载荷里的暂存字样：不误拦。"""
+    code, err, _ = run_guard('echo "run git add first" && git commit -m x', project)
+    assert "复合" not in err
+
+
+def test_commit_am_flag_blocks(project):
+    """提交旗标含 a（-am 自动暂存）：同属复合形态，拦。"""
+    code, err, _ = run_guard("git commit -am x", project)
+    assert code == 2 and "复合" in err
+
+
+def test_commit_amend_exempt(project):
+    """--amend 复用既有暂存非变更：豁免（不触发复合规则）。"""
+    code, err, _ = run_guard("git commit --amend -m x", project)
+    assert "复合" not in err
+
+
+def test_split_calls_end_to_end_passes(project):
+    """分立两调用端到端：先暂存调用（非提交命令，门禁直接放行）再提交调用走全管线。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    code1, _, _ = run_guard("git add src/app.js", project)
+    assert code1 == 0  # 非提交命令：不触发门禁
+    _stage(project, "src/app.js", "x = 42\n")  # 真实暂存（独立调用语义）
+    code2, err2, _ = run_guard("git commit -m x", project)
+    assert code2 == 0, err2

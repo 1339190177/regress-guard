@@ -236,6 +236,40 @@ def is_git_commit(tool_input_str):
         return False
 
 
+def is_compound_stage_commit(tool_input_str):
+    """同一命令串里既暂存又提交（v1.87，091：077/088 标本机器位收口）。
+
+    两个真实代价：①门禁在命令提交瞬间评估暂存区——此刻暂存未执行，归因
+    交集退化为回退（088 活体）；②门禁因他规则拦下时暂存被整条吞掉，重试
+    若不重新暂存即丢（077 漏提交实证）。检测前剔除 heredoc 体（复用
+    boundary_guard 同源防御）与引号段——载荷文本不算命令（v1.77/1.82
+    标本族教训）。--amend 豁免：它复用既有暂存，不变更暂存状态。"""
+    try:
+        data = json.loads(tool_input_str)
+        ti = data.get("tool_input", data) if isinstance(data, dict) else {}
+        cmd = ti.get("command", "") if isinstance(ti, dict) else ""
+    except Exception:
+        return False
+    if not cmd:
+        return False
+    t = cmd
+    try:
+        from boundary_guard import _strip_heredoc_bodies
+        t = _strip_heredoc_bodies(t)
+    except Exception:
+        pass
+    t = re.sub(r"'[^']*'", "''", t)
+    t = re.sub(r'"[^"]*"', '""', t)
+    if re.search(r'\bgit\s+(?:-\S+\s+)*add\b', t):
+        return True
+    m = re.search(r'\bgit\s+(?:commit|ci)\s+(-[a-zA-Z-]+)?', t)
+    if m and m.group(1):
+        flag = m.group(1)
+        if (not flag.startswith("--") and "a" in flag) or flag == "--all":
+            return True
+    return False
+
+
 def find_regress_dir():
     """从多个来源查找 .regress/ 目录。
 
@@ -327,6 +361,23 @@ def main():
     if not regress_dir:
         emit_pass()  # 未接入的项目（找不到 .regress/）
     _NOTIFY_STATE["project_dir"] = project_dir  # blocked 推送上下文（P1#5）
+
+    # ─── 2.5 复合暂存+提交形态（v1.87，091）──────────
+    if is_compound_stage_commit(raw_input):
+        record(regress_dir, "commit_blocked", "",
+               reason="compound_stage_commit")
+        emit_block(
+            "提交被拦：**同一命令串里既暂存又提交**（复合形态）。\n\n"
+            "两个真实代价（077/088 标本）：\n"
+            "· 门禁在命令提交瞬间评估暂存区——此刻暂存未执行，归因交集退化为回退；\n"
+            "· 门禁因其他规则拦下时，暂存被整条命令吞掉，重试若不重新暂存会丢\n"
+            "  （077：3 个测试用例漏提交一周后才被发现）。\n\n"
+            "正确姿势（分立三步，各自独立调用）：\n"
+            "  1. 暂存（git 加路径的命令）\n"
+            "  2. git status --short 核对暂存内容\n"
+            "  3. 提交命令\n\n"
+            "确要复合（如一次性脚本）：/regress:bypass <分钟>（限时赦免，赦后记债）。"
+        )
 
     # 读配置 — fail-safe：config 损坏时用最严格默认（阻断）
     config = {}
