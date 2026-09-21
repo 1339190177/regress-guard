@@ -603,3 +603,41 @@ def test_machine_conf_path_env_seam_still_works(tmp_path, monkeypatch):
     mach = tmp_path / "ops-notify.json"
     monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
     assert nt.machine_conf_path() == str(mach)
+
+
+# ─── stats 缓存行（run8 083，波2-A：仪表盘单屏化）─────────────────
+
+def _stats_env(monkeypatch, tmp_path, proj):
+    """stats 用例公共隔离：机器台账 env 指到不存在的 tmp 路径 + 项目定位钉到 proj。
+    _stats() 无参——数据源全靠 env（RG_SEND_LEDGER / pending 的 RG_PENDING_LEDGER
+    同款）；缓存行的项目定位走 journal._find_project_dir，其 CLAUDE_* 优先级高于
+    ZCODE_*——先 delenv 防宿主环境污染（钩子进程常带前者）。"""
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.setenv("ZCODE_PROJECT_DIR", str(proj))
+    monkeypatch.setenv("RG_SEND_LEDGER", str(tmp_path / "no-send.log"))
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "no-pending.jsonl"))
+
+
+def test_stats_cache_line_hit(tmp_path, monkeypatch, capsys):
+    """1 次缓存命中的历史 → stats 末行输出缓存摘要（措辞同 history.py cache 分支）。"""
+    nt = _load()
+    proj = _mk(tmp_path, None)
+    _stats_env(monkeypatch, tmp_path, proj)
+    (proj / ".regress" / "history.jsonl").write_text(
+        json.dumps({"event": "commit_passed", "cached": True,
+                    "timestamp": "2026-09-21T10:00:00"},
+                   ensure_ascii=False) + "\n", encoding="utf-8")
+    nt._stats()
+    assert "缓存命中：1 次过门禁｜命中 1（100.0%）｜估算节省 118s" \
+        in capsys.readouterr().out
+
+
+def test_stats_cache_line_empty_history_no_crash(tmp_path, monkeypatch, capsys):
+    """空（缺席）历史 → stats 照常输出不崩，缓存行如实报 0（增强不是依赖）。"""
+    nt = _load()
+    proj = _mk(tmp_path, None)
+    _stats_env(monkeypatch, tmp_path, proj)
+    nt._stats()  # .regress/ 在而 history.jsonl 缺席
+    out = capsys.readouterr().out
+    assert "观察仪表盘" in out  # 其余行照常输出
+    assert "缓存命中：0 次过门禁｜命中 0（0.0%）｜估算节省 0s" in out

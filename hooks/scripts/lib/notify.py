@@ -404,7 +404,9 @@ def notify(project_dir, event, title, body="", source_id=""):
 def _stats():
     """观察仪表盘（v1.34）：发送台账 + 待决台账聚合——观察期的数字层。
     北极星候选：送达率（可达段）、未决数与最老悬停（闭环段）、误报率（校准段）。
-    台账行格式见 wecom_notify；event= 维度 v1.34 起有（旧行归"旧格式"）。"""
+    台账行格式见 wecom_notify；event= 维度 v1.34 起有（旧行归"旧格式"）。
+    末行缓存命中摘要（083，仪表盘单屏化）：history.cache_stats 只读聚合，
+    项目定位走 journal._find_project_dir（同 main 的单一来源）。"""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     print("═══ regress-guard 观察仪表盘 ═══")
     ledger = os.path.expanduser(
@@ -443,6 +445,18 @@ def _stats():
               f"不计入误报率）")
     for e in s["open"][-5:]:
         print(f"  ⏳ #{e['id']} {e['ts'][:16]} [{e['event']}] {e['title'][:40]}")
+    # 缓存行（083）：巡检二看一眼即得缓存健康，不必另跑 history.py cache。
+    # 增强不是依赖——history 缺席/损坏/项目未接入时静默跳行，其余行照常输出。
+    try:
+        from history import cache_stats
+        from journal import _find_project_dir
+        pd = _find_project_dir()
+        if pd:
+            c = cache_stats(os.path.join(pd, ".regress"))
+            print(f"缓存命中：{c['total']} 次过门禁｜命中 {c['hits']}"
+                  f"（{c['rate']:.1%}）｜估算节省 {c['est_saved_seconds']}s")
+    except Exception:
+        pass
 
 
 def main(argv=None):
