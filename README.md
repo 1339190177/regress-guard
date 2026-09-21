@@ -4,9 +4,18 @@
 >
 > **先读思想**：[docs/PHILOSOPHY.md](docs/PHILOSOPHY.md)——十六条设计哲学与它们背后的真实教训。功能会过时，思想不会。
 
-## 安装
+## 安装（双轨）
 
-对 AI 说 `/regress:install`，或运行 `bash install.sh`。
+**插件轨（推荐，实验路径）**：本仓已是 marketplace 就绪形态（根目录
+`marketplace.json` + `hooks/hooks.json` 全 `${ZCODE_PLUGIN_ROOT}` 相对化）。
+在 ZCode 设置 → 插件市场添加个人来源 `github:1339190177/regress-guard`，
+安装 regress-guard——钩子经宿主运行时合并自动生效，可随插件开关启停与升级
+（git pin 自带完整性校验）。※ 装机自检脚本当前服务开发轨，插件轨首装后
+跑一次 `python3 -m pytest` 所在项目验证钩子活火。
+
+**开发轨（现行）**：克隆本仓后 `bash install.sh`（或对 AI 说 `/regress:install`）
+——脚本拷贝钩子到 `~/.zcode/regress-guard-hooks` 并写用户级注册，附带三查自检。
+两轨只取其一，同装会双份钩子。
 
 ## 五分钟上手
 
@@ -127,7 +136,7 @@
 
 **实况（由 gen_reference.py 生成，勿手改本区）**
 
-- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：483 个
+- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：487 个
 
 | 命令 | 说明 |
 |---|---|

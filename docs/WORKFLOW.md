@@ -213,6 +213,10 @@ planning ──批准/临行──→ in-progress ──→ verifying ──门�
 
 ## 无感层（自动，零操作）
 
+（v1.81）分发双轨：marketplace 就绪（marketplace.json+hooks 全插件根相对）——
+用户可经个人市场源一键安装（插件开关/升级走宿主原生）；开发轨 install.sh 不变。
+两轨只取其一（同装双钩子）。
+
 （v1.80）UserPromptSubmit 治理上下文前置：每轮对话注入活跃清单边界行+规律账本
 TOP-1 召回行（`RG_PROMPT_CONTEXT=off` 逃生）——防线从"拦截时才教育"前移到"开工前就看见"。
 
