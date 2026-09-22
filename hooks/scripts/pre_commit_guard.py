@@ -574,8 +574,10 @@ def main():
         if _msg:
             _mtier = str((parse_frontmatter(manifest) or {}).get("tier") or "")
             _short = manifest_id.rsplit("-", 1)[-1] if manifest_id else ""
+            # 前缀形态（（097 或 (097）即认——含「（097，附注）」实践形态；
+            # 096 活体：发布道曾硬拦自家镜像消息，门禁侧 M 档同款误拦面
             _has_ref = (manifest_id and manifest_id in _msg) or bool(
-                _short and re.search(r"[（(]" + re.escape(_short) + r"[）)]", _msg))
+                _short and re.search(r"[（(]" + re.escape(_short), _msg))
             if not _has_ref:
                 if _mtier in ("M", "L"):
                     record(regress_dir, "commit_blocked", manifest_id,

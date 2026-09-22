@@ -432,6 +432,52 @@ def telemetry(regress_dir):
     return out
 
 
+def feature_fire_health(regress_dir, registry_path=None):
+    """特性零火探测（v1.87.5，098：086 Pattern B 探针打捞）。
+
+    特性注册表（工作区 .regress/feature-registry.json，本仓播种）× history
+    折叠 → 每特性 {slug, shipped_at, days_since, fires, status}：
+    firing（窗口内有 marker 命中）/ zero-fire（超窗零命中）/ unmeasurable
+    （marker 无法映射到 history——如 v1.80 治理行不写事件，不可测性本身
+    即发现：要么补量测位要么承认永远盲）。marker 语法：{"event": 名} 或
+    {"event": 名, "field": k, "value": v}。"""
+    import time as _time
+    if registry_path is None:
+        registry_path = os.path.join(regress_dir, "feature-registry.json")
+    try:
+        with open(registry_path, encoding="utf-8") as f:
+            registry = json.load(f)
+    except (IOError, OSError, json.JSONDecodeError):
+        return {"error": "registry missing or corrupt", "features": []}
+    events = load_history(regress_dir)
+    now = _time.time()
+    rows = []
+    for feat in registry if isinstance(registry, list) else []:
+        slug = str(feat.get("slug") or "?")
+        marker = feat.get("fire_marker") or {}
+        ev_name = marker.get("event")
+        window = float(feat.get("window_days") or 30)
+        shipped = float(feat.get("shipped_at") or 0)
+        days_since = (now - shipped) / 86400 if shipped else None
+        if not ev_name:
+            fires, status = 0, "unmeasurable"
+        else:
+            hits = [e for e in events if e.get("event") == ev_name and (
+                not marker.get("field")
+                or e.get(marker["field"]) == marker.get("value"))]
+            recent = [e for e in hits if not shipped or
+                      _time.mktime(_time.strptime(
+                          str(e.get("timestamp") or "1970-01-01")[:19],
+                          "%Y-%m-%dT%H:%M:%S")) >= shipped]
+            fires = len(recent)
+            status = "firing" if fires > 0 else (
+                "zero-fire" if (days_since or 0) > window else "warmup")
+        rows.append({"slug": slug, "shipped_at": feat.get("shipped_at"),
+                     "days_since": round(days_since, 1) if days_since else None,
+                     "fires": fires, "status": status})
+    return {"features": rows}
+
+
 def cache_stats(regress_dir):
     """缓存命中遥测（v1.85.3，077）：commit_passed 的 cached 字段聚合。
 
@@ -510,3 +556,11 @@ if __name__ == "__main__":
         print(f"缓存命中：{s['total']} 次过门禁｜命中 {s['hits']}"
               f"（{s['rate']:.1%}）｜未命中 {s['misses']}"
               f"｜估算节省 {s['est_saved_seconds']}s（hits×118s 估算常数）")
+    elif cmd == "features":
+        r = feature_fire_health(regress_dir)
+        if r.get("error"):
+            print(f"特性探测：注册表缺失/损坏——{r['error']}")
+        else:
+            for f in r["features"]:
+                d = f"{f['days_since']}天" if f["days_since"] is not None else "?"
+                print(f"  {f['status']:>13}  {f['slug']}（出厂 {d}，火 {f['fires']} 次）")

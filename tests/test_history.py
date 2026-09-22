@@ -8,7 +8,7 @@ import pytest
 LIB = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "lib")
 sys.path.insert(0, LIB)
 
-from history import record, load_history, summarize, _maybe_archive, build_trace, telemetry, block_heatmap
+from history import record, load_history, summarize, _maybe_archive, build_trace, telemetry, block_heatmap, feature_fire_health
 
 
 @pytest.fixture
@@ -318,3 +318,47 @@ def test_cache_stats_mixed(regress_dir):
     assert s["total"] == 3 and s["hits"] == 1 and s["misses"] == 2
     assert abs(s["rate"] - 1 / 3) < 0.001
     assert s["est_saved_seconds"] >= 118
+
+
+# ─── v1.87.5 特性零火探测（098：086 Pattern B）─────────
+
+import json as _json
+import time as _time
+
+
+def _seed_registry(regress_dir, feats):
+    import os as _os
+    with open(_os.path.join(regress_dir, "feature-registry.json"), "w",
+              encoding="utf-8") as _f:
+        _f.write(_json.dumps(feats))
+
+
+def test_feature_fire_firing(regress_dir):
+    now = _time.time()
+    _seed_registry(regress_dir, [{"slug": "cache-hit", "shipped_at": now - 86400,
+                                  "window_days": 30,
+                                  "fire_marker": {"event": "commit_passed",
+                                                  "field": "cached", "value": True}}])
+    record(regress_dir, "commit_passed", "R1", runner="pytest", cached=True)
+    rows = feature_fire_health(str(regress_dir))["features"]
+    assert rows[0]["status"] == "firing" and rows[0]["fires"] == 1
+
+
+def test_feature_fire_zero_fire(regress_dir):
+    now = _time.time()
+    _seed_registry(regress_dir, [{"slug": "ghost", "shipped_at": now - 40 * 86400,
+                                  "window_days": 30,
+                                  "fire_marker": {"event": "commit_passed",
+                                                  "field": "cached", "value": True}}])
+    record(regress_dir, "commit_passed", "R1", runner="pytest", cached=False)
+    rows = feature_fire_health(str(regress_dir))["features"]
+    assert rows[0]["status"] == "zero-fire" and rows[0]["fires"] == 0
+
+
+def test_feature_fire_unmeasurable(regress_dir):
+    now = _time.time()
+    _seed_registry(regress_dir, [{"slug": "v180-gov-line", "shipped_at": now - 86400,
+                                  "window_days": 30,
+                                  "fire_marker": {}}])  # 无事件可查=v1.80 实况
+    rows = feature_fire_health(str(regress_dir))["features"]
+    assert rows[0]["status"] == "unmeasurable"

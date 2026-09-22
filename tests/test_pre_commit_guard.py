@@ -1033,3 +1033,15 @@ def test_message_checks_skip_no_manifest_lane(project):
                     "planned_changes: []\nactual_changes: []\n---\n")
     code, err, _ = run_guard("git commit -m 随便含<x>的信息", project)
     assert code == 0, err
+
+
+def test_message_ref_with_note_m_passes(project):
+    """（R1，附注）前缀形态 M 档放行（097：096 发布道活体的门禁侧同款）。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    _stage(project, "src/app.js", "x = 8\n")
+    code, err, _ = run_guard('git commit -m "改动（R1，附注说明）x"', project)
+    assert code == 0, err
+    assert not any(e.get("reason") == "message_no_manifest_ref"
+                   and e.get("event") == "commit_blocked"
+                   for e in read_history(project))
