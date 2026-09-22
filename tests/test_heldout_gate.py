@@ -54,7 +54,7 @@ def test_regression_blocks(proj, monkeypatch):
     assert _run_main() == 0
     _real_sh = hg._sh
 
-    def _broken_sh(script, command, project):
+    def _broken_sh(script, command, project, **kw):
         return 0, ""  # 行为漂移：本该拦的不拦了
 
     monkeypatch.setattr(hg, "_sh", _broken_sh)
@@ -85,7 +85,7 @@ def test_refreeze_adopts(proj, monkeypatch):
 def test_improvement_noted_not_blocked(proj, monkeypatch):
     """fail→pass 只报不拦：exit 0 + 建议重冻。"""
     real_sh = hg._sh
-    monkeypatch.setattr(hg, "_sh", lambda *a: (0, ""))  # 偏离实况→fail 冻结
+    monkeypatch.setattr(hg, "_sh", lambda *a, **k: (0, ""))  # 偏离实况→fail 冻结
     assert _run_main() == 0
     bp = proj / ".regress" / "heldout-baseline.json"
     assert json.loads(bp.read_text(encoding="utf-8"))["outcomes"][
@@ -105,5 +105,5 @@ def test_real_battery_integration(tmp_path):
     assert r.returncode == 0, r.stderr
     data = json.loads((p / ".regress" / "heldout-baseline.json")
                       .read_text(encoding="utf-8"))
-    assert len(data["outcomes"]) == 10
+    assert len(data["outcomes"]) == 12
     assert all(v == "pass" for v in data["outcomes"].values()), data["outcomes"]

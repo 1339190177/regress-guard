@@ -1121,7 +1121,7 @@ def test_heldout_runs_for_hooks_touch(project):
     assert bp.exists()
     import json as _j
     data = _j.loads(bp.read_text(encoding="utf-8"))
-    assert len(data["outcomes"]) == 10
+    assert len(data["outcomes"]) == 12
     assert all(v == "pass" for v in data["outcomes"].values())
 
 

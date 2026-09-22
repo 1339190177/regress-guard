@@ -22,6 +22,7 @@ from datetime import datetime
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GUARD = os.path.join(ROOT, "hooks", "scripts", "pre_commit_guard.py")
 VALVE = os.path.join(ROOT, "hooks", "scripts", "execution_valve.py")
+RGUARD = os.path.join(ROOT, "hooks", "scripts", "read_before_edit_guard.py")
 
 _S_MANIFEST = ("---\nid: R1\nstatus: in-progress\ntier: S\n"
                "rollback: git revert\nplanned_changes:\n  - id: F1\n"
@@ -82,17 +83,23 @@ def _mk_sub(root, name, files):
     return p
 
 
-def _sh(script, command, project):
-    """run_guard 契约：JSON stdin、剥离会话变量、钉 PROJECT_DIR。"""
+def _sh(script, command, project, argv=None, env_extra=None, payload=None):
+    """run_guard 契约：JSON stdin、剥离会话变量、钉 PROJECT_DIR。
+    v1.92.3（114）扩：argv（读门禁等需 mode 参数的脚本）、env_extra（会话隔离——
+    读门禁状态按会话键隔离，场景必须各用独立会话防串场）、payload
+    （stdin 的 tool_input 覆写——Edit/Write 形态场景用）。"""
     env = dict(os.environ)
     env.pop("CLAUDE_SESSION_ID", None)
     env.pop("ZCODE_SESSION_ID", None)
     env["CLAUDE_PROJECT_DIR"] = str(project)
-    inp = json.dumps({"tool_name": "Bash",
-                      "tool_input": {"command": command}})
+    env.update(env_extra or {})
+    ti = payload if payload is not None else {"command": command}
+    inp = json.dumps({"tool_name": ti.get("_tool", "Bash"),
+                      "tool_input": {k: v for k, v in ti.items()
+                                     if not k.startswith("_")}})
     proc = subprocess.run(
-        ["python3", script], input=inp, capture_output=True, text=True,
-        env=env, cwd=str(project), timeout=30)
+        ["python3", script] + (argv or []), input=inp, capture_output=True,
+        text=True, env=env, cwd=str(project), timeout=30)
     return proc.returncode, proc.stderr
 
 
@@ -164,6 +171,28 @@ def _sc_h10(root):  # 缓存伪键拒绝（v1.85 键敏感契约）——错误�
     return GUARD, "git commit -m 改动（R1）", p
 
 
+def _sc_h11(root):  # append-only 违例拦（112，野外 msg521）——直连读门禁 pre 模式
+    p = _mk_project(root, "h11", stage=None)
+    d = p / ".regress" / "decisions.md"
+    d.parent.mkdir(parents=True, exist_ok=True)
+    d.write_text("# 决策日志\n\n## 旧条目\n- 内容甲\n", encoding="utf-8")
+    return RGUARD, None, p, {
+        "argv": ["pre"], "env": {"CLAUDE_SESSION_ID": "heldout-h11"},
+        "payload": {"_tool": "Edit", "file_path": str(d),
+                    "old_string": "## 旧条目\n- 内容甲\n",
+                    "new_string": "## 旧条目\n"}}
+
+
+def _sc_h12(root):  # 盲潜地板拦（111，野外 F1 新判据链）——独立会话零读即改
+    p = _mk_project(root, "h12", stage=None)
+    (p / "src").mkdir(parents=True, exist_ok=True)
+    (p / "src" / "x.js").write_text("x = 1\n", encoding="utf-8")
+    return RGUARD, None, p, {
+        "argv": ["pre"], "env": {"CLAUDE_SESSION_ID": "heldout-h12"},
+        "payload": {"_tool": "Edit",
+                    "file_path": str(p / "src" / "x.js")}}
+
+
 SCENARIOS = [
     {"id": "H1-compound", "build": _sc_h1, "code": 2, "has": "复合"},
     {"id": "H2-count-absent", "build": _sc_h2, "code": 2, "has": "计数"},
@@ -176,7 +205,10 @@ SCENARIOS = [
     {"id": "H9-secret-leak", "build": _sc_h9, "code": 2, "has": "密钥"},
     {"id": "H10-cache-poison-key", "build": _sc_h10, "code": 0,
      "has": "", "expect_none": "♻️"},
+    {"id": "H11-append-only", "build": _sc_h11, "code": 2, "has": "append-only"},
+    {"id": "H12-blind-dive", "build": _sc_h12, "code": 2, "has": "盲潜"},
 ]
+
 
 
 def scenarios_digest(scenarios):
@@ -201,8 +233,14 @@ def run_battery(scenarios=SCENARIOS, verbose=True):
         root = Path(td)
         for s in scenarios:
             try:
-                script, command, proj = s["build"](root)
-                code, err = _sh(script, command, proj)
+                ret = s["build"](root)
+                script, command, proj = ret[0], ret[1], ret[2]
+                extra = ret[3] if len(ret) > 3 else {}
+                code, err = _sh(script, command, proj,
+                                argv=extra.get("argv") or s.get("argv"),
+                                env_extra=extra.get("env") or s.get("env"),
+                                payload=extra.get("payload")
+                                or s.get("payload"))
                 ok = (code == s["code"]
                       and (not s["has"] or s["has"] in err)
                       and (not s.get("expect_none")
