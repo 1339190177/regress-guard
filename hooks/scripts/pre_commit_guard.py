@@ -1065,6 +1065,54 @@ def main():
     runner = result.get("runner", "unknown")
 
     if status == "pass":
+        # ─── 6.4 held-out 验收门（v1.90.0，106：稳定性条件 1 补法）─────
+        # 期望住工作区 .regress（树键排除面），束哈希钉基线——tests/ 可被
+        # 本批合法改写（教坏面），held-out 期望只能显式 --refreeze（journal
+        # 留痕）才许变=Goodhart 锁。只对触及 hooks/scripts 的批付束成本。
+        try:
+            _staged_now = [s.replace(os.sep, "/") for s in _staged_list()]
+        except Exception:
+            _staged_now = []
+        if (any(s.startswith(("hooks/", "scripts/")) for s in _staged_now)
+                and os.environ.get("RG_HELDOUT", "").lower()
+                not in ("off", "0", "false")):
+            try:
+                _root = os.path.dirname(os.path.dirname(
+                    os.path.dirname(os.path.abspath(__file__))))
+                _hr = subprocess.run(
+                    ["python3", os.path.join(_root, "scripts", "heldout_gate.py"),
+                     "--project", str(project_dir)],
+                    capture_output=True, text=True, timeout=180, cwd=_root)
+                if _hr.returncode == 3:
+                    record(regress_dir, "commit_blocked", manifest_id,
+                           reason="heldout_regression")
+                    emit_block(
+                        "提交被拦：**held-out 基线退化**（冻结期望不再成立）。\n\n"
+                        + (_hr.stderr or "").strip()[-600:]
+                        + "\n\nheld-out 是门禁契约底线（稳定性条件 1，"
+                        "docs/stability-conditions.md）：修复行为；确属期望"
+                        "应演进，在批内说明后 python3 scripts/heldout_gate.py"
+                        " --refreeze（journal 留痕）。"
+                    )
+                elif _hr.returncode == 4:
+                    record(regress_dir, "commit_blocked", manifest_id,
+                           reason="heldout_refreeze_needed")
+                    emit_block(
+                        "提交被拦：**held-out 场景束已变**（摘要不匹配）。\n\n"
+                        "期望改动必须显式：python3 scripts/heldout_gate.py"
+                        " --refreeze（journal 留痕）——不许静默改场景"
+                        "（Goodhart 锁）。RG_HELDOUT=off 可临时跳过。"
+                    )
+                else:
+                    _tail = (_hr.stderr or "").strip()
+                    if _tail:
+                        print(f"REGRESS-GUARD: {_tail[-200:]}", file=sys.stderr)
+            except Exception as _he:
+                record(regress_dir, "note", manifest_id,
+                       note="heldout_error", error=str(_he)[:120])
+                print(f"REGRESS-GUARD (warning): held-out 束故障 fail-open：{_he}",
+                      file=sys.stderr)
+
         # ─── 6.5 验收入环（v1.55：M/L done 盖章前验收行全勾）─────────
         # 验收=需求侧 done 定义——没有它 done 就是自我宣布。验命令本批不
         # 复跑（顾问：全量测试已跑，复跑多重复；自证谎报等字段数据再上执行器）。

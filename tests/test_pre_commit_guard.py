@@ -1071,6 +1071,40 @@ def test_message_revert_exempt_105(project):
     assert code == 0, err
 
 
+# ─── v1.90.0 held-out 验收门接入（106：稳定性条件 1 补法）─────────
+
+def test_heldout_skipped_for_docs_only(project):
+    """文档批豁免：staged 不触 hooks/scripts → 束不跑（基线文件不出现
+    =最硬的没跑证据）。"""
+    _passing_runner(project)
+    body = ("---\nid: R1\nstatus: in-progress\ntier: S\nrollback: git revert\n"
+            "planned_changes:\n  - id: F1\n    file: README.md\n"
+            "actual_changes: []\n---\n")
+    _write_manifest(project, body)
+    _stage(project, "README.md", "docs\n")
+    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    assert code == 0, err
+    assert not (project / ".regress" / "heldout-baseline.json").exists()
+
+
+def test_heldout_runs_for_hooks_touch(project):
+    """触及 hooks/ 的批：束跑且首冻（基线出现+八场景全过）——真束 ~15s。"""
+    _passing_runner(project)
+    body = ("---\nid: R1\nstatus: in-progress\ntier: S\nrollback: git revert\n"
+            "planned_changes:\n  - id: F1\n    file: hooks/x.py\n"
+            "actual_changes: []\n---\n")
+    _write_manifest(project, body)
+    _stage(project, "hooks/x.py", "h = 1\n")
+    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    assert code == 0, err
+    bp = project / ".regress" / "heldout-baseline.json"
+    assert bp.exists()
+    import json as _j
+    data = _j.loads(bp.read_text(encoding="utf-8"))
+    assert len(data["outcomes"]) == 8
+    assert all(v == "pass" for v in data["outcomes"].values())
+
+
 def test_message_count_mismatch_blocks_077_replay(project):
     """077 回放：行尾「；N/N」与实测不符 → 拦 message_count_mismatch。"""
     _passing_runner(project)
