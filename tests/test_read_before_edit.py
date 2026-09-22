@@ -42,6 +42,21 @@ def run_guard(mode, tool_name, file_path, session_id="test-unit", project_dir=No
     return proc.returncode, proc.stderr
 
 
+def run_full(mode, tool_name, tool_input, session_id="test-unit",
+             project_dir=None):
+    """完整 tool_input 版（Bash 命令/Edit 新旧串/Write content）。"""
+    env = dict(os.environ)
+    env["CLAUDE_SESSION_ID"] = session_id
+    if project_dir:
+        env["CLAUDE_PROJECT_DIR"] = project_dir
+    inp = json.dumps({"tool_name": tool_name, "tool_input": tool_input})
+    proc = subprocess.run(
+        ["python3", GUARD, mode],
+        input=inp, capture_output=True, text=True, env=env, timeout=10
+    )
+    return proc.returncode, proc.stderr
+
+
 def cleanup(session_id="test-unit"):
     """清理测试状态（按目标会话的文件清，不再是旧全局文件）。"""
     state_file = _state_file_for(session_id)
@@ -248,3 +263,73 @@ def test_fingerprint_only_checked_for_real_files(tmp_path):
     assert code == 2
     assert "先读后改" in err
     cleanup()
+
+
+# ─── v1.92.1（112：Bash 补戳+append-only 执行）──────────
+
+def test_bash_stamp_prevents_false_external(tmp_path):
+    """Bash 写过的目标补戳（野外 msg124）：Read 后 Bash 改动 → 补戳记写后
+    实况指纹 → Edit 不再误报"外部修改"。"""
+    cleanup("test-bashstamp")
+    f = tmp_path / "src_app.js"
+    f.write_text("a = 1\n")
+    fp = str(f)
+    run_guard("post", "Read", fp, session_id="test-bashstamp")
+    f.write_text("a = 2\n")  # 模拟本会话 Bash 改写（无补戳时=外部修改假象）
+    code, _ = run_full("post", "Bash", {"command": f"echo x > {fp}"},
+                       session_id="test-bashstamp")
+    assert code == 0
+    code2, err2 = run_guard("pre", "Edit", fp, session_id="test-bashstamp")
+    assert code2 == 0, f"Bash 补戳后 Edit 不应误报外部修改：{err2}"
+    cleanup("test-bashstamp")
+
+
+def test_bash_stamp_detects_post_change(tmp_path):
+    """补戳=写后实况指纹（非盲豁免）：补戳后文件再被改 → Edit 仍拦。"""
+    cleanup("test-bashstamp2")
+    f = tmp_path / "src_app.js"
+    f.write_text("a = 1\n")
+    fp = str(f)
+    run_full("post", "Bash", {"command": f"echo x > {fp}"},
+             session_id="test-bashstamp2")
+    _bump_mtime_ns(fp)  # 补戳之后再变（真正的外部修改）
+    code, err = run_guard("pre", "Edit", fp, session_id="test-bashstamp2")
+    assert code == 2 and "指纹" in err  # 哨兵牙齿保住
+    cleanup("test-bashstamp2")
+
+
+def test_append_only_delete_blocked(tmp_path):
+    """decisions.md 删既有行 → 拦（行集判据：旧行多重集 ⊄ 新行）。"""
+    cleanup("test-append")
+    d = tmp_path / "decisions.md"
+    d.write_text("# 决策日志\n\n## 2026-09-01 旧条目\n- 内容甲\n", encoding="utf-8")
+    code, err = run_full("pre", "Edit", {
+        "file_path": str(d), "old_string": "## 2026-09-01 旧条目\n- 内容甲\n",
+        "new_string": "## 2026-09-01 旧条目\n"}, session_id="test-append")
+    assert code == 2 and "append-only" in err
+    cleanup("test-append")
+
+
+def test_append_only_append_allowed(tmp_path):
+    """纯追加（旧行全保留）→ 放行。"""
+    cleanup("test-append2")
+    d = tmp_path / "decisions.md"
+    d.write_text("# 决策日志\n\n## 旧\n- 甲\n", encoding="utf-8")
+    run_guard("post", "Read", str(d), session_id="test-append2")  # per-file 正门
+    code, err = run_full("pre", "Edit", {
+        "file_path": str(d), "old_string": "- 甲\n",
+        "new_string": "- 甲\n- 乙（新追加）\n"}, session_id="test-append2")
+    assert code == 0, err
+    cleanup("test-append2")
+
+
+def test_append_only_write_nonprefix_blocked(tmp_path):
+    """Write 覆盖且旧内容非前缀（丢行）→ 拦。"""
+    cleanup("test-append3")
+    d = tmp_path / "frontier-protocol.md"
+    d.write_text("# 协议\n正文甲\n正文乙\n", encoding="utf-8")
+    code, err = run_full("pre", "Write", {
+        "file_path": str(d),
+        "content": "# 协议\n正文甲（改写）\n"}, session_id="test-append3")
+    assert code == 2 and "append-only" in err
+    cleanup("test-append3")
