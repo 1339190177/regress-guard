@@ -10,11 +10,15 @@ PreToolUse(Edit/Write) → 检查本轮 Read 次数是否足够
 
 状态文件：系统临时目录 regress-guard-read-counter.json（按 sessionId 隔离）
 
-规则：
-  - 默认比例 3:1（每改 1 个文件前至少读 3 个）
-  - 可在 .regress/config.json 用 read_before_edit_ratio 调整
-  - 新文件创建（Write 不存在的文件）豁免
-  - .regress/ 和配置文件修改豁免
+规则（v1.92.0 判据链，野外报告#1 F1 重构）：
+  - per-file 正门：改 X 前须读过 X（公理对齐）
+  - 会话头防盲潜地板：首改前至少 min(ratio,3) 次读（旧 read_before_edit_ratio
+    键向后兼容映射为地板值；旧全局累计比已废——39 改后要 80 读的死亡螺旋
+    在野外被迫置 0，实证失效）
+  - 地板满足后改未读文件：放行 + 软提示（广度退为提示不设硬比例）
+  - 指纹哨兵不动：读后被外部改过仍硬拦
+  - ratio=0 关闭，但降级 journal 留痕（每会话一次）
+  - 新文件创建（Write 不存在的文件）豁免；.regress/ 与配置文件修改豁免
 
 退出码：0=放行，2=阻断
 """
@@ -122,8 +126,22 @@ def main():
         except (IOError, json.JSONDecodeError):
             pass
 
-    # ratio=0 → 关闭此门禁
+    # ratio=0 → 关闭此门禁（v1.92.0 起降级必须留痕——一行配置整体禁用
+    # 太容易，野外标本：置 0 后门禁静默消失无人知道）
     if ratio <= 0:
+        state = load_state()
+        sess0 = state.get(session_id, {})
+        if not sess0.get("disabled_noted"):
+            try:
+                sys.path.insert(0, os.path.join(SCRIPT_DIR, "lib"))
+                from journal import journal_append
+                journal_append("note", start_dir=project_dir,
+                               note="read_guard_disabled",
+                               session=session_id[:16])
+            except Exception:
+                pass  # 地层是增强不是依赖
+            state[session_id] = {**sess0, "disabled_noted": True}
+            save_state(state)
         sys.exit(0)
 
     state = load_state()
@@ -188,26 +206,35 @@ def main():
             save_state(state)
             sys.exit(0)
 
-        # 豁免：目标文件本轮已读过（允许迭代修改同一文件）
+        # ─── v1.92.0（111，野外报告#1 F1）判据链重排 ───
+        # 公理是 per-file（改 X 前读过 X），旧实现的全局累计比
+        # required=(edit_count+1)*ratio 把重复编辑计入惩罚——39 改后要 80 读，
+        # 长会话数学必死（野外被迫置 0 实证）。新链：
+        #   ①目标 ∈ read_files → 放（per-file 正门）
+        #   ②开局盲潜 → 拦（bootstrap 地板 N=min(ratio,3)，旧配置键兼容映射）
+        #   ③中间带（读了别的、改这个未读的）→ 放 + 软提示
+        #   ④指纹哨兵链不动（读后被外部改过仍硬拦——盲改的主体防线）
+        BOOTSTRAP = min(int(ratio), 3)
         if fp and fp in sess.get("read_files", []):
             _allow_edit()
 
-        # 检查：读次数 >= (改次数+1) * ratio
-        required = (sess["edit_count"] + 1) * ratio
-        if sess["read_count"] < required:
-            deficit = required - sess["read_count"]
+        if sess["read_count"] < BOOTSTRAP:
             print(
-                f"REGRESS-GUARD: ⚠️ 先读后改门禁\n"
-                f"  本轮已读 {sess['read_count']} 个文件，已改 {sess['edit_count']} 个。\n"
-                f"  规则：每改 1 个文件前至少读 {ratio} 个（当前需 {required}，还差 {deficit}）。\n"
-                f"  目标文件 {fp} 本轮尚未读取。\n\n"
-                f"  请先用 Read 读取目标文件及其依赖，理解上下文后再改。\n"
-                f"  （关闭此门禁：.regress/config.json 设 read_before_edit_ratio: 0）",
+                f"REGRESS-GUARD: ⚠️ 先读后改门禁（开局盲潜）\n"
+                f"  本轮已读 {sess['read_count']} 个文件（防盲潜地板 {BOOTSTRAP}）。\n"
+                f"  目标文件 {fp} 本轮尚未读取——请先 Read 再改。\n"
+                f"  （per-file 为正门：改过的文件读过即放；关闭：config 设 "
+                f"read_before_edit_ratio: 0，降级会留痕）",
                 file=sys.stderr
             )
             sys.exit(2)
-        else:
-            _allow_edit()
+
+        print(
+            f"REGRESS-GUARD (hint): {fp} 本轮未读过即改——盲改风险，"
+            f"建议先 Read（per-file 地板已满足故放行）。",
+            file=sys.stderr
+        )
+        _allow_edit()
 
     sys.exit(0)
 

@@ -112,14 +112,29 @@ def test_ratio_zero_disables(tmp_path):
     cleanup("test-ratio0")
 
 
-def test_second_edit_requires_more_reads():
-    """改 1 次后需再读 3 次才能改第 2 次。"""
+def test_no_spiral_v1120():
+    """v1.92.0（111，野外 F1）无螺旋证明：改 1 次后改第 2 个未读文件——
+    旧语义 required=(1+1)*2=4>3 会拦（死亡螺旋第一格）；新语义 bootstrap
+    已满足（3 读 ≥ N=2）→ 放行+软提示，需求不随编辑数增长。"""
     cleanup()
     for f in ["a", "b", "c"]:
         run_guard("post", "Read", f"src/{f}.js")
     run_guard("pre", "Edit", "src/app.js")  # 第 1 次改通过
-    code, err = run_guard("pre", "Edit", "src/other.js")  # 第 2 次改
-    assert code == 2, f"第 2 次改应被拦，exit={code}"
+    code, err = run_guard("pre", "Edit", "src/other.js")  # 第 2 次改（未读）
+    assert code == 0, f"第 2 次改不应再被累计比例拦，exit={code}"
+    assert "hint" in err or "建议先 Read" in err  # 软提示在场
+    cleanup()
+
+
+def test_long_session_no_growth():
+    """百次重复编辑后改新文件：需求仍只有 bootstrap（无螺旋的极限证明）。"""
+    cleanup()
+    for f in ["src/a.js", "src/b.js"]:
+        run_guard("post", "Read", f)
+    for i in range(100):
+        run_guard("pre", "Edit", "src/a.js")  # 已读文件迭代改 ×100
+    code, err = run_guard("pre", "Edit", "src/brand-new.js")
+    assert code == 0, f"百次编辑后改新文件不应需求增长，exit={code}"
     cleanup()
 
 
@@ -141,15 +156,26 @@ def test_edit_already_read_file_exempt():
     cleanup()
 
 
-def test_edit_unread_file_blocked_when_ratio_exceeded():
-    """读了 a/b/c 改了 a，再改 d（未读过，且读不够第 2 轮 ratio）应被拦。"""
+def test_edit_unread_after_bootstrap_soft_hint():
+    """v1.92.0：读了 a/b/c（bootstrap 满）改未读的 d → 放行+软提示不拦
+    （旧语义此处 required=(1+1)*2=4>3 拦——判据链已换，per-file 为主）。"""
     cleanup()
     for f in ["src/a.js", "src/b.js", "src/c.js"]:
         run_guard("post", "Read", f)
     run_guard("pre", "Edit", "src/a.js")  # 第 1 次改通过（a 已读豁免）
-    code, err = run_guard("pre", "Edit", "src/d.js")  # 第 2 次改 d（未读 + ratio 不够）
-    assert code == 2, f"改未读文件且 ratio 不够应被拦，exit={code}"
-    assert "src/d.js" in err, f"错误消息应提到目标文件"
+    code, err = run_guard("pre", "Edit", "src/d.js")  # 改未读的 d
+    assert code == 0, f"bootstrap 满足后改未读文件应放行，exit={code}"
+    assert "src/d.js" in err and "建议先 Read" in err  # 软提示点名目标
+    cleanup()
+
+
+def test_bootstrap_floor_blocks_blind_dive():
+    """开局盲潜：读了 1 个（< N=2）改另一个未读文件 → 拦（防盲潜地板）。"""
+    cleanup()
+    run_guard("post", "Read", "src/a.js")  # 仅 1 读
+    code, err = run_guard("pre", "Edit", "src/d.js")  # 改未读的 d
+    assert code == 2, f"开局盲潜应拦，exit={code}"
+    assert "盲潜" in err
     cleanup()
 
 
