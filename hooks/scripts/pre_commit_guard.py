@@ -1124,6 +1124,25 @@ def main():
             if _claims:
                 record(regress_dir, "note", manifest_id,
                        note="message_count_claim", claims=_claims[:3])
+            elif (_tier in ("M", "L") and result.get("total")
+                  and not _msg_late.strip().startswith(
+                      ("Revert", "revert", "回滚"))):
+                # v1.89.0（105）升硬位：近 14 提交 100% 自愿携带（>90% 触发器
+                # 已过）；无计数=沉默通过车道——077 反谎报族的另一半（有计数
+                # 才有对账对象）。S 豁免与清单号规则同构；Revert 豁免（自动生成
+                # 信息）。docs-only 不豁免（顾问分歧点：计数证明套件仍绿，对
+                # 文档批同样为真，路径豁免反开绕过车道）。
+                record(regress_dir, "commit_blocked", manifest_id,
+                       reason="message_no_count_claim")
+                emit_block(
+                    "提交被拦：M/L 信息缺行尾套件计数「；N/N」。\n\n"
+                    f"门禁实测 {result.get('passed')}/{result.get('total')}——"
+                    "行尾计数是套件计数宣称，有它才对账（077 反谎报闸：宣称"
+                    "536/536 而树里没有的那次溜了一周；无计数=连对账对象都没"
+                    "有的沉默通过车道）。\n\n补法：信息行尾加「；"
+                    f"{result.get('passed')}/{result.get('total')}」。作用域计数"
+                    "写中间位不受此查；S 档豁免；Revert/回滚前缀豁免。"
+                )
         _attrib_status = str((parse_frontmatter(manifest) or {}).get("status") or "")
         if _attrib_status == "planning":
             # 未临行的计划不接 done 盖章（088：084 被路过盖章标本的兜底闸）

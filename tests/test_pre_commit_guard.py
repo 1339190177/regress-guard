@@ -89,7 +89,7 @@ def test_commit_via_npm_version_detected(project):
 def test_corrupt_config_blocks(project):
     """config.json 损坏 → fail-safe 阻断。"""
     (project / ".regress" / "config.json").write_text("not json")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2
     assert "config.json" in err
 
@@ -97,7 +97,7 @@ def test_corrupt_config_blocks(project):
 def test_corrupt_manifest_blocks(project):
     """清单格式损坏（无 frontmatter）→ fail-safe 阻断。"""
     (project / ".regress" / "manifests" / "R1.md").write_text("不是合法的清单")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2
     assert "清单" in err or "frontmatter" in err
 
@@ -109,7 +109,7 @@ def test_untracked_file_blocks_and_records(project):
     import subprocess as sp
     (project / "src" / "rogue.js").write_text("y = 2\n")
     sp.run(["git", "add", "-A"], cwd=str(project), check=True)
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2
     assert "rogue.js" in err
     events = read_history(project)
@@ -122,7 +122,7 @@ def test_terminal_status_passes_without_runner(project):
     (project / ".regress" / "manifests" / "R1.md").write_text(
         "---\nid: R1\nstatus: done\nplanned_changes: []\n---\n"
     )
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0
     events = read_history(project)
     assert any(e["event"] == "commit_passed" for e in events)
@@ -133,7 +133,7 @@ def test_completed_is_terminal(project):
     (project / ".regress" / "manifests" / "R1.md").write_text(
         "---\nid: R1\nstatus: completed\nplanned_changes: []\n---\n"
     )
-    code, _, _ = run_guard("git commit -m 改动（R1）", project)
+    code, _, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0
 
 
@@ -175,7 +175,7 @@ def test_commit_event_has_anchors(project):
     (project / ".regress" / "manifests" / "R1.md").write_text(
         "---\nid: R1\nstatus: done\nplanned_changes: []\n---\n"
     )
-    code, _, _ = run_guard("git commit -m 改动（R1）", project)
+    code, _, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0
     events = read_history(project)
     passed = [e for e in events if e["event"] == "commit_passed"]
@@ -187,7 +187,7 @@ def test_invented_status_not_active(project):
     (project / ".regress" / "manifests" / "R1.md").write_text(
         "---\nid: R1\nstatus: analysis-done\nplanned_changes: []\n---\n"
     )
-    code, _, _ = run_guard("git commit -m 改动（R1）", project)
+    code, _, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0
     events = read_history(project)
     assert any(e.get("note") == "no_active_manifest" for e in events)
@@ -195,7 +195,7 @@ def test_invented_status_not_active(project):
 
 def test_active_manifest_blocks_without_runner(project):
     """明确活跃清单 + 无 runner → 阻断（而非旧的终态表误放行/误卡）。"""
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)  # project 清单是 in-progress
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)  # project 清单是 in-progress
     assert code == 2 and ("测试运行器" in err or "未检测到" in err)
 
 
@@ -266,7 +266,7 @@ def test_own_manifest_governs_despite_foreign(project):
 def test_no_session_env_shares_all(project):
     """env 缺失（老钩子环境）：全部视为 mine——fail-safe 老行为不回退。"""
     _stamp(project, "R1", FOREIGN_SID)
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)  # 无会话 env
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)  # 无会话 env
     assert code == 2 and ("测试运行器" in err or "未检测到" in err)
 
 
@@ -282,7 +282,7 @@ def test_non_utf8_manifest_blocks(project):
     断言锁的是 fail-closed 契约：绝不 exit 0/1。"""
     (project / ".regress" / "manifests" / "R1.md").write_bytes(
         b"---\nid: R1\nstatus: in-progress\nnote: \xff\xfe\n---\nbody")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2, f"非 UTF-8 清单必须阻断（exit 2），得 {code}"
 
 
@@ -293,7 +293,7 @@ def test_garbage_yaml_manifest_blocks(project):
     与 fail-safe 注释方向相反。"""
     (project / ".regress" / "manifests" / "R1.md").write_text(
         "---\n: : : 乱写一气\n!@#$ 没有 id 也没有 status\n---\nbody")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2
 
 
@@ -313,7 +313,7 @@ def test_blocked_pushes_via_configured_channel(project, tmp_path, monkeypatch):
     mach.write_text(json.dumps(
         {"notify": {"channels": [str(stub) + " {title}"]}}), encoding="utf-8")
     monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)  # no-runner 阻断路径
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)  # no-runner 阻断路径
     assert code == 2
     out = marker.read_text(encoding="utf-8")
     assert "提交被拦" in out and "R1" in out  # 带清单号的 blocked 推送落标
@@ -358,11 +358,11 @@ def _stage(project, rel, content=None):
 
 def test_ml_missing_scan_blocks(project):
     """规则A：M 档缺 scan 三行 → 拦（对标 spec-first：理解是强制产物）。"""
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)  # 夹具 R1 无 tier/scan
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)  # 夹具 R1 无 tier/scan
     # 夹具清单无 tier → 规则A 豁免——先验豁免再验真拦
     _write_manifest(project, "---\nid: R1\nstatus: in-progress\ntier: M\n"
                              "planned_changes: []\nactual_changes: []\n---\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "全貌产物" in err and "scan 三行" in err
     assert any(e.get("reason") == "scan_missing" for e in read_history(project))
 
@@ -371,14 +371,14 @@ def test_scan_placeholder_rejected(project):
     """规则A防绕：占位值（{{}}）不算填过（顾问补强）。"""
     body = _M_FULL.replace('entry: "门禁 main 4.5 节"', 'entry: "{{入口}}"')
     _write_manifest(project, body)
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "全貌产物" in err
 
 
 def test_ml_with_scan_passes_rule_a(project):
     """规则A 齐备 → 不因全貌拦（后续无 runner 拦是另一件事）。"""
     _write_manifest(project, _M_FULL)
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert "全貌产物" not in err  # 规则A 放行
 
 
@@ -386,7 +386,7 @@ def test_s_tier_exempt_from_rule_a(project):
     """S 档轻量合法：不背全貌仪式（规则A 仅 M/L）。"""
     _write_manifest(project, "---\nid: R1\nstatus: in-progress\ntier: S\n"
                              "planned_changes: []\nactual_changes: []\n---\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert "全貌产物" not in err
 
 
@@ -397,7 +397,7 @@ def test_structural_change_without_card_sync_blocks(project):
                              "planned_changes: []\nactual_changes: []\n---\n")
     (project / ".regress" / "product-arch.md").write_text("# 卡\n", encoding="utf-8")
     _stage(project, "src/bridge.py", "x = 1\n")  # 结构性新增，卡片未 staged
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "卡片未同步" in err
     assert any(e.get("reason") == "card_stale" for e in read_history(project))
 
@@ -407,7 +407,7 @@ def test_structural_change_with_card_staged_passes_rule_b(project):
     _write_manifest(project, _M_FULL)
     _stage(project, ".regress/product-arch.md", "# 卡\n")
     _stage(project, "src/app.js", "x = 2\n")  # 修改已有文件不触发 AD
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert "卡片未同步" not in err
 
 
@@ -418,7 +418,7 @@ def test_card_sync_false_exempts(project):
     _write_manifest(project, body)
     (project / ".regress" / "product-arch.md").write_text("# 卡\n", encoding="utf-8")
     _stage(project, "src/scaffold.py", "t = 1\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert "卡片未同步" not in err
 
 
@@ -428,7 +428,7 @@ def test_metadata_adds_do_not_trigger_rule_b(project):
     (project / ".regress" / "product-arch.md").write_text("# 卡\n", encoding="utf-8")
     _stage(project, "tests/t.py", "def test_t(): pass\n")
     _stage(project, "docs/guide.md", "# g\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert "卡片未同步" not in err
 
 
@@ -436,7 +436,7 @@ def test_no_card_project_structural_warns(project):
     """无卡片盲区（顾问补强）：结构性变更不拦，但警示留痕建议 init 产品层。"""
     _write_manifest(project, _M_FULL)  # 不写 product-arch.md
     _stage(project, "src/newmod.py", "n = 1\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert "卡片未同步" not in err  # 不拦
     assert "无模块卡片" in err       # 但警示（stderr）
     assert any(e.get("note") == "structural_change_without_cards"
@@ -449,7 +449,7 @@ def test_rollback_missing_blocks_all_tiers(project):
     """rollback 全档必填（能力断言+引信）：清单无 rollback → 拦。"""
     _write_manifest(project, "---\nid: R1\nstatus: in-progress\n"
                              "planned_changes: []\nactual_changes: []\n---\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "缺 rollback" in err
     assert any(e.get("part") == "rollback" and e.get("reason") == "finish_missing"
                for e in read_history(project))
@@ -459,7 +459,7 @@ def test_rollback_default_invalid_on_escape_surface(project):
     """触发表收窄：staged 触及迁移路径/破坏性 SQL 而仍是默认 → 拦。"""
     _write_manifest(project, _M_FULL)
     _stage(project, "db/migrations/001.sql", "DROP TABLE users;\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "逃逸面" in err
 
 
@@ -470,7 +470,7 @@ def test_rollback_specific_answer_passes_escape(project):
         "rollback: 备份点 2026-09-16 恢复 + 001_down.sql 回退 schema")
     _write_manifest(project, body)
     _stage(project, "db/migrations/001.sql", "DROP TABLE users;\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert "逃逸面" not in err
 
 
@@ -481,12 +481,12 @@ def test_self_review_planned_outside_key_required(project):
         'actual_changes:\n  - id: F3\n    file: "src/extra.py"\n    type: from-diff')
     _write_manifest(project, body)
     _stage(project, "src/app.js", "x = 2\n")  # 修改非 AD，不触规则B
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "计划外" in err and "self_review" in err
     body2 = body.replace("actual_changes:",
                          'self_review:\n  计划外: "无"\nactual_changes:')
     _write_manifest(project, body2)
-    code2, err2, _ = run_guard("git commit -m 改动（R1）", project)
+    code2, err2, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert "self_review" not in err2
 
 
@@ -494,14 +494,14 @@ def test_self_review_debug_residue_key_required(project):
     """触发表：diff 命中调试模式且非 tests/ → 调试残留键必在；补键放行。"""
     _write_manifest(project, _M_FULL)
     _stage(project, "src/app.js", "console.log('probe x=1')\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "调试残留" in err
     body2 = _M_FULL.replace(
         "actual_changes: []",
         'self_review:\n  调试残留: "console.log 是必要输出，已逐处确认"\n'
         "actual_changes: []")
     _write_manifest(project, body2)
-    code2, err2, _ = run_guard("git commit -m 改动（R1）", project)
+    code2, err2, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert "调试残留" not in err2
 
 
@@ -509,7 +509,7 @@ def test_debug_pattern_in_tests_not_triggered(project):
     """tests/ 内的调试模式是测试常态——不触发键（路径豁免防误拦）。"""
     _write_manifest(project, _M_FULL)
     _stage(project, "tests/t.py", "console.log('in test ok')\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert "调试残留" not in err
 
 
@@ -517,7 +517,7 @@ def test_no_trigger_keys_absent_legal(project):
     """无触发 → 键不出现合法（不适用≠无——防空转的根：混装堵死）。"""
     _write_manifest(project, _M_FULL)
     _stage(project, "src/app.js", "x = 2\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert "self_review" not in err and "缺 rollback" not in err
 
 
@@ -527,7 +527,7 @@ def test_secret_leak_blocks(project):
     """staged 新增行含 AWS key 样串 → 拦（值运行时拼接，源码无完整字面量）。"""
     _write_manifest(project, _M_FULL)
     _stage(project, "src/env.js", "key = '" + "AKIA" + "ABCDEFGHIJKLMNOP" + "'\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "密钥泄漏" in err
     assert any(e.get("reason") == "secret_leak" for e in read_history(project))
 
@@ -535,7 +535,7 @@ def test_secret_leak_blocks(project):
 def test_secret_clean_passes_rule(project):
     _write_manifest(project, _M_FULL)
     _stage(project, "src/app.js", "const x = 1;\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert "密钥泄漏" not in err
 
 
@@ -575,7 +575,7 @@ def test_supply_chain_secrets_disabled(project):
         encoding="utf-8")
     _write_manifest(project, _M_FULL)
     _stage(project, "src/env.js", "key = '" + "AKIA" + "ABCDEFGHIJKLMNOP" + "'\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert "密钥泄漏" not in err
 
 
@@ -595,7 +595,7 @@ def test_block_recall_shows_history_rules(project):
     _write_manifest(project, "---\nid: R1\nstatus: in-progress\ntier: M\n"
                              "planned_changes: []\nactual_changes: []\n---\n")
     _write_ledger(project, _LEDGER_SIG)
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "全貌产物" in err
     assert "📚 相关历史规律" in err and "scan 三行缺失" in err
     assert err.count("命中×") <= 3  # TOP-3 封顶（stderr 防稀释）
@@ -618,7 +618,7 @@ def test_block_recall_not_wired_reason(project):
                                    "captured_at": "2026-09-01",
                                    "last_hit": "2026-09-05", "hits": 2, "occurrences": 3}})
     _stage(project, "src/extra.js", "y = 1\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "不在回归清单" in err and "📚" not in err
     # v1.59：拦截事件盖 guard_version（谁在把关，事后可查——044 病例）
     assert any(e.get("event") == "commit_blocked" and str(e.get("guard_version") or "")
@@ -630,7 +630,7 @@ def test_block_recall_corrupt_ledger_degrades(project):
     _write_manifest(project, "---\nid: R1\nstatus: in-progress\ntier: M\n"
                              "planned_changes: []\nactual_changes: []\n---\n")
     (project / ".regress" / "rules-ledger.json").write_text("{不是json", encoding="utf-8")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "全貌产物" in err and "📚" not in err
 
 
@@ -650,7 +650,7 @@ def test_acceptance_missing_blocks(project):
     """M 档缺验收标准节：测试全绿也不许盖章（acceptance_missing）。"""
     _passing_runner(project)
     _write_manifest(project, _M_FULL)  # 有 scan 三件，规则A 过；无验收节
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "验收标准" in err
     assert any(e.get("reason") == "acceptance_missing" for e in read_history(project))
 
@@ -659,7 +659,7 @@ def test_acceptance_open_blocks(project):
     """M 档验收 EARS 行未勾（行尾无 ✅）：拦（acceptance_open）。"""
     _passing_runner(project)
     _write_manifest(project, _M_FULL + _M_ACC_BODY)
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "验收未勾" in err
     assert any(e.get("reason") == "acceptance_open" for e in read_history(project))
 
@@ -669,7 +669,7 @@ def test_acceptance_placeholder_blocks(project):
     _passing_runner(project)
     _write_manifest(project, _M_FULL +
                     "\n## 验收标准\n\n- When {{例：发起对讲}}，则 {{3s 内建流}}（验：{{human_check}}）\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "验收未勾" in err
 
 
@@ -679,7 +679,7 @@ def test_acceptance_all_checked_stamps_done(project):
     _write_manifest(project, _M_FULL + _M_ACC_BODY.replace(
         "（验：curl -sf localhost:8000/health）",
         "（验：python3 -m pytest test_smoke.py -q）✅"))
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0, err
     body = (project / ".regress" / "manifests" / "R1.md").read_text(encoding="utf-8")
     assert "status: done" in body and "test_verified_by: hook" in body
@@ -694,7 +694,7 @@ def test_acceptance_exempt_s_tier(project):
     _write_manifest(project, "---\nid: R1\nstatus: in-progress\ntier: S\n"
                              "rollback: git revert 即回滚\n"
                              "planned_changes: []\nactual_changes: []\n---\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0, err
 
 
@@ -708,7 +708,7 @@ def test_acceptance_two_line_bullet_joined(project):
             "- When 查健康，则 200\n"
             "  （验：python3 -m pytest test_smoke.py -q）✅\n")
     _write_manifest(project, body)
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "验收未勾" in err and "1 行" in err  # 只第一行未勾
 
 
@@ -731,7 +731,7 @@ def test_auto_reflow_pending_on_gate_pass(project, tmp_path, monkeypatch):
     pd.add("P", "blocked", "⛔ 提交被拦 R9", ref="R9")
     _passing_runner(project)
     _write_manifest(project, _M_FULL + _M_ACC_PASS)
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0 and "自动回流 1 笔" in err
     s = pd.stats()
     assert s["auto_resolved"] == 1 and s["pending"] == 1  # R9 未被动
@@ -747,7 +747,7 @@ def test_acceptance_mark_anywhere_counts(project):
         "- When 发起请求，则 返回 200（验：curl -sf localhost:8000/health）"
         "5/5 passed ✅\n")
     _write_manifest(project, body)
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0  # 宽松化后计勾放行
 
 
@@ -758,7 +758,7 @@ def test_acceptance_mark_without_verify_still_blocks(project):
         "\n## 验收标准（EARS-lite）\n\n"
         "- When 发起请求，则 返回 200 ✅ 好了\n")
     _write_manifest(project, body)
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "验收未勾" in err
 
 
@@ -773,11 +773,11 @@ def test_cache_hit_on_same_tree(project):
     """同树二次过门禁：跳全量（stderr ♻️）+事件 cached:true+cache_key 留痕。"""
     _passing_runner(project)
     _write_manifest(project, _M_FULL + _ACC_OK)
-    c1, e1, _ = run_guard("git commit -m 改动（R1）", project)
+    c1, e1, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert c1 == 0, e1
     assert "♻️" not in e1  # 首跑必是真跑
     _write_manifest(project, _M_FULL + _ACC_OK)  # 重置 done 戳（.regress 不入键）
-    c2, e2, _ = run_guard("git commit -m 改动（R1）", project)
+    c2, e2, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert c2 == 0, e2
     assert "♻️" in e2
     cp = [e for e in read_history(project) if e.get("event") == "commit_passed"]
@@ -789,12 +789,12 @@ def test_cache_miss_after_tree_change(project):
     """树变更（未跟踪测试文件内容变）→ 键变 → 未命中照常全量。"""
     _passing_runner(project)
     _write_manifest(project, _M_FULL + _ACC_OK)
-    c1, e1, _ = run_guard("git commit -m 改动（R1）", project)
+    c1, e1, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert c1 == 0 and "♻️" not in e1
     _write_manifest(project, _M_FULL + _ACC_OK)
     (project / "test_smoke.py").write_text(
         "def test_ok():\n    assert 1 + 1 == 2\n", encoding="utf-8")
-    c2, e2, _ = run_guard("git commit -m 改动（R1）", project)
+    c2, e2, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert c2 == 0 and "♻️" not in e2
     cp = [e for e in read_history(project) if e.get("event") == "commit_passed"]
     assert cp[-1].get("cached") is not True
@@ -805,10 +805,10 @@ def test_cache_env_off_bypasses(project, monkeypatch):
     monkeypatch.setenv("RG_TEST_CACHE", "off")
     _passing_runner(project)
     _write_manifest(project, _M_FULL + _ACC_OK)
-    c1, e1, _ = run_guard("git commit -m 改动（R1）", project)
+    c1, e1, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert c1 == 0 and "♻️" not in e1
     _write_manifest(project, _M_FULL + _ACC_OK)
-    c2, e2, _ = run_guard("git commit -m 改动（R1）", project)
+    c2, e2, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert c2 == 0 and "♻️" not in e2
 
 
@@ -826,7 +826,7 @@ def test_attribution_picks_intersecting_manifest(project):
     _write_manifest_named(project, "R2.md", _M_FULL.replace(
         "id: R1", "id: R2").replace('file: "src/app.js"', 'file: "src/other.js"'))
     _stage(project, "src/app.js", "x = 2\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0, err
     cp = [e for e in read_history(project) if e.get("event") == "commit_passed"
           and e.get("manifest_id")]
@@ -847,7 +847,7 @@ def test_planning_manifest_not_stamped(project):
             "actual_changes: []\n---\n")
     _write_manifest(project, body)
     _stage(project, "src/app.js", "x = 3\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0, err
     m = (project / ".regress" / "manifests" / "R1.md").read_text(encoding="utf-8")
     assert "status: planning" in m and "status: done" not in m
@@ -868,7 +868,7 @@ def test_attribution_fallback_prefers_provisional(project):
     _write_manifest_named(project, "RZ.md", body_z)   # 文件名大=旧序 mine[0]
     _write_manifest_named(project, "RA.md", body_a)   # 有 provisional=新回退目标
     _stage(project, "src/app.js", "x = 9\n")
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0, err
     cp = [e for e in read_history(project) if e.get("event") == "commit_passed"
           and e.get("manifest_id")]
@@ -893,7 +893,7 @@ def test_attribution_nested_repo_staging(project, tmp_path):
     _write_manifest_named(project, "RN.md", body)
     (sub / "src" / "n.js").write_text("n = 2\n", encoding="utf-8")
     sp.run(["git", "add", "-A"], cwd=str(sub), check=True)  # 子仓暂存（工作区仓无暂存）
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0, err
     cp = [e for e in read_history(project) if e.get("event") == "commit_passed"
           and e.get("manifest_id")]
@@ -924,7 +924,7 @@ def test_attribution_generic_names_do_not_anchor(project, tmp_path):
     _write_manifest_named(project, "RGEN.md", body)
     # 工作区零暂存：唯一可能的污染源=demo 陈旧暂存混入（修复前 math.js 会
     # 以未声明暂存身份拦下提交；修复后 demo 不相关→staged_list 空→放行）
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0, err
 
 
@@ -947,7 +947,7 @@ def test_attribution_staged_nongeneric_shallow_anchors(project, tmp_path):
             "planned_changes:\n  - id: F1\n    file: setup.py\n"
             "actual_changes: []\n---\n")
     _write_manifest_named(project, "RSH.md", body)
-    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0, err
     cp = [e for e in read_history(project) if e.get("event") == "commit_passed"
           and e.get("manifest_id")]
@@ -969,7 +969,7 @@ def test_pure_commit_not_caught_by_compound_rule(project):
     """纯提交命令：不触发本规则（走正常管线——此处表现为常规放行/常规拦，非复合拦）。"""
     _passing_runner(project)
     _write_manifest(project, _M_FULL + _ACC_OK)
-    code, err, _ = run_guard("cd somewhere && git commit -m 改动（R1）", project)
+    code, err, _ = run_guard("cd somewhere && git commit -m 改动（R1）；1/1", project)
     assert code == 0, err
     assert not any(e.get("reason") == "compound_stage_commit"
                    for e in read_history(project))
@@ -1008,7 +1008,7 @@ def test_split_calls_end_to_end_passes(project):
     code1, _, _ = run_guard("git add src/app.js", project)
     assert code1 == 0  # 非提交命令：不触发门禁
     _stage(project, "src/app.js", "x = 42\n")  # 真实暂存（独立调用语义）
-    code2, err2, _ = run_guard("git commit -m 改动（R1）", project)
+    code2, err2, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code2 == 0, err2
 
 
@@ -1027,11 +1027,47 @@ def test_message_no_ref_m_blocks(project):
 
 
 def test_message_short_ref_passes(project):
-    """缩写（R1）形态合法：放行（早查不拦，走全管线过）。"""
+    """缩写（R1）形态合法：放行（早查不拦，走全管线过）。
+    v1.89.0（105）起 M 档须带行尾计数——「；1/1」=实测（单冒烟用例）。"""
     _passing_runner(project)
     _write_manifest(project, _M_FULL + _ACC_OK)
     _stage(project, "src/app.js", "x = 3\n")
+    code, err, _ = run_guard("git commit -m 改动（R1）说明；1/1", project)
+    assert code == 0, err
+
+
+def test_message_ml_no_count_blocks_105(project):
+    """105 升硬位：M 档信息无任何 N/N 计数 → 拦 message_no_count_claim
+    （沉默通过车道关闭——077 反谎报族的另一半）。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    _stage(project, "src/app.js", "x = 31\n")
     code, err, _ = run_guard("git commit -m 改动（R1）说明", project)
+    assert code == 2 and "计数" in err
+    assert any(e.get("event") == "commit_blocked"
+               and e.get("reason") == "message_no_count_claim"
+               for e in read_history(project))
+
+
+def test_message_s_tier_no_count_passes_105(project):
+    """S 档豁免：无计数放行（与清单号 S 豁免同构——轻量合法不破）。"""
+    _passing_runner(project)
+    body = ("---\nid: R1\nstatus: in-progress\ntier: S\nrollback: git revert\n"
+            "planned_changes:\n  - id: F1\n    file: src/app.js\n"
+            "actual_changes: []\n---\n")
+    _write_manifest(project, body)
+    _stage(project, "src/app.js", "x = 32\n")
+    code, err, _ = run_guard("git commit -m 改动（R1）说明", project)
+    assert code == 0, err
+
+
+def test_message_revert_exempt_105(project):
+    """Revert 前缀豁免：自动生成信息不因缺计数拦。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    _stage(project, "src/app.js", "x = 33\n")
+    code, err, _ = run_guard(
+        'git commit -m "Revert 改动（R1）之前的提交"', project)
     assert code == 0, err
 
 
@@ -1094,7 +1130,7 @@ def test_message_ref_with_note_m_passes(project):
     _passing_runner(project)
     _write_manifest(project, _M_FULL + _ACC_OK)
     _stage(project, "src/app.js", "x = 8\n")
-    code, err, _ = run_guard('git commit -m "改动（R1，附注说明）x"', project)
+    code, err, _ = run_guard('git commit -m "改动（R1，附注说明）x；1/1"', project)
     assert code == 0, err
     assert not any(e.get("reason") == "message_no_manifest_ref"
                    and e.get("event") == "commit_blocked"
