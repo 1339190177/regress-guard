@@ -359,6 +359,27 @@ def test_feature_fire_unmeasurable(regress_dir):
     now = _time.time()
     _seed_registry(regress_dir, [{"slug": "v180-gov-line", "shipped_at": now - 86400,
                                   "window_days": 30,
-                                  "fire_marker": {}}])  # 无事件可查=v1.80 实况
+                                  "fire_marker": {}}])  # 无事件可查（101 补位后仅史例语义）
     rows = feature_fire_health(str(regress_dir))["features"]
     assert rows[0]["status"] == "unmeasurable"
+
+
+def test_feature_fire_journal_fold(regress_dir):
+    """v1.88.2（101）双文件折叠：marker 指向 journal 事件（kind 归一为 event）
+    判 firing；不匹配的 journal 事件不计数（FP1 谓词不放宽）；畸形 ts 不炸探针。"""
+    from datetime import datetime as _dt
+    now = _time.time()
+    _seed_registry(regress_dir, [
+        {"slug": "plan-bridge-receipt", "shipped_at": now - 86400,
+         "window_days": 60, "fire_marker": {"event": "plan_approved"}}])
+    import os as _os
+    jd = _os.path.join(str(regress_dir), "journal")
+    _os.makedirs(jd, exist_ok=True)
+    with open(_os.path.join(jd, "events.jsonl"), "w", encoding="utf-8") as f:
+        f.write(_json.dumps({"ts": _dt.now().isoformat(), "kind": "plan_approved",
+                             "manifest_id": "R1"}) + "\n")
+        f.write(_json.dumps({"ts": _dt.now().isoformat(), "kind": "plan_refined"}) + "\n")
+        f.write(_json.dumps({"kind": "plan_approved", "ts": "not-a-date"}) + "\n")
+    rows = feature_fire_health(str(regress_dir))["features"]
+    # 可定时的 plan_approved×1 计数；无法定时的那条不进窗口也不炸（FP1 加固）
+    assert rows[0]["status"] == "firing" and rows[0]["fires"] == 1

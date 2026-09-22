@@ -291,7 +291,9 @@ def _active_manifests(project_dir, limit=3):
 
 def _rule_recall_line(project_dir, prompt_text):
     """规律召回 TOP-1（v1.80）：match 现成地板 min_shared=3 兜噪声，
-    再要求 top hits>=3 才出（顾问缓解：假阳性高就退边界单行）。"""
+    再要求 top hits>=3 才出（顾问缓解：假阳性高就退边界单行）。
+    v1.88.2（101）量测位：命中即落 note rule_recall_fired——哨兵巡检二
+    watch 的"rule_recall 首次开火"从此有通道（此前结构性盲：不写任何事件）。"""
     try:
         from rules_ledger import match
         hits = match(project_dir, prompt_text[:200], top=1)
@@ -299,6 +301,13 @@ def _rule_recall_line(project_dir, prompt_text):
             top = hits[0]
             if (top.get("hits") or 0) >= 3:
                 sig = str(top.get("sig") or "")[:60]
+                try:
+                    from history import record
+                    record(os.path.join(project_dir, ".regress"), "note",
+                           note="rule_recall_fired", sig=sig,
+                           hits=top.get("hits"))
+                except Exception:
+                    pass  # 量测位永不破坏钩子（101 FP2）
                 return [f"📚 相似规律：{sig}（hits {top['hits']}——开工前看一眼历史教训）"]
     except Exception:
         pass

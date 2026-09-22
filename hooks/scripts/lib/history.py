@@ -449,7 +449,27 @@ def feature_fire_health(regress_dir, registry_path=None):
             registry = json.load(f)
     except (IOError, OSError, json.JSONDecodeError):
         return {"error": "registry missing or corrupt", "features": []}
+    # v1.88.2（101）双文件折叠：journal 条目按 kind 归一为 event 并入事件流
+    # （v1.74 遥测双文件概念在探针面的兑现）——marker 谓词不变，只扩事件源。
     events = load_history(regress_dir)
+    jp = os.path.join(regress_dir, "journal", "events.jsonl")
+    try:
+        with open(jp, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    j = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(j, dict) and j.get("kind"):
+                    events.append({"event": j.get("kind"),
+                                   "timestamp": j.get("ts") or j.get("timestamp"),
+                                   **{k: v for k, v in j.items()
+                                      if k not in ("kind", "ts")}})
+    except (IOError, OSError):
+        pass
     now = _time.time()
     rows = []
     for feat in registry if isinstance(registry, list) else []:
@@ -465,10 +485,17 @@ def feature_fire_health(regress_dir, registry_path=None):
             hits = [e for e in events if e.get("event") == ev_name and (
                 not marker.get("field")
                 or e.get(marker["field"]) == marker.get("value"))]
-            recent = [e for e in hits if not shipped or
-                      _time.mktime(_time.strptime(
-                          str(e.get("timestamp") or "1970-01-01")[:19],
-                          "%Y-%m-%dT%H:%M:%S")) >= shipped]
+
+            def _dated(e):
+                # 定不了时间的事件不进窗口计数（双文件折叠后 journal 侧
+                # schema 漂移不该炸探针——v1.88.2/101 FP1）
+                try:
+                    return _time.mktime(_time.strptime(
+                        str(e.get("timestamp") or "")[:19],
+                        "%Y-%m-%dT%H:%M:%S")) >= shipped
+                except ValueError:
+                    return False
+            recent = [e for e in hits if not shipped or _dated(e)]
             fires = len(recent)
             status = "firing" if fires > 0 else (
                 "zero-fire" if (days_since or 0) > window else "warmup")

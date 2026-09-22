@@ -207,6 +207,39 @@ def test_governance_rule_recall_line(tmp_path):
     assert pi._rule_recall_line(str(tmp_path), "完全无关的天气话题") == []
 
 
+def test_governance_recall_fires_measurement(tmp_path):
+    """v1.88.2（101）量测位：召回命中（hits≥3）落 note rule_recall_fired——
+    哨兵巡检二 watch 的首次开火从此有通道（此前 v1.80 结构性盲）。"""
+    pi = _pi()
+    (tmp_path / ".regress").mkdir(parents=True)
+    (tmp_path / ".regress" / "rules-ledger.json").write_text(json.dumps(
+        {"r1": {"id": "R1", "sig": "zsh pipefail 假绿 pytest 管道",
+                "hits": 4, "last_hit": "2099-01-01"}}, ensure_ascii=False),
+        encoding="utf-8")
+    lines = pi._rule_recall_line(str(tmp_path), "zsh 下 pytest 管道假绿 pipefail 教训")
+    assert lines
+    hist = (tmp_path / ".regress" / "history.jsonl").read_text(encoding="utf-8")
+    assert "rule_recall_fired" in hist and "zsh pipefail" in hist
+
+
+def test_governance_recall_measurement_never_breaks(tmp_path, monkeypatch):
+    """101 FP2：量测位在每轮热钩子内——record 炸了召回行必须照常返回。"""
+    pi = _pi()
+    (tmp_path / ".regress").mkdir(parents=True)
+    (tmp_path / ".regress" / "rules-ledger.json").write_text(json.dumps(
+        {"r1": {"id": "R1", "sig": "zsh pipefail 假绿 pytest 管道",
+                "hits": 4, "last_hit": "2099-01-01"}}, ensure_ascii=False),
+        encoding="utf-8")
+    import history as _h
+
+    def _boom(*a, **k):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(_h, "record", _boom)
+    lines = pi._rule_recall_line(str(tmp_path), "zsh 下 pytest 管道假绿 pipefail 教训")
+    assert lines and "相似规律" in lines[0]
+
+
 def test_governance_off_escape(tmp_path, monkeypatch, capsys):
     proj = tmp_path / "proj"; (proj / ".regress" / "manifests").mkdir(parents=True)
     (proj / ".regress" / "manifests" / "R1.md").write_text(
