@@ -117,18 +117,48 @@ def _valve_disabled():
 
 
 def evaluate(command, project_dir=None):
-    """返回阻断原因列表（空=放行）。project_dir 缺省取 env/cwd。"""
+    """返回阻断原因列表（空=放行）。project_dir 缺省取 env/cwd。
+
+    v1.90.1（107）载荷剥离：CATASTROPHIC 匹配跑在剥 heredoc 体+引号段后的
+    文本上——引号内是数据不是命令（活体 ×2：grep 模式串/落账文本里的危险词
+    被当真命令拆）。**解释器入口例外**：bash/sh -c、eval、ssh、xargs sh 段
+    保留原文扫描——复制脚本/CI 单串的手滑确实把真命令藏在引号里（顾问微修）。
+    RM_RF 检测在去引号文本、目标提取在原文（引号路径不丢）。威胁模型：阀防
+    误操作不防对抗（对抗面归门禁/信任表白名单）——但手滑藏引号属误操作，
+    故解释器入口不豁免。"""
     if not command or TOKEN in command:
         return []
     if project_dir is None:
         project_dir = _project_dir()
     reasons = []
+    _INTERPRETER = re.compile(
+        r'\b(?:bash|sh|zsh|dash|ksh)\s+-c\b|\beval\b|\bssh\b|\bxargs\s+'
+        r'(?:\w*sh|bash)')
+    try:
+        from boundary_guard import _strip_heredoc_bodies, _dequote
+    except ImportError:
+        _strip_heredoc_bodies = _dequote = None
+    # heredoc 体先于段切分剥离——按 \n 切段会把体切成独立段（本批活体），
+    # 事后再剥已无效；091 同款全命令级剥离。
+    if _strip_heredoc_bodies:
+        command = _strip_heredoc_bodies(command)
     segments = _SEGMENT_SPLIT.split(command)
     for seg in segments:
-        for label, pat in CATASTROPHIC:
-            if pat.search(seg):
-                reasons.append(f"{label} ← 「{seg.strip()[:80]}」")
-        if RM_RF[0].search(seg):
+        interpreter_seg = False
+        if _dequote:
+            probe = _dequote(seg)
+            # 解释器入口：载荷真的会执行——回原文匹配
+            interpreter_seg = bool(_INTERPRETER.search(probe))
+            scan_segs = [seg, probe] if interpreter_seg else [probe]
+        else:
+            probe = seg
+            scan_segs = [seg]
+        for scan in scan_segs:
+            for label, pat in CATASTROPHIC:
+                if pat.search(scan):
+                    reasons.append(f"{label} ← 「{seg.strip()[:80]}」")
+        # RM_RF 检测段：解释器段用原文（引号内 rm 同属手滑），其余用去引号文本
+        if RM_RF[0].search(seg if interpreter_seg else probe):
             dangerous = _rm_targets_dangerous(seg, project_dir)
             if dangerous:
                 reasons.append(

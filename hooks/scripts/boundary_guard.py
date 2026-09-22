@@ -233,7 +233,9 @@ def _seg_write_targets(seg):
                 targets.add(toks[-1])
         else:
             targets.update(toks)
-    for m in re.finditer(r'(?:^|[;|&\s])sed\s+(?:-[^\s]*i[^\s]*\s+)?(?:-[^\s]*\s+)*([^;|&\n]+)', dq):
+    # v1.90.1（107）：-i 从可选改必须——sed 只有无 -i（原地写）才是写向量；
+    # 只读 sed -n 的地址/文件名曾被当写目标（×3 标本：'742,748p' 解析成文件名）。
+    for m in re.finditer(r'(?:^|[;|&\s])sed\s+(?:-[^\s]*i[^\s]*\s+)+(?:-[^\s]*\s+)*([^;|&\n]+)', dq):
         toks = [t for t in m.group(1).split() if not t.startswith("-")]
         if toks:
             targets.add(toks[-1])

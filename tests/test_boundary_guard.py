@@ -361,6 +361,16 @@ def test_bash_mv_sed_dd_blocked(tmp_path):
     assert run_bash_guard(proj, "%s if=x of=src/auth/login.ts" % ("d" * 2)).returncode == 2
 
 
+def test_bash_readonly_sed_not_write_target(tmp_path):
+    """v1.90.1（107，×3 标本）：只读 sed（无 -i）不是写向量——地址/文件名
+    不再被解析成写目标（活体：sed -n '742,748p' 拦只读探查）。"""
+    proj = make_project(tmp_path, status="in-progress")
+    assert run_bash_guard(
+        proj, "sed -n '742,748p' src/auth/login.ts").returncode == 0
+    assert run_bash_guard(
+        proj, "sed -n '3,9p;12,20p' src/auth/login.ts").returncode == 0
+
+
 def test_bash_harmless_and_devnull_pass(tmp_path):
     """无写目标的命令与 /dev/null 重定向放行（fail-open 防误拦）。"""
     proj = make_project(tmp_path, status="in-progress")

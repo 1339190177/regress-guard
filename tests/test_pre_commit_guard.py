@@ -1071,6 +1071,26 @@ def test_message_revert_exempt_105(project):
     assert code == 0, err
 
 
+# ─── v1.90.1 载荷剥离进提交侦测（107：097 标本族根治）─────────
+
+def test_heredoc_docwrite_not_gate_triggered(project):
+    """heredoc 载荷含提交字样的文档写入：不触发门禁全量管线（097 标本
+    ——heredoc 写测试代码曾触发全量跑+premature done 盖章）。"""
+    code, err, _ = run_guard(
+        "cat >> tests/doc.md << 'EOF'\n说明：跑 git commit -m 示例\nEOF",
+        project)
+    assert code == 0
+    assert "正在运行测试" not in err  # 没进测试管线=真没触发
+
+
+def test_heredoc_then_real_compound_still_caught(project):
+    """正例：heredoc 体外真有 add+commit——门禁照触发、091 照拦。"""
+    code, err, _ = run_guard(
+        "cat >> d.md << 'EOF'\n文档内容 git commit 字样\nEOF\n"
+        "git add d.md && git commit -m 改动（R1）", project)
+    assert code == 2 and "复合" in err
+
+
 # ─── v1.90.0 held-out 验收门接入（106：稳定性条件 1 补法）─────────
 
 def test_heldout_skipped_for_docs_only(project):

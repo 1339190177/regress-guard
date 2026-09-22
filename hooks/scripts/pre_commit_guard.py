@@ -209,6 +209,10 @@ def is_git_commit(tool_input_str):
     覆盖：git commit, git ci, npm version（会触发 commit）,
           pnpm/pnpm publish, yarn version, cz (commitizen),
           husky pre-commit 执行链。
+
+    v1.90.1（107）载荷剥离：匹配跑在剥 heredoc 体+引号段后的文本——heredoc
+    写文档（载荷含提交字样）不再触发门禁全量跑+premature done 盖章（097
+    标本族根治）；提交动词本身从不在引号内（-m 参数引号不影响动词匹配）。
     """
     if not tool_input_str:
         return False
@@ -216,6 +220,13 @@ def is_git_commit(tool_input_str):
         data = json.loads(tool_input_str)
         ti = data.get("tool_input", data) if isinstance(data, dict) else {}
         cmd = ti.get("command", "") if isinstance(ti, dict) else ""
+        try:
+            from boundary_guard import _strip_heredoc_bodies
+            cmd = _strip_heredoc_bodies(cmd)
+        except ImportError:
+            pass
+        cmd = re.sub(r"'[^']*'", "''", cmd)
+        cmd = re.sub(r'"[^"]*"', '""', cmd)
         # git commit / git ci
         if re.search(r'\bgit\s+commit\b|\bgit\s+ci\b', cmd):
             return True
