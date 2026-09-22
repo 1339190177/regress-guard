@@ -485,10 +485,16 @@ def main():
     _relevant_subs = None
 
     def _relevant_subrepos():
-        """声明相关性锚定（088 二修）：只扫活跃清单（mine+others）声明文件
-        落在的一级子仓——全子仓并集会捞进无关项目的历史暂存（活体：demo-project
-        的 src/math.js 拦了 regress-guard 的提交）。声明文件在哪个子仓存在，
-        哪个子仓才是本治理现场。"""
+        """声明相关性锚定（088 二修；103 三析取加固）：只扫活跃清单
+        （mine+others）声明文件锚定的一级子仓。v1.88.4 前的存在即相关被
+        泛型浅名穿透（run14 标本：声明 README/.gitignore，任何含同名文件的
+        子仓被当现场，陈旧暂存混入归因——README+.gitignore 双命中也不够）。
+        三析取（顾问微修：C 析取加非泛型基名护栏）：
+        A) 深路径命中：声明路径含目录段（≥2 段）且存在于子仓——单独即相关
+        B) ≥3 个浅名共存：三个以上无目录段的声明文件同时存在于子仓
+        C) 暂存实配：声明文件恰为该子仓当前暂存，且其基名非泛型四族
+           （README*/.gitignore*/LICENSE*/CHANGELOG*——小集只护此稀有路径，
+           防陈旧暂存+同名泛型误锚）"""
         nonlocal _relevant_subs
         if _relevant_subs is None:
             _relevant_subs = []
@@ -497,14 +503,38 @@ def main():
                 decl.update(f.replace(os.sep, "/")
                             for f in get_all_changed_files(p))
             if decl:
+                _generic = ("readme", ".gitignore", "license", "changelog")
                 try:
                     for name in sorted(os.listdir(project_dir)):
                         sub = os.path.join(project_dir, name)
                         if (name.startswith(".") or not os.path.isdir(sub)
                                 or not os.path.exists(os.path.join(sub, ".git"))):
                             continue
-                        if any(os.path.exists(os.path.join(sub, *d.split("/")))
-                               for d in decl):
+                        deep = any(
+                            len(d.split("/")) >= 2
+                            and os.path.exists(os.path.join(sub, *d.split("/")))
+                            for d in decl)
+                        if deep:
+                            _relevant_subs.append(sub)
+                            continue
+                        shallow_hits = sum(
+                            1 for d in decl
+                            if len(d.split("/")) == 1
+                            and os.path.exists(os.path.join(sub, d)))
+                        if shallow_hits >= 3:
+                            _relevant_subs.append(sub)
+                            continue
+                        try:
+                            r = subprocess.run(
+                                ["git", "-C", sub, "diff", "--cached",
+                                 "--name-only"],
+                                capture_output=True, text=True, timeout=10)
+                            staged = {s.strip() for s in
+                                      (r.stdout or "").splitlines() if s.strip()}
+                        except Exception:
+                            staged = set()
+                        if any(d in staged and not d.lower().startswith(
+                                _generic) for d in decl):
                             _relevant_subs.append(sub)
                 except Exception:
                     pass

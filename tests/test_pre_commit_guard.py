@@ -900,6 +900,60 @@ def test_attribution_nested_repo_staging(project, tmp_path):
     assert cp[-1]["manifest_id"] == "RN"
 
 
+def test_attribution_generic_names_do_not_anchor(project, tmp_path):
+    """103 相关性锚加固（run14 标本回放）：泛型双名（README+.gitignore）存在
+    不构成相关——子仓陈旧暂存（src/math.js）不再混进 staged_list 拦工作区提交。"""
+    import subprocess as sp
+    _passing_runner(project)
+    demo = project / "demo-project"
+    (demo / "src").mkdir(parents=True)
+    sp.run(["git", "init", "-q"], cwd=str(demo), check=True)
+    sp.run(["git", "config", "user.email", "t@t.com"], cwd=str(demo), check=True)
+    sp.run(["git", "config", "user.name", "t"], cwd=str(demo), check=True)
+    (demo / "README.md").write_text("demo\n", encoding="utf-8")
+    (demo / ".gitignore").write_text("x\n", encoding="utf-8")
+    (demo / "src" / "math.js").write_text("m = 1\n", encoding="utf-8")
+    sp.run(["git", "add", "-A"], cwd=str(demo), check=True)
+    sp.run(["git", "commit", "-qm", "init"], cwd=str(demo), check=True)
+    (demo / "src" / "math.js").write_text("m = 2\n", encoding="utf-8")
+    sp.run(["git", "add", "-A"], cwd=str(demo), check=True)  # 陈旧暂存标本
+    body = ("---\nid: RGEN\nstatus: in-progress\ntier: S\nrollback: git revert\n"
+            "planned_changes:\n  - id: F1\n    file: README.md\n"
+            "  - id: F2\n    file: .gitignore\n"
+            "actual_changes: []\n---\n")
+    _write_manifest_named(project, "RGEN.md", body)
+    # 工作区零暂存：唯一可能的污染源=demo 陈旧暂存混入（修复前 math.js 会
+    # 以未声明暂存身份拦下提交；修复后 demo 不相关→staged_list 空→放行）
+    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    assert code == 0, err
+
+
+def test_attribution_staged_nongeneric_shallow_anchors(project, tmp_path):
+    """103 C 析取：非泛型浅名恰为子仓当前暂存=暂存实配即相关（归因到声明清单）；
+    README-only 因 C 护栏致盲是已接受稀有退化（FP1，fallback 兜底）。"""
+    import subprocess as sp
+    _passing_runner(project)
+    sub = project / "tool"
+    sub.mkdir(parents=True)
+    sp.run(["git", "init", "-q"], cwd=str(sub), check=True)
+    sp.run(["git", "config", "user.email", "t@t.com"], cwd=str(sub), check=True)
+    sp.run(["git", "config", "user.name", "t"], cwd=str(sub), check=True)
+    (sub / "setup.py").write_text("s = 1\n", encoding="utf-8")
+    sp.run(["git", "add", "-A"], cwd=str(sub), check=True)
+    sp.run(["git", "commit", "-qm", "init"], cwd=str(sub), check=True)
+    (sub / "setup.py").write_text("s = 2\n", encoding="utf-8")
+    sp.run(["git", "add", "-A"], cwd=str(sub), check=True)  # 恰为声明文件的暂存
+    body = ("---\nid: RSH\nstatus: in-progress\ntier: S\nrollback: git revert\n"
+            "planned_changes:\n  - id: F1\n    file: setup.py\n"
+            "actual_changes: []\n---\n")
+    _write_manifest_named(project, "RSH.md", body)
+    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    assert code == 0, err
+    cp = [e for e in read_history(project) if e.get("event") == "commit_passed"
+          and e.get("manifest_id")]
+    assert cp[-1]["manifest_id"] == "RSH"
+
+
 # ─── v1.87 复合暂存+提交形态机器拦（091：077/088 标本收口）─────────
 
 def test_compound_stage_commit_blocks(project):
