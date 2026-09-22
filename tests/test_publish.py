@@ -106,3 +106,68 @@ def test_cli_rejects_noncompliant_message(tmp_path):
         [sys.executable, SCRIPT, "--dry-run", "-m", "english only"],
         cwd=str(tmp_path), capture_output=True, text=True, timeout=60)
     assert r.returncode == 2 and "中文" in r.stderr
+
+
+# ─── v1.87.3 发布状态文件（096：哨兵轮） ──────────────
+
+def test_state_roundtrip(tmp_path, monkeypatch):
+    """状态写读往返：三字段齐（含 last_local_head/remote_commit）。
+
+    cwd 隔离用 monkeypatch.chdir（自动还原）——手搓 finally 曾把 pytest 进程
+    cwd 留在 tmp（后续 read-guard 子进程按错 cwd 解析状态→顺序依赖红，
+    哨兵轮 096 活体标本）。"""
+    (tmp_path / ".regress").mkdir()
+    (tmp_path / "sub").mkdir()
+    monkeypatch.chdir(tmp_path / "sub")
+    pub = _load()
+    pub.write_state("abc123def456789", "fff999")
+    st = pub.read_state()
+    assert st["last_local_head"].startswith("abc123")
+    assert st["remote_commit"] == "fff999" and st["ts"] > 0
+
+
+def test_mirror_default_takes_state(tmp_path, monkeypatch):
+    """--mirror-since 缺省：状态文件值自动取（CLI 层教学行）。"""
+    p = tmp_path / "repo"
+    p.mkdir()
+    (tmp_path / "repo" / ".regress").mkdir()
+    for a in (["git", "init", "-q"], ["git", "config", "user.email", "t@t"],
+              ["git", "config", "user.name", "t"]):
+        subprocess.run(a, cwd=str(p), check=True)
+    (p / "a.txt").write_text("1\n")
+    subprocess.run(["git", "add", "-A"], cwd=str(p), check=True)
+    subprocess.run(["git", "commit", "-qm", "中文首批（001）"], cwd=str(p), check=True)
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(p),
+                          capture_output=True, text=True, check=True).stdout.strip()
+    (p / "a.txt").write_text("2\n")
+    subprocess.run(["git", "add", "-A"], cwd=str(p), check=True)
+    subprocess.run(["git", "commit", "-qm", "中文二批（002）"], cwd=str(p), check=True)
+    import json as _json
+    (p / ".regress" / "publish-state.json").write_text(
+        _json.dumps({"last_local_head": base, "remote_commit": "x", "ts": 1}),
+        encoding="utf-8")
+    r = subprocess.run([sys.executable, SCRIPT, "--dry-run"],
+                       cwd=str(p), capture_output=True, text=True,
+                       env={"PATH": os.environ["PATH"], "HOME": str(tmp_path)},
+                       timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert "自动取状态" in r.stdout and "（002）" in r.stdout
+
+
+def test_no_state_no_rev_teaches(tmp_path):
+    """无状态且未给 rev：报错教学不空猜。"""
+    p = tmp_path / "repo"
+    p.mkdir()
+    (p / ".regress").mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=str(p), check=True)
+    r = subprocess.run([sys.executable, SCRIPT, "--dry-run"],
+                       cwd=str(p), capture_output=True, text=True,
+                       env={"PATH": os.environ["PATH"], "HOME": str(tmp_path)},
+                       timeout=60)
+    assert r.returncode == 2 and "不空猜" in r.stderr
+
+
+def test_check_message_accepts_ref_with_note():
+    """（NNN，附注）形态合法（096 活体：发布道曾硬拦自家镜像消息）。"""
+    pub = _load()
+    assert pub.check_message("v1.87.3 发布状态文件（096，哨兵轮）：x") == []

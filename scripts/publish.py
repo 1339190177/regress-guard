@@ -44,8 +44,8 @@ def check_message(msg):
     if msg and not _has_cjk(msg):
         errs.append("缺中文（2026-09-21 受众裁决：发布面跟随中文受众，"
                     "外部贡献者出现时再切增量）")
-    if msg and not re.search(r"（\d{3}）|REGRESS-\d{4}-\d{3}", msg):
-        errs.append("缺批号（（NNN）缩写或 REGRESS-YYYY-NNN 全 ID）")
+    if msg and not re.search(r"[（(]\d{3}|REGRESS-\d{4}-\d{3}", msg):
+        errs.append("缺批号（（NNN 缩写——含「（096，附注）」形态——或全 ID）")
     if "<" in msg or ">" in msg:
         errs.append("含尖括号（发布 JSON 与重定向误判双坑）")
     return errs
@@ -97,6 +97,41 @@ def _head_tree_items():
     return items
 
 
+def _state_path():
+    """状态文件放工作区 .regress（治理状态的家）——不进嵌套仓：
+    未跟踪文件会进 test_cache.tree_key，写状态即改缓存键=永不命中死循环。"""
+    d = os.getcwd()
+    while d != "/":
+        cand = os.path.join(d, ".regress")
+        if os.path.isdir(cand):
+            return os.path.join(cand, "publish-state.json")
+        d = os.path.dirname(d)
+    return None
+
+
+def read_state():
+    p = _state_path()
+    if not p or not os.path.exists(p):
+        return {}
+    try:
+        return json.load(open(p, encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def write_state(last_local_head, remote_commit):
+    p = _state_path()
+    if not p:
+        return
+    import time
+    tmp = p + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump({"last_local_head": last_local_head,
+                   "remote_commit": remote_commit,
+                   "ts": time.time()}, f, ensure_ascii=False)
+    os.replace(tmp, p)
+
+
 def publish(msg, dry=False, token_file="~/.dsh/.credentials.yaml"):
     items = _head_tree_items()
     local_tree = subprocess.run(
@@ -132,6 +167,11 @@ def publish(msg, dry=False, token_file="~/.dsh/.credentials.yaml"):
         "tree"]["sha"]
     if local_tree == remote_tree:
         print(f"SUCCESS 等值：{local_tree[:12]}（本地 HEAD 树 == 公网根树，两跳链）")
+        head = subprocess.run(["git", "rev-parse", "HEAD"],
+                              capture_output=True, text=True,
+                              check=True).stdout.strip()
+        write_state(head, ref)
+        print(f"状态已记：{head[:12]} → 下次 --mirror-since 缺省即取此点")
         return 0
     print(f"MISMATCH local={local_tree} remote={remote_tree}——停手排查",
           file=sys.stderr)
@@ -152,8 +192,20 @@ def main():
                     help="token 凭据文件路径（默认本机约定路径）")
     args = ap.parse_args()
     msg = args.message
-    if not msg and args.mirror_since:
-        msg = mirror_since(args.mirror_since)
+    mirror_rev = args.mirror_since
+    if not msg and not mirror_rev:
+        # 缺省镜像（096）：状态文件的 last_local_head 即上次发布点——免手填 rev
+        st = read_state()
+        mirror_rev = str(st.get("last_local_head") or "")
+        if mirror_rev:
+            print(f"镜像区间自动取状态：{mirror_rev[:12]}..HEAD")
+        else:
+            print("publish: 无 --mirror-since 且状态文件无 last_local_head——"
+                  "不空猜区间。给 --mirror-since <rev> 或 -m 显式消息",
+                  file=sys.stderr)
+            return 2
+    if not msg and mirror_rev:
+        msg = mirror_since(mirror_rev)
     errs = check_message(msg)
     if errs:
         for e in errs:
