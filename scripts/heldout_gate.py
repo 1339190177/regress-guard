@@ -146,6 +146,24 @@ def _sc_h8(root):  # 验收未勾拦（v1.55）
     return GUARD, "git commit -m 改动（R1）说明；1/1", p
 
 
+def _sc_h9(root):  # 密钥泄漏拦（v1.42 供应链层）——假 AKIA 键（非白名单示例值）
+    p = _mk_project(root, "h9", manifest=_S_MANIFEST.replace(
+        "file: src/app.js", "file: config.py"), runner=True,
+        stage="config.py", content='key = "AKIAZZYYXXWWVVUUTSRQ"\n')
+    return GUARD, "git commit -m 改动（R1）", p
+
+
+def _sc_h10(root):  # 缓存伪键拒绝（v1.85 键敏感契约）——错误键条目不命中，
+    # 门禁照常全量跑（stderr 无 ♻️）；断言走 expect_none 特判
+    p = _mk_project(root, "h10", manifest=_S_MANIFEST, runner=True)
+    cc = p / ".regress" / "test-cache.jsonl"
+    import json as _j
+    import time as _t
+    cc.write_text(_j.dumps({"key": "deadbeef", "status": "pass",
+                            "ts": _t.time()}) + "\n", encoding="utf-8")
+    return GUARD, "git commit -m 改动（R1）", p
+
+
 SCENARIOS = [
     {"id": "H1-compound", "build": _sc_h1, "code": 2, "has": "复合"},
     {"id": "H2-count-absent", "build": _sc_h2, "code": 2, "has": "计数"},
@@ -155,13 +173,17 @@ SCENARIOS = [
     {"id": "H6-valve-token", "build": _sc_h6, "code": 2, "has": "不可逆"},
     {"id": "H7-generic-no-anchor", "build": _sc_h7, "code": 0, "has": ""},
     {"id": "H8-acceptance-open", "build": _sc_h8, "code": 2, "has": "验收未勾"},
+    {"id": "H9-secret-leak", "build": _sc_h9, "code": 2, "has": "密钥"},
+    {"id": "H10-cache-poison-key", "build": _sc_h10, "code": 0,
+     "has": "", "expect_none": "♻️"},
 ]
 
 
 def scenarios_digest(scenarios):
     """束摘要哈希：钉住 id+期望（code/has）——防静默改场景（Goodhart 锁）。
     build 函数不可序列化，脚本归属经 id 间接钉住（场景 id 与目标脚本是稳定映射）。"""
-    core = [{"id": s["id"], "code": s["code"], "has": s["has"]}
+    core = [{"id": s["id"], "code": s["code"], "has": s["has"],
+             "expect_none": s.get("expect_none") or ""}
             for s in scenarios]
     blob = json.dumps(core, ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
@@ -182,7 +204,9 @@ def run_battery(scenarios=SCENARIOS, verbose=True):
                 script, command, proj = s["build"](root)
                 code, err = _sh(script, command, proj)
                 ok = (code == s["code"]
-                      and (not s["has"] or s["has"] in err))
+                      and (not s["has"] or s["has"] in err)
+                      and (not s.get("expect_none")
+                           or s["expect_none"] not in err))
                 outcomes[s["id"]] = "pass" if ok else "fail"
             except Exception as e:  # 束故障≠退化：记 fail 但调用方按 5 处理
                 outcomes[s["id"]] = f"error:{type(e).__name__}"

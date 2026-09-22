@@ -105,5 +105,5 @@ def test_real_battery_integration(tmp_path):
     assert r.returncode == 0, r.stderr
     data = json.loads((p / ".regress" / "heldout-baseline.json")
                       .read_text(encoding="utf-8"))
-    assert len(data["outcomes"]) == 8
+    assert len(data["outcomes"]) == 10
     assert all(v == "pass" for v in data["outcomes"].values()), data["outcomes"]
