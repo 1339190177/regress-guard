@@ -517,13 +517,29 @@ def cache_stats(regress_dir):
     passed = [e for e in events if e.get("event") == "commit_passed"]
     hits = sum(1 for e in passed if e.get("cached"))
     misses = len(passed) - hits
-    return {
+    out = {
         "total": len(passed),
         "hits": hits,
         "misses": misses,
         "rate": round(hits / len(passed), 3) if passed else 0.0,
         "est_saved_seconds": hits * 118,
     }
+    # v1.91.0（108）配对实验溯源：实验档在场则报实测（est 常数退役为连续性
+    # 字段）。措辞边界随档：本仓本树当时、N 对、中位差。
+    try:
+        ep = os.path.join(regress_dir, "experiments", "cache-paired.json")
+        with open(ep, encoding="utf-8") as f:
+            exp = json.load(f)
+        med = float(exp.get("median_delta_s") or 0)
+        if med > 0:
+            out["saved_seconds_measured"] = round(hits * med, 1)
+            out["measured_from"] = {
+                "date": exp.get("date"), "trials": exp.get("trials"),
+                "median_delta_s": med, "range_s": exp.get("range_s"),
+            }
+    except (IOError, OSError, json.JSONDecodeError, ValueError):
+        pass
+    return out
 
 
 if __name__ == "__main__":

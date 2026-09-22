@@ -320,6 +320,36 @@ def test_cache_stats_mixed(regress_dir):
     assert s["est_saved_seconds"] >= 118
 
 
+def test_cache_stats_measured_with_provenance(regress_dir):
+    """v1.91.0（108）：实验档在场——报 saved_seconds_measured 带溯源
+    （日期/N/中位差），est 保留连续性。"""
+    import os as _os
+    from history import cache_stats
+    record(regress_dir, "commit_passed", "R1", runner="pytest", cached=True)
+    record(regress_dir, "commit_passed", "R2", runner="pytest", cached=True)
+    ed = _os.path.join(str(regress_dir), "experiments")
+    _os.makedirs(ed, exist_ok=True)
+    with open(_os.path.join(ed, "cache-paired.json"), "w",
+              encoding="utf-8") as f:
+        f.write(_json.dumps({"median_delta_s": 160.2, "date": "2026-09-21",
+                             "trials": 3, "range_s": [155.0, 168.0]}))
+    s = cache_stats(regress_dir)
+    assert s["saved_seconds_measured"] == 320.4  # 2 命中 × 实测中位
+    mf = s["measured_from"]
+    assert mf["date"] == "2026-09-21" and mf["trials"] == 3
+    assert mf["median_delta_s"] == 160.2
+    assert "est_saved_seconds" in s  # 连续性字段仍在
+
+
+def test_cache_stats_est_fallback_without_archive(regress_dir):
+    """实验档缺场：回 est 旧语义（向后兼容，无 measured 字段）。"""
+    from history import cache_stats
+    record(regress_dir, "commit_passed", "R1", runner="pytest", cached=True)
+    s = cache_stats(regress_dir)
+    assert "saved_seconds_measured" not in s
+    assert s["est_saved_seconds"] == 118
+
+
 # ─── v1.87.5 特性零火探测（098：086 Pattern B）─────────
 
 import json as _json
