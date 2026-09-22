@@ -215,6 +215,14 @@ def _seg_write_targets(seg):
     # 保留在原文（> 'my file' 真写不因去引号而漏）。
     for m in re.finditer(r'(?<![0-9])>{1,2}(?![<=])\s*([^\s;|&]+)', dq):
         targets.add(m.group(1))
+    # v1.92.2（113，野外报告#1 F4）：fd 前缀重定向到**相对路径真文件**
+    # （2>err.log / 2>>log/）——v1.82 防 >= 的 (?<![0-9]) 把这类真写整体豁免了。
+    # 相对路径=项目内（shell cwd 语义）；绝对路径 stderr 日志不提取（野外 F3
+    # 摩擦权衡）；2>&1 无文件目标（(?![&<>]) 天然排除）。
+    for m in re.finditer(r'(?<![<>=])\d>{1,2}(?![&<>])\s*([^\s;|&]+)', dq):
+        t = m.group(1)
+        if not t.startswith("/"):
+            targets.add(t)
     for m in re.finditer(r'&>{1,2}\s*([^\s;|&]+)', dq):
         targets.add(m.group(1))
     for m in re.finditer(r">(?<!\d)>{0,1}\s*'([^']+)'", seg):

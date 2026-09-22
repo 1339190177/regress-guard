@@ -371,6 +371,24 @@ def test_bash_readonly_sed_not_write_target(tmp_path):
         proj, "sed -n '3,9p;12,20p' src/auth/login.ts").returncode == 0
 
 
+def test_stderr_redirect_relative_target_is_write(tmp_path):
+    """v1.92.2（113，野外 F4）：2>相对路径真文件=写目标，参与边界判定。"""
+    proj = make_project(tmp_path, status="planning")
+    assert run_bash_guard(
+        proj, "python3 tool.py 2> src/auth/login.ts").returncode == 2
+    assert run_bash_guard(
+        proj, "npm run build 2>> build_out.log").returncode == 2
+
+
+def test_stderr_redirect_absolute_and_fd_dup_not_targets(tmp_path):
+    """绝对路径 stderr 日志不提取（F3 摩擦权衡）；2>&1 无文件目标。"""
+    proj = make_project(tmp_path, status="in-progress")
+    assert run_bash_guard(
+        proj, "python3 tool.py 2> /tmp/err.log").returncode == 0
+    assert run_bash_guard(
+        proj, "python3 tool.py 2>&1 | grep x").returncode == 0
+
+
 def test_bash_harmless_and_devnull_pass(tmp_path):
     """无写目标的命令与 /dev/null 重定向放行（fail-open 防误拦）。"""
     proj = make_project(tmp_path, status="in-progress")
