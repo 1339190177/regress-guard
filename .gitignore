@@ -4,3 +4,4 @@ __pycache__/
 .regress/.jest-result.json
 .regress/.coverage/
 .regress/.jest-result.json
+dist/
