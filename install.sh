@@ -72,6 +72,7 @@ mkdir -p "${HOOK_HOME}/lib"
 cp "${PLUGIN_ROOT}/hooks/scripts/launcher.js" "${HOOK_HOME}/"
 cp "${PLUGIN_ROOT}/hooks/scripts/pre_commit_guard.py" "${HOOK_HOME}/"
 cp "${PLUGIN_ROOT}/hooks/scripts/read_before_edit_guard.py" "${HOOK_HOME}/"
+cp "${PLUGIN_ROOT}/scripts/heldout_gate.py" "${HOOK_HOME}/"  # 119：held-out 门部署契约
 cp "${PLUGIN_ROOT}/hooks/scripts/prompt_intercept.py" "${HOOK_HOME}/"
 cp "${PLUGIN_ROOT}/hooks/scripts/reflection_check.py" "${HOOK_HOME}/"
 cp "${PLUGIN_ROOT}/hooks/scripts/fail_watch.py" "${HOOK_HOME}/"

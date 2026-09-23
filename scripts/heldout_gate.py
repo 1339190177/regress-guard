@@ -20,9 +20,20 @@ import tempfile
 from datetime import datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GUARD = os.path.join(ROOT, "hooks", "scripts", "pre_commit_guard.py")
+# v1.92.8（119）：钩子目录解析序列——源码布局 ../hooks/scripts 在场用它
+# （开发态），否则 dirname(__file__) 平铺（部署态——恰测线上钩子副本，
+# 语义更真：held-out 测的是"现在生效的钩子还满足期望吗"）。部署副本旧于
+# 源码时束 digest 与工作区基线不匹配自然触发 exit 4 锁（无需显式哈希校验）。
+_HOOKS_CANDIDATES = [
+    os.path.join(ROOT, "hooks", "scripts"),
+    os.path.dirname(os.path.abspath(__file__)),
+]
+_HOOKS = next((d for d in _HOOKS_CANDIDATES
+               if os.path.exists(os.path.join(d, "pre_commit_guard.py"))),
+              os.path.join(ROOT, "hooks", "scripts"))
+GUARD = os.path.join(_HOOKS, "pre_commit_guard.py")
 VALVE = os.path.join(ROOT, "hooks", "scripts", "execution_valve.py")
-RGUARD = os.path.join(ROOT, "hooks", "scripts", "read_before_edit_guard.py")
+RGUARD = os.path.join(_HOOKS, "read_before_edit_guard.py")
 
 _S_MANIFEST = ("---\nid: R1\nstatus: in-progress\ntier: S\n"
                "rollback: git revert\nplanned_changes:\n  - id: F1\n"
@@ -193,6 +204,41 @@ def _sc_h12(root):  # 盲潜地板拦（111，野外 F1 新判据链）——独
                     "file_path": str(p / "src" / "x.js")}}
 
 
+def _sc_h13(root):  # 写后补戳防误拦（116，标本回放：Edit→Edit 连写）
+    p = _mk_project(root, "h13", stage=None)
+    (p / "src").mkdir(parents=True, exist_ok=True)
+    f = p / "src" / "x.js"
+    f.write_text("x = 1\n", encoding="utf-8")
+    env = {"CLAUDE_SESSION_ID": "heldout-h13"}
+    _e = {"_tool": "Edit", "file_path": str(f)}
+    return RGUARD, None, p, {"steps": [
+        {"sh": {"argv": ["post"], "env": env,
+                "payload": {"_tool": "Read", "file_path": str(f)}}},
+        {"sh": {"argv": ["pre"], "env": env, "payload": _e}},   # 放行
+        {"write": [str(f), "x = 2\n"]},                          # 宿主写入实况
+        {"sh": {"argv": ["post"], "env": env, "payload": _e}},   # 116 补戳
+        {"sh": {"argv": ["pre"], "env": env, "payload": _e}},    # 末步：不误拦
+    ]}
+
+
+def _sc_h14(root):  # 补戳后外部改仍拦（116 牙齿保留）
+    p = _mk_project(root, "h14", stage=None)
+    (p / "src").mkdir(parents=True, exist_ok=True)
+    f = p / "src" / "x.js"
+    f.write_text("x = 1\n", encoding="utf-8")
+    env = {"CLAUDE_SESSION_ID": "heldout-h14"}
+    _e = {"_tool": "Edit", "file_path": str(f)}
+    return RGUARD, None, p, {"steps": [
+        {"sh": {"argv": ["post"], "env": env,
+                "payload": {"_tool": "Read", "file_path": str(f)}}},
+        {"sh": {"argv": ["pre"], "env": env, "payload": _e}},
+        {"write": [str(f), "x = 2\n"]},
+        {"sh": {"argv": ["post"], "env": env, "payload": _e}},   # 补写后实况
+        {"write": [str(f), "x = 3\n"]},                          # 第三方再改
+        {"sh": {"argv": ["pre"], "env": env, "payload": _e}},    # 末步：拦
+    ]}
+
+
 SCENARIOS = [
     {"id": "H1-compound", "build": _sc_h1, "code": 2, "has": "复合"},
     {"id": "H2-count-absent", "build": _sc_h2, "code": 2, "has": "计数"},
@@ -207,6 +253,9 @@ SCENARIOS = [
      "has": "", "expect_none": "♻️"},
     {"id": "H11-append-only", "build": _sc_h11, "code": 2, "has": "append-only"},
     {"id": "H12-blind-dive", "build": _sc_h12, "code": 2, "has": "盲潜"},
+    {"id": "H13-post-stamp-no-block", "build": _sc_h13, "code": 0,
+     "has": "", "expect_none": "指纹不匹配"},
+    {"id": "H14-post-stamp-teeth", "build": _sc_h14, "code": 2, "has": "指纹"},
 ]
 
 
@@ -236,11 +285,36 @@ def run_battery(scenarios=SCENARIOS, verbose=True):
                 ret = s["build"](root)
                 script, command, proj = ret[0], ret[1], ret[2]
                 extra = ret[3] if len(ret) > 3 else {}
-                code, err = _sh(script, command, proj,
-                                argv=extra.get("argv") or s.get("argv"),
-                                env_extra=extra.get("env") or s.get("env"),
-                                payload=extra.get("payload")
-                                or s.get("payload"))
+                code, err = None, ""
+                if extra.get("steps"):
+                    # v1.92.7（118）多步序列：写后补戳链天然多步（post→pre→写→
+                    # post→pre）。项二态：{"sh":{argv,env,payload}} 钩子调用 /
+                    # {"write":[path,content]} 文件写。末 sh 步做期望判定；
+                    # 中间 sh 步非 0 记 error（序列前提被破坏）。
+                    for st in extra["steps"]:
+                        if "write" in st:
+                            with open(st["write"][0], "w",
+                                      encoding="utf-8") as wf:
+                                wf.write(st["write"][1])
+                            continue
+                        sh = st["sh"]
+                        code, err = _sh(script, command, proj,
+                                        argv=sh.get("argv"),
+                                        env_extra=sh.get("env"),
+                                        payload=sh.get("payload"))
+                        if code not in (0, None) and st is not extra["steps"][-1]:
+                            outcomes[s["id"]] = f"error:midstep{code}"
+                            break
+                    else:
+                        pass
+                    if s["id"] in outcomes:
+                        continue
+                else:
+                    code, err = _sh(script, command, proj,
+                                    argv=extra.get("argv") or s.get("argv"),
+                                    env_extra=extra.get("env") or s.get("env"),
+                                    payload=extra.get("payload")
+                                    or s.get("payload"))
                 ok = (code == s["code"]
                       and (not s["has"] or s["has"] in err)
                       and (not s.get("expect_none")
@@ -255,7 +329,7 @@ def run_battery(scenarios=SCENARIOS, verbose=True):
 
 def _journal(project_dir, kind, **fields):
     try:
-        lib = os.path.join(ROOT, "hooks", "scripts", "lib")
+        lib = os.path.join(_HOOKS, "lib")
         sys.path.insert(0, lib)
         from journal import journal_append
         journal_append(kind, start_dir=str(project_dir), **fields)

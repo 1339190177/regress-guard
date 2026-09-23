@@ -95,7 +95,7 @@ def test_improvement_noted_not_blocked(proj, monkeypatch):
 
 
 def test_real_battery_integration(tmp_path):
-    """真束集成：八场景对真实钩子脚本全过（~15s，首冻即验夹具）。"""
+    """真束集成：十四场景对真实钩子脚本全过（~15s，首冻即验夹具）。"""
     p = tmp_path / "proj"
     (p / ".regress").mkdir(parents=True)
     r = subprocess.run(
@@ -105,5 +105,38 @@ def test_real_battery_integration(tmp_path):
     assert r.returncode == 0, r.stderr
     data = json.loads((p / ".regress" / "heldout-baseline.json")
                       .read_text(encoding="utf-8"))
-    assert len(data["outcomes"]) == 12
+    assert len(data["outcomes"]) == 14
     assert all(v == "pass" for v in data["outcomes"].values()), data["outcomes"]
+    # v1.92.7（118）：写后补戳链两场景必须在束且过（116 回归点）
+    assert data["outcomes"].get("H13-post-stamp-no-block") == "pass"
+    assert data["outcomes"].get("H14-post-stamp-teeth") == "pass"
+
+
+def test_deploy_flat_layout_resolution(tmp_path):
+    """v1.92.8（119）：部署平铺布局——heldout_gate 与钩子同目录时解析到平铺
+    副本（部署态恰测线上钩子；此前固定 ../hooks/scripts 在部署布局落空）。
+    """
+    import shutil
+    deploy = tmp_path / "deploy"
+    deploy.mkdir()
+    # 平铺布局：heldout_gate.py + 钩子 + lib 同目录（install.sh 形态）
+    src_hooks = os.path.join(os.path.dirname(SCRIPTS), "hooks", "scripts")
+    for f in ("pre_commit_guard.py", "read_before_edit_guard.py"):
+        shutil.copy(os.path.join(src_hooks, f), deploy / f)
+    shutil.copytree(os.path.join(src_hooks, "lib"), deploy / "lib",
+                    dirs_exist_ok=True)
+    shutil.copy(os.path.join(SCRIPTS, "heldout_gate.py"),
+                deploy / "heldout_gate.py")
+    # 从平铺位置导入并验证解析
+    sys.path.insert(0, str(deploy))
+    try:
+        for m in [k for k in list(sys.modules) if k == "heldout_gate"]:
+            del sys.modules[m]
+        import heldout_gate as flat
+        assert os.path.dirname(flat.GUARD) == str(deploy), \
+            f"平铺布局应解析到部署目录: {flat.GUARD}"
+        assert os.path.exists(flat.GUARD) and os.path.exists(flat.RGUARD)
+    finally:
+        sys.path.remove(str(deploy))
+        for m in [k for k in list(sys.modules) if k == "heldout_gate"]:
+            del sys.modules[m]

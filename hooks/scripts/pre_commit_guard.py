@@ -1161,10 +1161,21 @@ def main():
                 and os.environ.get("RG_HELDOUT", "").lower()
                 not in ("off", "0", "false")):
             try:
+                # v1.92.8（119）：查找序列——仓根 scripts（源码态）→本目录
+                # 平铺（部署态，install.sh 铺 heldout_gate.py 契约）。此前
+                # 单路径在部署布局（平铺无 scripts/）解析到不存在路径，
+                # exit 2 落 else 无痕放行——held-out 门部署态自 106 起空转。
                 _root = os.path.dirname(os.path.dirname(
                     os.path.dirname(os.path.abspath(__file__))))
+                _hg_cands = [
+                    os.path.join(_root, "scripts", "heldout_gate.py"),
+                    os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 "heldout_gate.py"),
+                ]
+                _hg_path = next((p for p in _hg_cands if os.path.exists(p)),
+                                _hg_cands[0])
                 _hr = subprocess.run(
-                    ["python3", os.path.join(_root, "scripts", "heldout_gate.py"),
+                    ["python3", _hg_path,
                      "--project", str(project_dir)],
                     capture_output=True, text=True, timeout=180, cwd=_root)
                 if _hr.returncode == 3:
@@ -1191,6 +1202,11 @@ def main():
                     _tail = (_hr.stderr or "").strip()
                     if _tail:
                         print(f"REGRESS-GUARD: {_tail[-200:]}", file=sys.stderr)
+                    if _hr.returncode not in (0,):
+                        # 119：非 0/3/4（脚本缺失/超时等 infra 错）不再无痕——
+                        # held-out 失察的教训：fail-open 可以，失察不行。
+                        record(regress_dir, "commit_warned", manifest_id,
+                               note="heldout_unexpected", rc=_hr.returncode)
             except Exception as _he:
                 record(regress_dir, "note", manifest_id,
                        note="heldout_error", error=str(_he)[:120])

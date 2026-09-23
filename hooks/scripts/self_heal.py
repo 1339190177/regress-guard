@@ -49,7 +49,7 @@ SOURCE_CANDIDATES = [
 
 # 完整契约清单（v1.26.1 补全；与源目录的漂移由 check_docs 守卫拦——病例：本次审计发现
 # 清单停在 v1.19，boundary_guard 等 5 脚本与 4 个 lib 不在清单，do_upgrade 半量拷贝）
-REQUIRED_HOOK_FILES = ["launcher.js", "pre_commit_guard.py", "read_before_edit_guard.py",
+REQUIRED_HOOK_FILES = ["launcher.js", "pre_commit_guard.py", "read_before_edit_guard.py", "heldout_gate.py",
                        "prompt_intercept.py", "reflection_check.py", "fail_watch.py",
                        "risk_watch.py", "compact_notice.py", "execution_valve.py",
                        "boundary_guard.py", "stop_notify.py", "plan_bridge.py"]

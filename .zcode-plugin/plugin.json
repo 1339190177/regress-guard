@@ -1,6 +1,6 @@
 {
   "name": "regress-guard",
-  "version": "1.92.6",
+  "version": "1.92.8",
   "description": "AI-coding governance gate for ZCode: pre-commit test enforcement, manifest-boundary guard, six-layer trust surface, assumption ledger, and FP-calibrated telemetry.",
   "author": {
     "name": "1339190177",
