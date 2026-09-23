@@ -25,6 +25,7 @@ PreToolUse(Edit/Write) → 检查本轮 Read 次数是否足够
 import sys
 import os
 import json
+import time
 import tempfile
 
 DEFAULT_RATIO = 3
@@ -41,10 +42,20 @@ def _fingerprint(fp):
 
     Read 时采集，Edit/Write 前复核；不一致 = 读后被外部修改（另一会话、
     git checkout、格式化进程……），盲改会基于过期认知，必须强制重读。
+    116：稳定读——双 stat 一致才认（防 post 补戳窗口读到写入中间态），
+    不一致短等后三读，仍不一致返回 None（放弃补戳=退化为保守拦截）。
     """
-    try:
+    def _stat():
         st = os.stat(fp)
         return [st.st_mtime_ns, st.st_size]
+    try:
+        first = _stat()
+        second = _stat()
+        if first == second:
+            return first
+        time.sleep(0.05)
+        third = _stat()
+        return third if third == second else None
     except OSError:
         return None
 
@@ -236,6 +247,18 @@ def main():
                                 sess["read_files"].append(ap)
                 except Exception:
                     pass  # 补戳是增强：解析失败回退原语义（Read 才记录）
+            elif tool_name in ("Edit", "Write", "ApplyPatch"):
+                # 116（标本：Edit→Edit 连写被指纹哨兵误拦三例）：写后实况补戳。
+                # 根因=豁免路径放行不盖戳+post 缺 Edit 分支，合法写后 state
+                # 停留旧指纹，下一次 Edit 必被"外部修改"误拦（重读即解故断续）。
+                # 语义同 112 Bash 补戳：记写后实况，后续再有变动照样拦。
+                fp = tool_input.get("file_path", "")
+                if fp:
+                    fp_val = _fingerprint(fp)
+                    if fp_val:
+                        sess.setdefault("read_fps", {})[fp] = fp_val
+                        if fp not in sess["read_files"]:
+                            sess["read_files"].append(fp)
             state[session_id] = sess
             save_state(state)
         sys.exit(0)
@@ -277,12 +300,25 @@ def main():
             # 豁免：新文件创建
             if tool_name == "Write" and fp and not os.path.exists(fp):
                 sess["edit_count"] += 1
+                # 116：新建文件也挂 SELF_EDITED——写过的内容自己知道，
+                # 后续 Edit 不因指纹缺记录走保守路径。
+                if fp:
+                    sess.setdefault("read_fps", {})[fp] = SELF_EDITED
                 state[session_id] = sess
                 save_state(state)
                 sys.exit(0)
 
             # 豁免：框架自身文件
             if ".regress/" in fp or fp.endswith("AGENTS.md") or "regress-guard" in fp:
+                # 116（标本根因半）：豁免放行也须盖 SELF_EDITED——指纹哨兵在
+                # 本豁免之前执行，不盖戳则本工具链自己的合法写入会让下一次
+                # Edit 被误拦（Edit→Edit 标本）。post 补实况指纹为第二保险。
+                if fp:
+                    sess.setdefault("read_fps", {})[fp] = SELF_EDITED
+                    if fp not in sess.get("read_files", []):
+                        sess["read_files"].append(fp)
+                state[session_id] = sess
+                save_state(state)
                 sys.exit(0)
 
             def _allow_edit():

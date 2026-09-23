@@ -255,6 +255,86 @@ def test_self_edit_suspends_fingerprint(tmp_path):
     cleanup()
 
 
+# ─── v1.92.5（116）：Edit→Edit 连写误拦根治（豁免盖戳+post 写后实况） ───
+
+def test_exempt_path_edit_then_edit_not_blocked(tmp_path):
+    """116 标本回放：.regress/ 路径（框架豁免）Read→Edit→再 Edit 不被指纹拦。
+
+    修前根因：豁免分支 exit(0) 不盖戳 + post 无 Edit 分支 → 合法 Edit 后
+    state 停留 Read 时指纹 → 第二次 Edit 必被"外部修改"误拦。
+    """
+    cleanup()
+    d = tmp_path / ".regress" / "manifests"
+    d.mkdir(parents=True)
+    f = d / "REGRESS-X.md"
+    f.write_text("body v1\n")
+    fp = str(f)
+    run_guard("post", "Read", fp)
+    # Edit#1：pre 放行 → 宿主写入（内容+mtime 变）→ post 补戳（完整宿主序列）
+    assert run_guard("pre", "Edit", fp)[0] == 0
+    f.write_text("body v2\n")
+    _bump_mtime_ns(fp)
+    run_guard("post", "Edit", fp)
+    # Edit#2：修前此处 exit=2（指纹不匹配）；修后放行
+    code, err = run_guard("pre", "Edit", fp)
+    assert code == 0, f"Edit→Edit 连写误拦（标本复发）, exit={code}, err={err}"
+    cleanup()
+
+
+def test_exempt_path_pre_stamp_alone_suffices(tmp_path):
+    """116 双保险的 A 层独立生效：豁免放行盖 SELF_EDITED（post 未跑也不误拦）。"""
+    cleanup()
+    d = tmp_path / ".regress"
+    d.mkdir()
+    f = d / "decisions.md"
+    f.write_text("a\n")
+    fp = str(f)
+    run_guard("post", "Read", fp)
+    assert run_guard("pre", "Edit", fp)[0] == 0   # 豁免放行（此时盖 SELF_EDITED）
+    f.write_text("a\nb\n")
+    _bump_mtime_ns(fp)                              # post 钩子未发生（单保险）
+    assert run_guard("pre", "Edit", fp)[0] == 0   # SELF_EDITED 挂起 → 放行
+    cleanup()
+
+
+def test_post_edit_stamps_actual_fingerprint(tmp_path):
+    """116 B 层：post(Edit) 记写后实况——state 指纹=新内容指纹，Edit 放行。"""
+    cleanup()
+    f = tmp_path / "app.js"
+    f.write_text("let a = 1\n")
+    fp = str(f)
+    run_guard("post", "Read", fp)          # 旧指纹
+    f.write_text("let a = 2\n")            # 写后实况
+    _bump_mtime_ns(fp)
+    run_full("post", "Edit", {"file_path": fp, "old_string": "1",
+                              "new_string": "2"})
+    # state 里应已是写后实况指纹（而非 Read 时的旧值）
+    state = json.load(open(_state_file_for("test-unit"), encoding="utf-8"))
+    sess = state.get("test-unit", {})
+    stamped = (sess.get("read_fps") or {}).get(fp)
+    assert stamped not in (None, read_before_edit_guard.SELF_EDITED), \
+        "post(Edit) 未补写后实况指纹"
+    assert run_guard("pre", "Edit", fp)[0] == 0
+    cleanup()
+
+
+def test_post_stamp_then_external_change_still_blocks(tmp_path):
+    """116 牙齿保留：post 补戳后文件又被第三方改 → 下一次 Edit 仍拦。"""
+    cleanup()
+    f = tmp_path / "app.js"
+    f.write_text("let a = 1\n")
+    fp = str(f)
+    run_guard("post", "Read", fp)
+    f.write_text("let a = 2\n")
+    _bump_mtime_ns(fp)
+    run_full("post", "Edit", {"file_path": fp, "old_string": "1",
+                              "new_string": "2"})   # 补写后实况
+    _bump_mtime_ns(fp)                                # 第三方又改
+    f.write_text("let a = 3\n")
+    assert run_guard("pre", "Edit", fp)[0] == 2, "post 补戳后外部改应仍拦"
+    cleanup()
+
+
 def test_fingerprint_only_checked_for_real_files(tmp_path):
     """指纹校验对从未 Read 过的文件不生效（走 ratio 门禁，互不干扰）。"""
     cleanup()
