@@ -1189,3 +1189,95 @@ def test_message_ref_with_note_m_passes(project):
     assert not any(e.get("reason") == "message_no_manifest_ref"
                    and e.get("event") == "commit_blocked"
                    for e in read_history(project))
+
+
+# ─── 4.8 文档交付判据四件套（v1.92.6，117）──────────────
+
+def _stage_final_doc(project, name, body, in_manifest=True):
+    """造一个 staged 的定稿类/文档类 md，返回路径。"""
+    import subprocess as sp
+    d = project / "docs"
+    d.mkdir(exist_ok=True)
+    f = d / name
+    f.write_text(body, encoding="utf-8")
+    sp.run(["git", "add", str(f)], cwd=str(project), check=True)
+    if in_manifest:
+        (project / ".regress" / "manifests" / "R1.md").write_text(
+            "---\nid: R1\nstatus: done\n"
+            f"planned_changes: ['docs/{name}']\n---\n"
+        )
+    return f
+
+
+_PAD = "正文内容行。\n" * 35  # ≥30 行新增
+
+
+def test_docgate_blocks_final_doc_missing_all(project):
+    """定稿类 md 四件全缺 → 拦（docgate_missing）。"""
+    _stage_final_doc(project, "物联网卡-需求定稿-v1.md",
+                     "# 需求\n" + _PAD)
+    code, err, _ = run_guard("git commit -m 文档（R1）", project)
+    assert code == 2, f"四件全缺应拦, exit={code}"
+    assert "docgate" in err or "交付判据" in err
+
+
+def test_docgate_passes_four_present(project):
+    """f77a 形定稿（四件全有）→ 过 docgate 且整门禁放行。"""
+    body = ("# 需求定稿\n" + _PAD
+            + "\n## 验收要点\n1. 功能可用\n"
+            + "\n## 附录 A：与原始需求稿的差异说明\n改了优先级\n"
+            + "\n## 附录 B：厂商接口信息索引\n见接口文档\n"
+            + "\n## 边界\n不做的事：存量回填\n")
+    _stage_final_doc(project, "物联网卡-需求定稿-v1.md", body)
+    code, err, _ = run_guard("git commit -m 文档（R1）", project)
+    assert code == 0, f"四件全有应放行, exit={code}, err={err[-300:]}"
+
+
+def test_docgate_two_present_no_required_blocks(project):
+    """在场 2 件但必需件（验证节/一手来源）全缺 → 拦（顾问硬约束）。"""
+    body = "# 方案\n" + _PAD + "\n附录：差异说明\n\n边界：不做回填\n"
+    _stage_final_doc(project, "接入方案-需求定稿-v1.md", body)
+    code, err, _ = run_guard("git commit -m 文档（R1）", project)
+    assert code == 2
+    assert "必需件" in err or "docgate" in err
+
+
+def test_docgate_small_change_not_triggered(project):
+    """定稿类 md 小改（新增行不足 30）→ 不触发（防错别字修改摩擦）。"""
+    d = project / "docs"
+    d.mkdir(exist_ok=True)
+    f = d / "物联网卡-需求定稿-v1.md"
+    # 先入库一版
+    import subprocess as sp
+    f.write_text("初始化基线\n" + _PAD, encoding="utf-8")
+    sp.run(["git", "add", str(f)], cwd=str(project), check=True)
+    sp.run(["git", "-c", "user.email=t@t.com", "-c", "user.name=t",
+            "commit", "-q", "-m", "基线"], cwd=str(project), check=True)
+    f.write_text("初始化基线改\n" + _PAD, encoding="utf-8")  # 新增 1 行
+    sp.run(["git", "add", str(f)], cwd=str(project), check=True)
+    (project / ".regress" / "manifests" / "R1.md").write_text(
+        "---\nid: R1\nstatus: done\n"
+        "planned_changes: ['docs/物联网卡-需求定稿-v1.md']\n---\n")
+    code, err, _ = run_guard("git commit -m 文档（R1）", project)
+    assert code == 0, f"小改不触发, exit={code}, err={err[-200:]}"
+
+
+def test_docgate_env_escape(project):
+    """四件全缺 + REGRESS_DOCGATE=off → 不因 docgate 拦。"""
+    _stage_final_doc(project, "物联网卡-需求定稿-v1.md",
+                     "# 需求\n" + _PAD)
+    code, err, _ = run_guard("git commit -m 文档（R1）", project,
+                             extra_env={"REGRESS_DOCGATE": "off"})
+    assert "docgate" not in err and "交付判据" not in err
+
+
+def test_docgate_non_final_outside_docs_not_triggered(project):
+    """根目录大改 md（非定稿名且不在 docs/）→ 不触发（零误伤负例）。"""
+    import subprocess as sp
+    f = project / "NOTES.md"
+    f.write_text("# 笔记\n" + _PAD, encoding="utf-8")
+    sp.run(["git", "add", str(f)], cwd=str(project), check=True)
+    (project / ".regress" / "manifests" / "R1.md").write_text(
+        "---\nid: R1\nstatus: done\nplanned_changes: ['NOTES.md']\n---\n")
+    code, err, _ = run_guard("git commit -m 笔记（R1）", project)
+    assert code == 0, f"非定稿类不触发, exit={code}, err={err[-200:]}"

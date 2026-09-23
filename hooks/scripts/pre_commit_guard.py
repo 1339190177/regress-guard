@@ -425,6 +425,79 @@ def main():
     strict = config.get("strict", True)
     bypass_until = config.get("bypass_until", "")
 
+    # ─── 2.8 文档交付判据四件套（v1.92.6，117：调研裁决——文档质量机器位）───
+    # 环境级检查（不绑活跃清单）：f77a 标本=无清单的文档会话正是盲区
+    # 本体——绑清单则盲区照旧。置于 bypass 前=bypass 全赦免语义覆盖它。
+    # f77a/bd216bd3 观察：文档型交付质量全靠人眼（代码有测试门禁、文档零
+    # 判据）；行业（Kiro 结构属性/spec-kit 宪法/Vale 文风）均已机器化，钩子
+    # 层无人做。判据=在场性（结构属性）非内容对错——机器可判边界的行业
+    # 共识画法。真实增量=防退化下限（f77a 样本四件全有系 AI 自觉，调研 §4）。
+    # 触发（顾问放宽：触发层宽判据层窄）：.md ∧ 新增行≥30 ∧（定稿类文件名
+    # ∨ 路径含 docs/）。放行=四件在场≥2 且必需件（验证节/一手来源）至少
+    # 中 1（防同义凑数形式过关）。三逃生：REGRESS_DOCGATE=off /
+    # config docgate.enabled=false / 文件头 docgate: exempt。
+    _dg_cfg = config.get("docgate") or {}
+    if (_dg_cfg.get("enabled", True)
+            and os.environ.get("REGRESS_DOCGATE", "") != "off"):
+        _FOUR = [  # (件名, 锚点正则, 必需件)
+            ("验证节", r"验收要点|验收标准|（验：|\(验：", True),
+            ("差异收敛", r"差异|附录|修订|原稿|变更说明", False),
+            ("一手来源", r"来源|引用|参考|接口|证据|Evidence", False),
+            ("边界声明", r"边界|不做|范围外|非功能|否决", False),
+        ]
+        # 必需件=验证节+一手来源；放行条件=总数≥2 且必需件至少 1 在场
+        _FINAL_NAME = re.compile(r"定稿|需求文档|-v\d+(\.\d+)*\.md$")
+        try:
+            _ns = subprocess.run(
+                ["git", "-c", "core.quotepath=false", "diff", "--staged", "--numstat"],
+                cwd=project_dir, capture_output=True, text=True, timeout=10
+            ).stdout or ""
+            _added = {}
+            for _ln in _ns.splitlines():
+                _parts = _ln.split("\t")
+                if len(_parts) == 3 and _parts[0].isdigit():
+                    _added[_parts[2]] = int(_parts[0])
+        except Exception:
+            _added = {}
+        for _f, _n in _added.items():
+            _u = _f.replace(os.sep, "/")
+            if not _u.endswith(".md") or _n < 30:
+                continue
+            if not (_FINAL_NAME.search(os.path.basename(_u))
+                    or "/docs/" in _u or _u.startswith("docs/")):
+                continue
+            try:
+                _body = subprocess.run(
+                    ["git", "-c", "core.quotepath=false", "show", f":{_u}"],
+                    cwd=project_dir, capture_output=True, text=True,
+                    timeout=10).stdout or ""
+            except Exception:
+                continue
+            if "docgate: exempt" in _body[:400]:
+                continue
+            _missing = [nm for nm, pat, _req in _FOUR
+                        if not re.search(pat, _body)]
+            _present = 4 - len(_missing)
+            _req_hit = any(re.search(pat, _body)
+                           for nm, pat, req in _FOUR if req)
+            if _present >= 2 and _req_hit:
+                continue
+            record(regress_dir, "commit_blocked", "",  # 环境级：无清单归属
+                   reason="docgate_missing", file=_u,
+                   missing=_missing, present=_present)
+            emit_block(
+                f"定稿类文档缺交付判据（v1.92.6 文档治理层·环境级）\n\n"
+                f"  {_u}：四件在场 {_present}/4，缺：{'、'.join(_missing) or '无（必需件未中）'}\n\n"
+                "四件套（在场即可，不判内容对错）：\n"
+                "  ① 验证节——验收要点/验收标准/（验：命令）【必需】\n"
+                "  ② 差异收敛——附录/修订说明（原稿→定稿改了什么、为什么）\n"
+                "  ③ 一手来源——接口文档/参考/证据链【必需】\n"
+                "  ④ 边界声明——不做什么/范围外\n"
+                "· 放行条件：四件在场≥2 且必需件（①③）至少一件在场\n"
+                "· 非定稿类/确要跳过：文件头加 docgate: exempt；"
+                "config docgate.enabled=false；或 REGRESS_DOCGATE=off"
+            , "docgate_missing")
+
     # ─── 3. 检查 bypass ───────────────────────────────
     if bypass_until:
         try:
