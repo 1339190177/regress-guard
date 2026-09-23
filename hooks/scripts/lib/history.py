@@ -526,19 +526,31 @@ def cache_stats(regress_dir):
     }
     # v1.91.0（108）配对实验溯源：实验档在场则报实测（est 常数退役为连续性
     # 字段）。措辞边界随档：本仓本树当时、N 对、中位差。
-    try:
-        ep = os.path.join(regress_dir, "experiments", "cache-paired.json")
-        with open(ep, encoding="utf-8") as f:
-            exp = json.load(f)
-        med = float(exp.get("median_delta_s") or 0)
-        if med > 0:
-            out["saved_seconds_measured"] = round(hits * med, 1)
-            out["measured_from"] = {
-                "date": exp.get("date"), "trials": exp.get("trials"),
-                "median_delta_s": med, "range_s": exp.get("range_s"),
-            }
-    except (IOError, OSError, json.JSONDecodeError, ValueError):
-        pass
+    # v1.92.4（115）查找序列化：门禁 commit_passed 写外层工作区 .regress 而
+    # 实验档在嵌套仓——单路径查找使实测口径到不了探针消费位（写入位与消费位
+    # 错位）。第二候选按约定名探测（误读需同名目录+同构档，date/trials/range
+    # 加 path 人读可辨）；本地档可读即优先，不因 med<=0 越过本地读嵌套。
+    project_root = os.path.dirname(os.path.abspath(regress_dir))
+    candidates = [
+        ("project", os.path.join(regress_dir, "experiments", "cache-paired.json")),
+        ("nested-repo", os.path.join(project_root, "regress-guard", ".regress",
+                                     "experiments", "cache-paired.json")),
+    ]
+    for source, ep in candidates:
+        try:
+            with open(ep, encoding="utf-8") as f:
+                exp = json.load(f)
+            med = float(exp.get("median_delta_s") or 0)
+            if med > 0:
+                out["saved_seconds_measured"] = round(hits * med, 1)
+                out["measured_from"] = {
+                    "date": exp.get("date"), "trials": exp.get("trials"),
+                    "median_delta_s": med, "range_s": exp.get("range_s"),
+                    "source": source, "path": ep,
+                }
+            break
+        except (IOError, OSError, json.JSONDecodeError, ValueError):
+            continue
     return out
 
 
@@ -599,6 +611,13 @@ if __name__ == "__main__":
         print(f"缓存命中：{s['total']} 次过门禁｜命中 {s['hits']}"
               f"（{s['rate']:.1%}）｜未命中 {s['misses']}"
               f"｜估算节省 {s['est_saved_seconds']}s（hits×118s 估算常数）")
+        # v1.92.4（115）：探针消费位读到实测就展示实测——函数层批108 已能
+        # 读档，但人读行只打 est，哨兵日巡永远看到估算口径（展示层断链）。
+        mf = s.get("measured_from")
+        if mf:
+            print(f"  实测口径：节省 {s['saved_seconds_measured']}s"
+                  f"（hits×实测中位 {mf['median_delta_s']}s，{mf['trials']} 对配对"
+                  f"｜{mf['date']}｜来源 {mf['source']}）")
     elif cmd == "features":
         r = feature_fire_health(regress_dir)
         if r.get("error"):

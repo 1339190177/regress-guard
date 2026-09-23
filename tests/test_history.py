@@ -338,7 +338,52 @@ def test_cache_stats_measured_with_provenance(regress_dir):
     mf = s["measured_from"]
     assert mf["date"] == "2026-09-21" and mf["trials"] == 3
     assert mf["median_delta_s"] == 160.2
+    assert mf["source"] == "project"  # v1.92.4：第一路径命中标 project
+    assert mf["path"].endswith("cache-paired.json")
     assert "est_saved_seconds" in s  # 连续性字段仍在
+
+
+def test_cache_stats_measured_from_nested_repo(regress_dir, tmp_path):
+    """v1.92.4（115）：本位无档而嵌套仓有——回退命中报实测，source/path
+    标注实际来源（写入位与消费位错位的修复：门禁遥测在外层 .regress，
+    实验档在嵌套仓）。"""
+    import os as _os
+    from history import cache_stats
+    record(regress_dir, "commit_passed", "R1", runner="pytest", cached=True)
+    record(regress_dir, "commit_passed", "R2", runner="pytest", cached=True)
+    # 本位（tmp_path/.regress/experiments）刻意不建；嵌套仓位建档
+    ed = tmp_path / "regress-guard" / ".regress" / "experiments"
+    ed.mkdir(parents=True)
+    nested = ed / "cache-paired.json"
+    nested.write_text(_json.dumps(
+        {"median_delta_s": 189.2, "date": "2026-09-21",
+         "trials": 3, "range_s": [180.0, 200.0]}), encoding="utf-8")
+    s = cache_stats(regress_dir)
+    assert s["saved_seconds_measured"] == 378.4  # 2 命中 × 189.2
+    mf = s["measured_from"]
+    assert mf["source"] == "nested-repo"
+    assert mf["path"] == str(nested)  # 实际路径人读可辨（FP1 出口）
+
+
+def test_cache_stats_local_archive_priority_over_nested(regress_dir, tmp_path):
+    """v1.92.4：本位与嵌套位都有档——本位优先（不因并存越过本地读嵌套）。"""
+    from history import cache_stats
+    record(regress_dir, "commit_passed", "R1", runner="pytest", cached=True)
+    import os as _os
+    ed = _os.path.join(str(regress_dir), "experiments")
+    _os.makedirs(ed, exist_ok=True)
+    with open(_os.path.join(ed, "cache-paired.json"), "w",
+              encoding="utf-8") as f:
+        f.write(_json.dumps({"median_delta_s": 160.2, "date": "2026-09-21",
+                             "trials": 3}))
+    ned = tmp_path / "regress-guard" / ".regress" / "experiments"
+    ned.mkdir(parents=True)
+    (ned / "cache-paired.json").write_text(_json.dumps(
+        {"median_delta_s": 999.9, "date": "2000-01-01", "trials": 1}),
+        encoding="utf-8")
+    s = cache_stats(regress_dir)
+    assert s["saved_seconds_measured"] == 160.2  # 本位中位生效
+    assert s["measured_from"]["source"] == "project"
 
 
 def test_cache_stats_est_fallback_without_archive(regress_dir):
