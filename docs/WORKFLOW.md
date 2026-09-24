@@ -263,6 +263,24 @@ TOP-1 召回行（`RG_PROMPT_CONTEXT=off` 逃生）——防线从"拦截时才�
 - 断点续作：`/regress:resume` 一句话重建现场
 - 机器级经验：finish 代谢缝自动落机器事实卡（v1.31，见下节）
 
+## 清洁环境矩阵（v1.96.1：本地自造"外部环境"）
+
+外部评审"干净环境红 48"类指控，本地即可自造环境提前逮住：
+
+```bash
+bash scripts/clean_env_check.sh        # venv 从零装 requirements-dev 跑全套件
+```
+
+- 何时跑：发布前/哨兵节奏（成本 ~4 分钟），不进每次门禁
+- 首跑战果（2026-09-24）：**逮住 fallback 解析器与 PyYAML 的三处行为分歧**
+  （行内注释/键行尾注释/嵌套映射压平）——零依赖运行路径上的真 bug，宿主
+  装 yaml 时全绿所以从未暴露；外加 install.sh 宣称"11 个命令"实况 16 的
+  漂移（宣称 lint 首跑逮住）
+- 宣称一致性 lint（tests/test_claims_lint.py）随套件常驻：数字宣称
+  （N 个 skill/命令）与实况对账、悬空目录引用、requirements 完整性
+- 诚实边界：单机单 Python 版本=单点非矩阵；locale/内核差异不在覆盖面；
+  pypi 不可达时脚本红属环境问题非产品问题（输出有区分提示）
+
 ## 跳过语义（v1.95：跳过不算通过——外部评审实证洞）
 
 "1 passed, 1 skipped" 不是全过：skipped 的用例既没证明也没证伪。

@@ -334,3 +334,67 @@ def test_template_product_context_sections():
     for sec in ("用户是谁", "产品价值观（不可牺牲的）", "行业惯例", "设计否决记录"):
         assert sec in body, f"产品上下文卡缺「{sec}」段"
     assert "scout" in body and "永不删人类写的段" in body
+
+
+# ─── v1.96.1（126）：fallback 与 PyYAML 行为对齐（清洁环境矩阵三捕获的回归锚）───
+
+def test_fallback_comment_parity():
+    """行内注释三形态：值首 # / 空白# / 引号外——宿主装 yaml 时 fallback
+    不被走到，本单元直接调 _parse_fallback 锚住（否则只有无 yaml 的机器
+    替我们测它）。"""
+    import manifest_parser as mp
+    fm = ("id: R1\n"
+          "status: planning  # 行尾注释\n"
+          "tier: S\n"
+          "note:  # 值首注释=空值\n"
+          "quote: \"a # b\"  # 引号内的#保留\n"
+          "url: http://x/y#z\n")
+    d = mp._parse_fallback(fm)
+    assert d["status"] == "planning"
+    assert not d.get("note")  # 空值（占位 [] 与 None 同为 falsy，下游等价）
+    assert d["quote"] == "a # b"
+    assert d["url"] == "http://x/y#z"  # 无空白前导的 # 不是注释
+
+
+def test_fallback_nested_map_and_inner_list():
+    """嵌套映射+映射内嵌列表：scan: card / boundary: include: - 项——
+    曾被压平到顶层（PyYAML 给 dict，fallback 给 []）。"""
+    import manifest_parser as mp
+    fm = ("id: R1\n"
+          "scan:\n"
+          "  card: 知识层\n"
+          "boundary:\n"
+          "  include:\n"
+          "    - \"src/**\"\n"
+          "    - \"tests/**\"\n"
+          "planned_changes:\n"
+          "- id: F1\n"
+          "  file: a.py\n"
+          "fragile_points:\n"
+          "- id: FP1\n"
+          "  kind: machine\n")
+    d = mp._parse_fallback(fm)
+    assert d["scan"] == {"card": "知识层"}
+    assert d["boundary"] == {"include": ["src/**", "tests/**"]}
+    assert d["planned_changes"][0]["file"] == "a.py"
+    assert d["fragile_points"][0]["kind"] == "machine"
+
+
+def test_fallback_parity_with_pyyaml_on_template():
+    """官方模板：装了 yaml 的机器上双解析器对齐（没装 yaml 的机器上
+    fallback 独自扛——上面两个单元锚住关键形态）。"""
+    import manifest_parser as mp
+    try:
+        import yaml  # noqa: F401
+    except ImportError:
+        pytest.skip("宿主无 pyyaml——清洁环境矩阵路径覆盖")
+    import re as _re
+    tmpl = os.path.join(os.path.dirname(__file__), "..", "templates",
+                        "regress-manifest.md")
+    txt = open(tmpl, encoding="utf-8").read()
+    m = _re.match(r"^---\s*\n(.*?)\n---", txt, _re.DOTALL)
+    fb = mp._parse_fallback(m.group(1))
+    yy = yaml.safe_load(m.group(1))
+    for k in ("scan", "boundary"):
+        assert fb.get(k) == yy.get(k), f"{k} 双解析器不对齐"
+    assert fb.get("planned_changes") == yy.get("planned_changes")

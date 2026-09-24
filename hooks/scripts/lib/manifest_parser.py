@@ -195,16 +195,35 @@ def get_fragile_points(manifest_path):
 # ─── 手写 fallback 解析器 ─────────────────────────────
 
 def _parse_fallback(yaml_text):
-    """零依赖的 YAML frontmatter 解析（处理我们定义的有限结构）。"""
+    """零依赖的 YAML frontmatter 解析（处理我们定义的有限结构）。
+
+    126（清洁环境矩阵三捕获）：与 PyYAML 行为对齐的三处补齐——
+    ① 行内注释剥离（值首 # / 空白#  / 引号外）
+    ② 键行尾注释（"fragile_points:  # 注释"曾让注释成值）
+    ③ 空值键的嵌套映射（"scan:" + 缩进 "card: x" 曾被压平到顶层——
+      PyYAML 给 dict，fallback 给 []）。首个子行定型："- " → 列表，
+      缩进 k:v → 映射；深层嵌套不支持（我们语法一层）。
+    """
     result = {}
     current_list_key = None
     current_list_item = None
+    current_map_key = None
+    current_inner = None  # (map_key, inner_key)：映射内嵌列表态（boundary.include 等）
 
     def flush_item():
         nonlocal current_list_item
-        if current_list_key is not None and current_list_item is not None:
-            result.setdefault(current_list_key, []).append(current_list_item)
-            current_list_item = None
+        if current_list_item is None:
+            return
+        if current_inner:
+            outer, inner = current_inner
+            if not isinstance(result.get(outer), dict):
+                result[outer] = {}
+            result[outer].setdefault(inner, []).append(current_list_item)
+        elif current_list_key is not None:
+            tgt = result.get(current_list_key)
+            if isinstance(tgt, list):
+                tgt.append(current_list_item)
+        current_list_item = None
 
     for line in yaml_text.split("\n"):
         stripped = line.strip()
@@ -213,6 +232,7 @@ def _parse_fallback(yaml_text):
 
         if stripped.startswith("- "):
             item_body = stripped[2:]
+            current_map_key = None  # 列表语境接管
             if ":" in item_body:
                 flush_item()
                 key, _, val = item_body.partition(":")
@@ -224,9 +244,16 @@ def _parse_fallback(yaml_text):
                         _parse_list(val) if key == "tests_required" else _parse_scalar(val)
                     )
             else:
-                if current_list_key is not None:
+                if current_inner or current_list_key is not None:
                     flush_item()
-                    result.setdefault(current_list_key, []).append(_parse_scalar(item_body))
+                    if current_inner:
+                        outer, inner = current_inner
+                        result[outer].setdefault(inner, []).append(
+                            _parse_scalar(item_body))
+                    else:
+                        tgt = result.get(current_list_key)
+                        if isinstance(tgt, list):
+                            tgt.append(_parse_scalar(item_body))
             continue
 
         if current_list_item is not None and line.startswith(" ") and ":" in stripped:
@@ -239,14 +266,37 @@ def _parse_fallback(yaml_text):
                 current_list_item[key] = _parse_scalar(val)
             continue
 
+        # ③ 嵌套映射：空值键后跟缩进 k:v（且不在列表项内）→ 子键归映射；
+        #    子键也空值 = 映射内嵌列表头（boundary.include: - 项）
+        if (current_map_key is not None and current_list_item is None
+                and line.startswith(" ") and ":" in stripped
+                and not stripped.startswith("-")):
+            k, _, v = stripped.partition(":")
+            k = k.strip()
+            v = _strip_comment(v.strip())
+            if not isinstance(result.get(current_map_key), dict):
+                result[current_map_key] = {}
+            if v:
+                result[current_map_key][k] = _parse_scalar(v)
+                current_inner = None
+            else:
+                result[current_map_key][k] = []
+                current_inner = (current_map_key, k)
+            continue
+
         if ":" in stripped and not stripped.startswith("-"):
             flush_item()
             key, _, val = stripped.partition(":")
             key = key.strip()
-            val = val.strip()
+            # 126：键行尾注释先剥（"fragile_points:  # 注释"曾让注释成值、
+            # 列表模式失建立——清洁环境矩阵第二捕获）
+            val = _strip_comment(val.strip())
+            current_map_key = None
+            current_inner = None
             if val == "":
                 result[key] = []
                 current_list_key = key
+                current_map_key = key  # 列表或映射，首个子行定型
                 current_list_item = None
             elif val == "[]":
                 result[key] = []
@@ -294,7 +344,25 @@ def _fmt_scalar(val):
     return str(val)
 
 
+def _strip_comment(val):
+    """PyYAML 行为对齐（126）：行内注释剥离——'# 前有空白'即注释起点，
+    引号内 # 保留。清洁环境矩阵实证：宿主（装了 yaml）剥注释而 fallback
+    不剥，同一清单两机不同解析（status 连注释整串成值）——零依赖运行
+    路径上的真 bug，外部评审"干净环境红"的本地复现首捕获。"""
+    if val.startswith("#"):
+        return ""  # "key: # 注释"→YAML 空值（值首 # 即注释）
+    if val[:1] in ("'", '"'):
+        end = val.find(val[0], 1)
+        if end == -1:
+            return val
+        rest = val[end + 1:]
+        return val[:end + 1] + ("" if rest.lstrip().startswith("#") else rest)
+    m = re.search(r"\s#", val)
+    return val[:m.start()].rstrip() if m else val
+
+
 def _parse_scalar(val):
+    val = _strip_comment(val)
     if val.lower() == "true": return True
     if val.lower() == "false": return False
     if val.lower() in ("null", ""): return None
@@ -304,7 +372,7 @@ def _parse_scalar(val):
 
 
 def _parse_list(val):
-    val = val.strip("[]").strip()
+    val = _strip_comment(val).strip("[]").strip()
     return [_parse_scalar(v.strip()) for v in val.split(",")] if val else []
 
 
