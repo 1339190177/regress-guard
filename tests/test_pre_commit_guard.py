@@ -645,6 +645,14 @@ def _passing_runner(project):
 
 _M_ACC_BODY = "\n## 验收标准（EARS-lite）\n\n- When 发起请求，则 返回 200（验：curl -sf localhost:8000/health）\n"
 
+# 121：公共深查节（M 档 done 盖章走到 6.5b 的用例统一自带；未勾用例在
+# acceptance_open 先拦，不受影响）
+_DC_OK = ("\n## 深查节\n"
+          "- 反问一·验证位错位：门禁与清单读同一文件无错位\n"
+          "- 反问二·判据外推：消息措辞可抄性无断言接受\n"
+          "- 反问三·心虚探测：解析鲁棒性未穷举接受\n")
+_M_ACC_BODY += _DC_OK
+
 
 def test_acceptance_missing_blocks(project):
     """M 档缺验收标准节：测试全绿也不许盖章（acceptance_missing）。"""
@@ -730,7 +738,7 @@ def test_auto_reflow_pending_on_gate_pass(project, tmp_path, monkeypatch):
     pd.add("P", "blocked", "⛔ 提交被拦 R1", ref="R1")
     pd.add("P", "blocked", "⛔ 提交被拦 R9", ref="R9")
     _passing_runner(project)
-    _write_manifest(project, _M_FULL + _M_ACC_PASS)
+    _write_manifest(project, _M_FULL + _M_ACC_PASS + _DC_OK)
     code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0 and "自动回流 1 笔" in err
     s = pd.stats()
@@ -745,7 +753,7 @@ def test_acceptance_mark_anywhere_counts(project):
     body = _M_FULL + (
         "\n## 验收标准（EARS-lite）\n\n"
         "- When 发起请求，则 返回 200（验：curl -sf localhost:8000/health）"
-        "5/5 passed ✅\n")
+        "5/5 passed ✅\n" + _DC_OK)
     _write_manifest(project, body)
     code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0  # 宽松化后计勾放行
@@ -766,7 +774,11 @@ def test_acceptance_mark_without_verify_still_blocks(project):
 
 _ACC_OK = ("\n## 验收标准（EARS-lite）\n\n"
            "- When 发起请求，则 返回 200"
-           "（验：python3 -m pytest test_smoke.py -q）✅\n")
+           "（验：python3 -m pytest test_smoke.py -q）✅\n"
+           "\n## 深查节\n"  # 121：M 档 done 盖章用例公共自带（6.5b 在场性）
+           "- 反问一·验证位错位：门禁与清单读同一文件无错位\n"
+           "- 反问二·判据外推：消息措辞可抄性无断言接受\n"
+           "- 反问三·心虚探测：解析鲁棒性未穷举接受\n")
 
 
 def test_cache_hit_on_same_tree(project):
@@ -1281,3 +1293,57 @@ def test_docgate_non_final_outside_docs_not_triggered(project):
         "---\nid: R1\nstatus: done\nplanned_changes: ['NOTES.md']\n---\n")
     code, err, _ = run_guard("git commit -m 笔记（R1）", project)
     assert code == 0, f"非定稿类不触发, exit={code}, err={err[-200:]}"
+
+
+# ─── 6.5b 深查在场性（v1.93.0，121）──────────────────
+
+_M_ACC_DONE = "\n## 验收标准（EARS-lite）\n\n- When x，则 y（验：echo ok）✅\n"
+
+_DC_BODY = (
+    "\n## 深查节\n"
+    "- 反问一·验证位错位：门禁跑部署位而清单在项目位，读同一文件无错位\n"
+    "- 反问二·判据外推：拦截消息三问原文可抄性靠措辞设计无断言\n"
+    "- 反问三·心虚探测：解析对全角标点与黑名单外字符鲁棒性未穷举\n")
+
+
+def test_deepcheck_missing_blocks(project):
+    """M 档 done 盖章：验收全勾但缺深查节 → 拦（deepcheck_missing）。"""
+    _passing_runner(project)
+    _stage(project, "src/app.js", "x = 2\n")
+    _write_manifest(project, _M_FULL + _M_ACC_DONE)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    assert code == 2 and "深查" in err, f"缺深查应拦, exit={code}"
+    assert any(e.get("reason") == "deepcheck_missing"
+               for e in read_history(project))
+
+
+def test_deepcheck_placeholder_answer_blocks(project):
+    """深查节在场但反问三答案占位（N/A）→ 拦。"""
+    _passing_runner(project)
+    _stage(project, "src/app.js", "x = 2\n")
+    _write_manifest(project, _M_FULL + _M_ACC_DONE + (
+        "\n## 深查节\n"
+        "- 反问一·验证位错位：门禁读清单同目录一致\n"
+        "- 反问二·判据外推：消息措辞已覆盖\n"
+        "- 反问三·心虚探测：N/A\n"))
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    assert code == 2 and "占位" in err
+
+
+def test_deepcheck_full_passes_gate(project):
+    """三问各一行实答 → 深查通过（后续流程正常）。"""
+    _passing_runner(project)
+    _stage(project, "src/app.js", "x = 2\n")
+    _write_manifest(project, _M_FULL + _M_ACC_DONE + _DC_BODY)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    assert "深查" not in err, f"深查不应拦: {err[-200:]}"
+
+
+def test_deepcheck_s_tier_exempt(project):
+    """S 档无深查节 → 不拦（分层豁免）。"""
+    _passing_runner(project)
+    _stage(project, "src/app.js", "x = 2\n")
+    _write_manifest(project, _M_FULL.replace("tier: M", "tier: S")
+                    + _M_ACC_DONE)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    assert "深查" not in err

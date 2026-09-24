@@ -51,7 +51,11 @@ _M_MANIFEST = ("---\nid: R1\nstatus: in-progress\ntier: M\n"
                "planned_changes:\n  - id: F1\n"
                "    file: src/app.js\nactual_changes: []\n---\n"
                "\n## 验收标准\n\n"
-               "- When 发起请求，则 返回 200（验：python3 -m pytest test_smoke.py -q）✅\n")
+               "- When 发起请求，则 返回 200（验：python3 -m pytest test_smoke.py -q）✅\n"
+               "\n## 深查节\n"  # 121：6.5b 在场性——M 档 fixture 随规格变更（105 先例）
+               "- 反问一·验证位错位：束直连钩子即运行位无错位\n"
+               "- 反问二·判据外推：场景期望词随措辞漂移的风险已有 has 断言\n"
+               "- 反问三·心虚探测：fixture 与门禁演进的耦合依赖用例同步\n")
 
 
 def _git(p, *args):

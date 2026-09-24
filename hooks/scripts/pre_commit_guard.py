@@ -121,6 +121,50 @@ _ACC_END_MARKS = ("✅", "已验", "（过）", "通过")
 _ACC_CELL_KEYWORDS = ("pass", "done", "ok", "locked", "✔")
 
 
+def _deepcheck_state(manifest_path):
+    """深查节状态（121，研判路径 B）：返回 (present, missing, empty)。
+
+    present=「## 深查」节在场；missing=三问缺失清单（反问一·验证位错位/反问二·
+    判据外推/反问三·心虚探测——匹配关键词：验证位|判据外推|心虚）；empty=答案
+    占位的问（结构在场档：问行后至下一问行之间的答案文本去空白非空、非黑名单
+    [待补/N/A/无/略]、非纯标点、非照抄问句——顾问裁：不设字数下限防误伤极简真答）。
+    解析永不抛错（读不到=不在此处拦）。
+    """
+    try:
+        text = open(manifest_path, encoding="utf-8").read()
+    except Exception:
+        return True, [], []
+    m = re.search(r"^## 深查.*?(?=^## |\Z)", text, re.M | re.S)
+    if not m:
+        return False, [], []
+    body = m.group(0)
+    KEYS = [("反问一", "验证位"), ("反问二", "判据外推"), ("反问三", "心虚")]
+    missing, empty = [], []
+    lines = body.splitlines()
+    # 预计算三问行索引（先扫一遍，再取区间——生成器嵌套易错，121 用例期教训）
+    q_idx = []
+    for i, (label, kw) in enumerate(KEYS):
+        idx = next((j for j, l in enumerate(lines)
+                    if (f"反问{'一二三'[i]}" in l or kw in l)), None)
+        q_idx.append(idx)
+    for i, (label, kw) in enumerate(KEYS):
+        if q_idx[i] is None:
+            missing.append(f"{label}·{kw}")
+            continue
+        nxt_candidates = [q_idx[k] for k in range(len(KEYS))
+                          if q_idx[k] is not None and q_idx[k] > q_idx[i]]
+        nxt = min(nxt_candidates) if nxt_candidates else len(lines)
+        ans = " ".join(lines[q_idx[i]:nxt])
+        # 去问句骨架（问行本身的关键词/标点）后判占位
+        for junk in ("反问", "一", "二", "三", "·", "：", "—", "答", kw,
+                     "错位", "探测", "外推"):
+            ans = ans.replace(junk, "")
+        ans = re.sub(r"[\s\W_]+", "", ans, flags=re.UNICODE)
+        if not ans or ans in {"待补", "NA", "无", "略", "TODO"} or len(ans) <= 2:
+            empty.append(f"{label}·{kw}")
+    return True, missing, empty
+
+
 def _acceptance_state(manifest_path):
     """解析验收标准节（v1.55）：返回 (present, total, open_rows)。
 
@@ -1247,6 +1291,27 @@ def main():
                 # 要不要上验命令复跑执行器的决策数据——先有开火数据再谈执行器
                 record(regress_dir, "acceptance_passed", manifest_id,
                        rows=total, tier=_tier)
+                # ─── 6.5b 深查在场性（121，研判路径 B：把"深入审查"三反问
+                # 合并进第一轮交付——合规对账必然漏判据集合外的缺陷，held-out
+                # 部署位空转 13 版本即活例）。结构在场档（顾问裁）：节+三问+各
+                # 一行非占位答；质量留纪律（hard gate 全量化的打勾风险）。
+                _dp, _dm, _de = _deepcheck_state(manifest)
+                if (not _dp) or _dm or _de:
+                    _bad = _dm + [f"{q}（答案占位）" for q in _de] \
+                        or ["深查节缺失"]
+                    record(regress_dir, "commit_blocked", manifest_id,
+                           reason="deepcheck_missing", bad=_bad, tier=_tier)
+                    emit_block(
+                        f"M/L 清单缺深查节或答案占位（v1.93.0 深查在场性）："
+                        f"<id {manifest_id}>\n\n  · {'；'.join(_bad)}\n\n"
+                        "第一轮验收=合规对账，结构上查不到判据集合外的缺陷——"
+                        "深查三反问是把「深入审查」提前合并进交付：\n"
+                        "  反问一·验证位错位：哪个验证的验证位置≠真实运行位置？\n"
+                        "  反问二·判据外推：判据清单没写但相关方会在意的？\n"
+                        "  反问三·心虚探测：若有人说「还有遗漏」，第一反应会心虚什么？\n"
+                        "每问一行实答（非 待补/N/A/无/略）——照抄三问原文作答即可过在场性，"
+                        "质量自己把握。S 档/quick 豁免。"
+                    , "deepcheck_missing")
         passed = f"{result['passed']}/{result['total']}"
         # 行尾计数对账（v1.87.1，092 晚查）：「；N/N」结尾=套件计数宣称（家规
         # 形态）——077 的「536/536」正是此形态，当场会被拦。非行尾 N/N（如
