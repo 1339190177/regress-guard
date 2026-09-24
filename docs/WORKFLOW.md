@@ -263,6 +263,28 @@ TOP-1 召回行（`RG_PROMPT_CONTEXT=off` 逃生）——防线从"拦截时才�
 - 断点续作：`/regress:resume` 一句话重建现场
 - 机器级经验：finish 代谢缝自动落机器事实卡（v1.31，见下节）
 
+## 纠正闭环（v1.94：correction-as-incident，0158a98b 标本推动）
+
+用户纠正此前"只埋不挖"（化石入地层后无人消费——标本会话顾问零调用）。本层
+把它补成 PagerDuty 式完整生命周期：
+
+| PD 态 | 我们的形态 | 载体 |
+|---|---|---|
+| Triggered | 纠正语式自动埋 user_correction 化石 | prompt_intercept（已有） |
+| Acknowledged | 一行批量确认（带 upto 游标=只清已展示的） | `journal.py . ack-corrections '{"how":"…","upto":"…"}'` |
+| Resolved | 【错误方向+修正+理由】append decisions.md | Stop 提醒第二段 |
+| Escalation | pending>0 时 Stop 提醒（高水位窗，非 10 分钟墙钟）+ 提交侧 record-only 留痕 | reflection_check 节 9 / 门禁 2.9 |
+
+- `how` 语义：advisor=已对质顾问 / self=自行判断（须标注未获第二意见）/
+  not_correction=判定非纠正（FP 出口——叙事性"不对"实测会误埋）
+- 硬约束语式（一定/必须/不许…+方向词）另埋 `user_constraint` 化石 → Stop
+  侧提醒红线落盘（授权/门槛类约束不能只活在对话里）
+- digest 纳入纠正聚类：同主题纠正跨会话 ≥2 次 = 规律候选（/regress:learn 消费）
+- 重任务检测（发布/开源/公网类）+ 无活跃清单 → 一行 M 档建议（f77a+0158a98b
+  两标本=钩子在场清单缺席，M/L 纪律全空转）
+- phase-1 全不拦截；升格为门禁拦截=两轮野外数据后人裁（disposition 率/pending
+  FP 率观察位）。逃生：`RG_CORRECTION_LOOP=off` 或 config correction_loop.enabled=false
+
 ## 产品+架构层（v1.35：治"跑通即终点"）
 
 对话式开发的产品功能深度/广度瑕疵有四个结构性根因：计划从单一视角推导

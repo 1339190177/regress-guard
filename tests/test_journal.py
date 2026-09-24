@@ -204,3 +204,117 @@ def test_journal_stats_fields(tmp_path):
     empty = _adoption_proj(tmp_path / "e2", [])
     r2 = journal_stats(empty)
     assert r2["events"] == 0 and r2["file_bytes"] == 0
+
+
+# ─── v1.94.0（122）：pending 高水位 + ack CLI + digest 纠正聚类 ───
+
+def _corr_proj(tmp_path, events):
+    proj = tmp_path / "corr"
+    (proj / ".regress" / "journal").mkdir(parents=True)
+    with open(proj / ".regress" / "journal" / "events.jsonl", "w",
+              encoding="utf-8") as f:
+        for ev in events:
+            f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+    return str(proj)
+
+
+def test_pending_no_disposition_all_pending(tmp_path):
+    from journal import pending_corrections
+    proj = _corr_proj(tmp_path, [
+        {"ts": "2026-09-24T10:00:00", "kind": "user_correction",
+         "excerpt": "每一个文档你都单独审查，不对经", "session": "s1"},
+        {"ts": "2026-09-24T15:04:00", "kind": "tool_fail", "sig": "x"},
+    ])
+    assert len(pending_corrections(proj)) == 1  # 无 ack → 全部 pending
+
+
+def test_pending_high_water_clears(tmp_path):
+    from journal import pending_corrections
+    proj = _corr_proj(tmp_path, [
+        {"ts": "2026-09-24T10:00:00", "kind": "user_correction", "excerpt": "a"},
+        {"ts": "2026-09-24T11:00:00", "kind": "correction_disposition",
+         "how": "advisor", "upto": "2026-09-24T11:00:00"},
+    ])
+    assert pending_corrections(proj) == []
+
+
+def test_pending_cursor_safety(tmp_path):
+    """游标安全（顾问安全变体）：ack 只清 upto 之前已展示的，之后新到的仍 pending。"""
+    from journal import pending_corrections
+    proj = _corr_proj(tmp_path, [
+        {"ts": "2026-09-24T10:00:00", "kind": "user_correction", "excerpt": "a"},
+        {"ts": "2026-09-24T10:30:00", "kind": "correction_disposition",
+         "how": "advisor", "upto": "2026-09-24T10:05:00"},  # 游标只盖到 10:05
+        {"ts": "2026-09-24T10:20:00", "kind": "user_correction", "excerpt": "b"},
+    ])
+    pend = pending_corrections(proj)
+    assert len(pend) == 1 and pend[0]["excerpt"] == "b"
+
+
+def test_ack_corrections_cli(tmp_path):
+    proj = tmp_path / "ack"
+    (proj / ".regress").mkdir(parents=True)
+    r = subprocess.run(
+        [sys.executable, os.path.join(LIB, "lib", "journal.py"),
+         str(proj), "ack-corrections",
+         '{"how":"advisor","upto":"2026-09-24T12:00:00","note":"已对质"}'],
+        capture_output=True, text=True, timeout=10,
+        env={**os.environ, "REGRESS_JOURNAL": "on"})
+    assert r.returncode == 0, r.stderr
+    assert '"ok": true' in r.stdout and '"cleared_after"' in r.stdout
+    evts = [e for e in load_journal(str(proj))
+            if e.get("kind") == "correction_disposition"]
+    assert len(evts) == 1 and evts[0]["upto"] == "2026-09-24T12:00:00"
+
+
+def test_ack_corrections_rejects_bad_json(tmp_path):
+    proj = tmp_path / "ack2"
+    (proj / ".regress").mkdir(parents=True)
+    r = subprocess.run(
+        [sys.executable, os.path.join(LIB, "lib", "journal.py"),
+         str(proj), "ack-corrections", "not-json"],
+        capture_output=True, text=True, timeout=10,
+        env={**os.environ, "REGRESS_JOURNAL": "on"})
+    assert r.returncode == 2
+
+
+def test_digest_clusters_corrections_cross_session(tmp_path):
+    """纠正聚类：同主题纠正跨会话 ≥2 次 = 规律候选（与 tool_fail 同场，kind 区分）。"""
+    proj = _corr_proj(tmp_path, [
+        {"ts": "2026-09-24T10:00:00", "kind": "user_correction",
+         "excerpt": "方案方向错了，重新设计接口部分再来", "session": "s1"},
+        {"ts": "2026-09-25T10:00:00", "kind": "user_correction",
+         "excerpt": "方案方向错了，重新设计接口部分再来一遍", "session": "s2"},
+        {"ts": "2026-09-26T10:00:00", "kind": "tool_fail", "sig": "npm test",
+         "session": "s1"},
+        {"ts": "2026-09-27T10:00:00", "kind": "tool_fail", "sig": "npm test",
+         "session": "s3"},
+    ])
+    rows = journal_digest(proj)
+    by_sig = {r["sig"]: r for r in rows}
+    corr_sig = "correction:方案方向错了，重新设计接口部分再"
+    assert corr_sig in by_sig
+    assert by_sig[corr_sig]["kind"] == "user_correction"
+    assert by_sig[corr_sig]["sessions"] == 2
+    assert by_sig["npm test"]["kind"] == "tool_fail"
+
+
+def test_prompt_constraint_journals(tmp_path):
+    """硬约束埋点（122）：约束语式+方向词 → user_constraint 化石。"""
+    proj, tmpdir = tmp_path / "proj", tmp_path / "tmp"
+    (proj / ".regress").mkdir(parents=True)
+    tmpdir.mkdir()
+    _feed(PROMPT_HOOK, {"prompt": "发布到公网之前 一定要人类审查，作者是yelisheng"},
+          proj, tmpdir)
+    events = load_journal(str(proj))
+    assert any(e["kind"] == "user_constraint" for e in events)
+
+
+def test_prompt_constraint_no_direction_not_journaled(tmp_path):
+    """无方向词的自述（"必须努力"）不埋——泛化防线。"""
+    proj, tmpdir = tmp_path / "proj", tmp_path / "tmp"
+    (proj / ".regress").mkdir(parents=True)
+    tmpdir.mkdir()
+    _feed(PROMPT_HOOK, {"prompt": "必须努力工作才能成功"}, proj, tmpdir)
+    events = load_journal(str(proj))
+    assert not any(e["kind"] == "user_constraint" for e in events)

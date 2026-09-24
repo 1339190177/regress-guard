@@ -481,17 +481,16 @@ def check_context(project_dir):
                 pass  # 状态读写失败不阻断反思
 
     # 9. 决策落盘提醒（公理二：决策链物质化——契约约定 AI 手写 decisions.md
-    #    全靠自觉，这里是机器层补口。两类最该刻进石头的决策点：
-    #    ① 用户纠正（地层里有 user_correction 化石）：错误方向必须留下尸体，
-    #       防未来会话把否决路线再走一遍
-    #    ② 顾问意见刚被消费（audit 近期有咨询）：采纳标注的 durable 半边
-    #       ——audit.jsonl 里 adopted 是 null，落 decisions.md 才闭环）
+    #    全靠自觉，这里是机器层补口。v1.94.0（122）纠正半边升级为 PD 式闭环：
+    #    埋点（prompt_intercept）→ pending 高水位（journal）→ 此处升级提醒
+    #    （带游标的一行处置命令）→ 提交侧 record-only 留痕（2.9）。10 分钟
+    #    墙钟窗作废：长轮次纠正（0158a98b 11:12 纠正 vs 11:32 轮末）曾恰好逃逸。
     try:
         from datetime import datetime as _dt
         lib_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib")
         if lib_dir not in sys.path:
             sys.path.insert(0, lib_dir)
-        from journal import load_journal
+        from journal import load_journal, pending_corrections
         from datetime import timedelta as _td
         cutoff = _dt.now() - _td(minutes=10)
 
@@ -500,17 +499,41 @@ def check_context(project_dir):
                 return _dt.fromisoformat(e["ts"][:19])
             except (ValueError, KeyError, TypeError):
                 return None
-        recent_correction = any(
-            e.get("kind") == "user_correction" and (_ev_ts(e) or cutoff) >= cutoff
-            for e in load_journal(project_dir)[-20:]
-        )
         triggers = []
-        if recent_correction:
+        pending = pending_corrections(project_dir)
+        if pending:
+            _excerpts = "\n".join(
+                f"       - {(p.get('excerpt') or '?')[:60]}"
+                for p in pending[-2:])
+            _cursor = str(pending[-1].get("ts") or "")
+            _jp = os.path.join(lib_dir, "journal.py")
+            _ack_cmd = (
+                f"python3 {_jp} . ack-corrections "
+                f"'{{\"how\":\"advisor\",\"upto\":\"{_cursor}\","
+                f"\"note\":\"一句话结论\"}}'"
+            )
             triggers.append((
                 "correction",
-                "✍️ 决策落盘（用户纠正）：把【错误方向＋修正后的方向＋一句理由】"
-                "append 进 .regress/decisions.md（否决过的方案必须留下尸体，"
-                "防未来会话重走）；文件不存在按 init 模板创建。",
+                f"🔁 未处置用户纠正 {len(pending)} 条（高水位后）——0158a98b "
+                "标本实证：纠正被埋点后无人消费（顾问零调用）。处置：先对质顾问"
+                "（mcp__advisor__consult 带纠正原文+你的方案与理由）或自行判断"
+                "并标注「未获第二意见」，再一行确认（how 填 not_correction "
+                "即 FP 出口）：\n"
+                + _excerpts + "\n       " + _ack_cmd + "\n"
+                "       并把【错误方向＋修正后的方向＋一句理由】append 进 "
+                ".regress/decisions.md（否决过的方案必须留下尸体）。",
+            ))
+        recent_constraint = any(
+            e.get("kind") == "user_constraint" and (_ev_ts(e) or cutoff) >= cutoff
+            for e in load_journal(project_dir)[-20:]
+        )
+        if recent_constraint:
+            triggers.append((
+                "constraint",
+                "🚧 用户硬约束在场（user_constraint 化石）——授权/红线/发布门槛"
+                "类约束须在 .regress/decisions.md 留持久记录：上下文会蒸发，"
+                "红线不能只活在对话里（0158a98b：「发布前一定要人类审查」全靠"
+                "AI 自觉补档）。",
             ))
         if _recent_consult(10):
             triggers.append((

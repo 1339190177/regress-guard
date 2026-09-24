@@ -274,7 +274,7 @@ def test_decision_reminder_on_correction(isolated_tmp, tmp_path):
     _mk_journal_correction(project, minutes_ago=1)
     rs = reflection_check.check_context(project)
     joined = "\n".join(rs or [])
-    assert "决策落盘（用户纠正）" in joined
+    assert "未处置用户纠正" in joined          # v1.94 高水位提醒（新文案）
     assert "decisions.md" in joined and "否决" in joined
 
 
@@ -294,17 +294,18 @@ def test_decision_reminder_cooldown(isolated_tmp, monkeypatch, tmp_path):
     _mk_journal_correction(project, minutes_ago=1)
     _add_audit(monkeypatch, tmp_path)
     r1 = "\n".join(reflection_check.check_context(project) or [])
-    assert "决策落盘（用户纠正）" in r1 and "决策落盘（顾问意见）" in r1
+    assert "未处置用户纠正" in r1 and "决策落盘（顾问意见）" in r1
     r2 = "\n".join(reflection_check.check_context(project) or [])
-    assert "决策落盘" not in r2                  # 两类都已冷却
+    assert "未处置用户纠正" not in r2 and "决策落盘" not in r2  # 两类都已冷却
 
 
 def test_decision_reminder_stale_correction_skipped(isolated_tmp, tmp_path):
-    """地层里的纠正是旧化石（>10 分钟）→ 不提醒。"""
+    """v1.94 契约翻转：旧纠正（>10 分钟）但未处置 → 仍提醒（高水位窗取代
+    墙钟窗——0158a98b 标本 11:12 纠正 vs 11:32 轮末恰好逃逸的修复锚）。"""
     project = _mk_proj(tmp_path)
     _mk_journal_correction(project, minutes_ago=30)
     rs = reflection_check.check_context(project)
-    assert "决策落盘（用户纠正）" not in "\n".join(rs or [])
+    assert "未处置用户纠正" in "\n".join(rs or [])
 
 
 def test_auto_consult_success(isolated_tmp, stub_advisor, tmp_path):

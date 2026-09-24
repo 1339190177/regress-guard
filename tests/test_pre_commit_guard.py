@@ -1347,3 +1347,71 @@ def test_deepcheck_s_tier_exempt(project):
                     + _M_ACC_DONE)
     code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert "深查" not in err
+
+
+# ─── v1.94.0（122）：2.9 纠正未处置留痕——record-only 环境级 ───
+
+def _journal_correction(project, ts, kind="user_correction", **extra):
+    jd = project / ".regress" / "journal"
+    jd.mkdir(parents=True, exist_ok=True)
+    ev = {"ts": ts, "kind": kind, "session": "s-test"}
+    ev.update(extra)
+    with open(jd / "events.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+
+
+def test_correction_unreviewed_records_but_passes(project):
+    """pending 纠正>0：history 落 correction_unreviewed + stderr 附注，但 exit 0
+    （record-only——后续 held-out/验收/深查检查不得被短路）。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    _stage(project, "src/app.js", "x = 2\n")
+    _journal_correction(project, "2026-09-24T11:12:54", excerpt="每一个文档你都单独审查")
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    assert code == 0, err
+    assert any(e.get("event") == "correction_unreviewed"
+               for e in read_history(project))
+    assert "纠正" in err and "不拦" in err
+
+
+def test_correction_loop_env_off(project):
+    """逃生阀：RG_CORRECTION_LOOP=off 不留痕。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    _stage(project, "src/app.js", "x = 3\n")
+    _journal_correction(project, "2026-09-24T11:12:54", excerpt="x")
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project,
+                             extra_env={"RG_CORRECTION_LOOP": "off"})
+    assert code == 0, err
+    assert not any(e.get("event") == "correction_unreviewed"
+                   for e in read_history(project))
+
+
+def test_correction_loop_config_off(project):
+    """逃生阀：config correction_loop.enabled=false 不留痕。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    _stage(project, "src/app.js", "x = 4\n")
+    _journal_correction(project, "2026-09-24T11:12:54", excerpt="x")
+    cfg = project / ".regress" / "config.json"
+    cfg.write_text('{"strict": true, "correction_loop": {"enabled": false}}',
+                   encoding="utf-8")
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    assert code == 0, err
+    assert not any(e.get("event") == "correction_unreviewed"
+                   for e in read_history(project))
+
+
+def test_correction_acked_not_recorded(project):
+    """处置后（高水位盖过纠正）不再留痕——闭环的清零半边。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    _stage(project, "src/app.js", "x = 5\n")
+    _journal_correction(project, "2026-09-24T11:12:54", excerpt="x")
+    _journal_correction(project, "2026-09-24T11:30:00",
+                        kind="correction_disposition",
+                        how="advisor", upto="2026-09-24T11:30:00")
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    assert code == 0, err
+    assert not any(e.get("event") == "correction_unreviewed"
+                   for e in read_history(project))

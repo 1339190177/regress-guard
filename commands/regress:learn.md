@@ -50,6 +50,22 @@ digest 不为空时，对每条重复签名：
 跨任务重复的产品否决（行业惯例/用户习惯/该简化）升格为产品规律，写入
 `.regress/product-context.md` 的「设计否决记录」段，稳定后晋级「行业惯例」段。
 
+## 纠正聚类（v1.94.0，122：纠正化石从只埋不挖到进 learn）
+
+digest 自本版起纳入 `user_correction`（kind 字段区分，签名形如
+`correction:<摘录前16字>`）。**同主题纠正跨会话 ≥2 次 = 用户反复纠正同一类
+误解**——比工具失败更稀缺的信号（"自信地错"没有失败信号，纠正词是唯一探测器）：
+
+1. 对 digest 里 kind=user_correction 的条目，`journal.py . raw` 回放历次纠正原文
+2. 三问归因照走，但①错误定位优先问：**AI 当时自认为对的是什么？**（纠正击中的
+   是假设而非步骤——写清被击碎的假设比写清步骤值钱）
+3. `how=not_correction` 的 disposition 化石 = 已判 FP 的纠正，归因时剔除
+4. 写入项目规律块的格式：`- 用户反复纠正「<主题>」×N：被击碎的假设 <was>，修正 <reality>`
+
+另外顺手看 `pending_corrections`（`journal.py . raw` 尾部的
+correction_disposition 高水位之后仍有的 user_correction）——长期挂起的
+未处置纠正是纪律漏洞的直接证据，值得点名。
+
 ## 如果 total_commits == 0
 告诉用户："暂无历史数据。用了几次后再来。"
 

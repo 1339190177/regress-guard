@@ -158,6 +158,20 @@ CORRECTION_RE = re.compile(
     r"(?<![报出崩闪])错了|不对|不是这样|理解错|方向错|搞反了|弄反了|又错|wrong"
 )
 
+# ── 硬约束检测（v1.94.0，122：约束语式只埋点不提醒）──
+# "发布到公网之前一定要人类审查、作者署名要对"这类红线只活在对话里，
+# 机械上不可见（0158a98b 标本：授权与红线全靠 AI 自觉写 decisions.md）。
+# 方向词共现做粗防泛化：单独"必须努力"式自述不埋，约束指向动作/产物才埋。
+CONSTRAINT_RE = re.compile(r"一定|必须|不许|不能|只能|禁止|绝不|红线")
+CONSTRAINT_DIRECTION_RE = re.compile(
+    r"你|发布|推送|提交|开源|公网|作者|删除|执行|审查|写|改"
+)
+
+# ── 重任务检测（v1.94.0，122：f77a+0158a98b 两标本=钩子在场清单缺席）──
+# 发布/开源类任务风险集中（不可逆+外发），M/L 档的验收+深查纪律全部
+# 空转——一行提醒把"要不要开清单"摆到台面，不拦。
+HEAVY_TASK_RE = re.compile(r"发布|开源|推送|公网|删.{0,6}历史|重建仓|推到.{0,6}上")
+
 
 def correction_reminder(text):
     """检测到用户纠正 → 注入"先向顾问求证方向，再动手"。"""
@@ -201,6 +215,12 @@ def analyze_prompt(text):
         reminders.append(cr)
         journal_append("user_correction", excerpt=clean[:200])  # 纠正化石入地层
 
+    # 0.6 硬约束埋点（v1.94.0，122）：约束语式+方向词共现 → user_constraint
+    # 化石（红线机械可见）。不注入提醒——约束已在用户原话里，AI 天然可见；
+    # 埋点为的是 Stop 侧"红线落盘"提醒和 /regress:learn 考古有据可挖。
+    if (CONSTRAINT_RE.search(clean) and CONSTRAINT_DIRECTION_RE.search(clean)):
+        journal_append("user_constraint", excerpt=clean[:200])
+
     # 1. 重复提交检测
     last = load_last_prompt()
     if last and clean == last:
@@ -229,8 +249,10 @@ def analyze_prompt(text):
             f"如果你有明确预期，建议直接说出来能减少返工。"
         )
 
-    # 4. 变更类需求 → 提醒 plan
-    if re.search(CHANGE_VERBS, clean) and len(clean) >= MIN_REQUIREMENT_LEN:
+    # 4. 变更类需求 → 提醒 plan（4.5 重任务共用 .regress 探测，故门条件并联
+    #    HEAVY_TASK_RE——"把这个项目开源"不含变更动词，纯 CHANGE_VERBS 门会漏）
+    if ((re.search(CHANGE_VERBS, clean) and len(clean) >= MIN_REQUIREMENT_LEN)
+            or HEAVY_TASK_RE.search(clean)):
         # 检查是否有 .regress/
         project_dir = (
             os.environ.get("CLAUDE_PROJECT_DIR")
@@ -249,14 +271,56 @@ def analyze_prompt(text):
                 break
             search_dir = parent
 
-        if has_regress and "/regress:" not in text:
+        if (has_regress and "/regress:" not in text
+                and re.search(CHANGE_VERBS, clean)
+                and len(clean) >= MIN_REQUIREMENT_LEN):
             reminders.append(
                 "📋 检测到变更需求——AI 会先解析需求+分析改动点（/regress:plan 逻辑），"
                 "不需要你手动触发。"
             )
 
+        # 4.5 重任务无清单提醒（v1.94.0，122）：发布/开源类任务+无活跃清单 →
+        # 一行建议开 M 档（验收+深查纪律恰是这类任务的止血位）。同会话只提
+        # 一次（tmp 冷却），不刷屏。
+        if has_regress and "/regress:" not in text and HEAVY_TASK_RE.search(clean):
+            if not _active_manifests(project_dir, limit=1) and not _heavy_reminded():
+                reminders.append(
+                    "🚀 重任务检测（发布/开源/公网类）且当前无活跃清单——此类任务"
+                    "不可逆+外发，建议开 M 档清单（验收 EARS 行+深查节会拦"
+                    "「只读头部就下判定」和「自信错判」；0158a98b 标本实证）。"
+                    "不需要则忽略本行。"
+                )
+                _mark_heavy_reminded()
+
     save_prompt(clean)
     return reminders
+
+
+def _heavy_task_state_path():
+    """重任务提醒冷却文件——按会话隔离，存在即已提醒过。"""
+    session = (
+        os.environ.get("CLAUDE_SESSION_ID")
+        or os.environ.get("ZCODE_SESSION_ID")
+        or "default"
+    )
+    return os.path.join(
+        tempfile.gettempdir(), f"regress-guard-heavy-reminded-{session}.flag")
+
+
+def _heavy_reminded():
+    try:
+        open(_heavy_task_state_path(), encoding="utf-8").read()
+        return True
+    except (IOError, OSError):
+        return False
+
+
+def _mark_heavy_reminded():
+    try:
+        with open(_heavy_task_state_path(), "w", encoding="utf-8") as f:
+            f.write("1")
+    except (IOError, OSError):
+        pass
 
 
 

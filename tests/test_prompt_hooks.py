@@ -253,3 +253,60 @@ def test_governance_off_escape(tmp_path, monkeypatch, capsys):
         pi.main()
     out = capsys.readouterr().out
     assert "治理上下文" not in out  # off 逃生：治理段不出（需求入口检查仍可出）
+
+
+# ─── v1.94.0（122）：重任务无清单提醒 + 约束检测泛化防线 ───
+
+def _heavy_reminders(rs):
+    return [r for r in rs if "重任务" in r]
+
+
+def _quiet_project(tmp_path):
+    """有 .regress 但无活跃清单的项目。"""
+    proj = tmp_path / "quiet"
+    (proj / ".regress" / "manifests").mkdir(parents=True)
+    return proj
+
+
+def test_heavy_task_no_manifest_reminds_once(isolated_tmp, tmp_path, monkeypatch):
+    """开源类重任务（无变更动词！）+无活跃清单 → 一行 M 档建议，同会话只提一次。
+
+    0158a98b 标本原文即此形态——CHANGE_VERBS 门若不并联 HEAVY_TASK_RE，
+    "我想把这个项目开源"会整个漏掉（批内修复的对应用例）。"""
+    monkeypatch.setenv("ZCODE_PROJECT_DIR", str(_quiet_project(tmp_path)))
+    rs = _heavy_reminders(prompt_intercept.analyze_prompt(
+        "我想把这个项目开源到github上面，注意数据安全"))
+    assert len(rs) == 1 and "M 档" in rs[0]
+    rs2 = _heavy_reminders(prompt_intercept.analyze_prompt("好，准备推送到公网"))
+    assert rs2 == []  # 同会话冷却，不刷屏
+
+
+def test_heavy_task_with_active_manifest_quiet(isolated_tmp, tmp_path, monkeypatch):
+    proj = _quiet_project(tmp_path)
+    (proj / ".regress" / "manifests" / "R1.md").write_text(
+        "---\nid: R1\nstatus: in-progress\n---\n", encoding="utf-8")
+    monkeypatch.setenv("ZCODE_PROJECT_DIR", str(proj))
+    assert _heavy_reminders(prompt_intercept.analyze_prompt(
+        "我想把这个项目开源到github上面")) == []
+
+
+def test_normal_change_request_not_heavy(isolated_tmp, tmp_path, monkeypatch):
+    monkeypatch.setenv("ZCODE_PROJECT_DIR", str(_quiet_project(tmp_path)))
+    assert _heavy_reminders(prompt_intercept.analyze_prompt(
+        "帮我把登录页的按钮改成蓝色，加个圆角")) == []
+
+
+def test_constraint_re_patterns():
+    assert prompt_intercept.CONSTRAINT_RE.search("发布之前一定要人类审查")
+    assert prompt_intercept.CONSTRAINT_RE.search("不许跳过测试")
+    assert not prompt_intercept.CONSTRAINT_RE.search("这个功能很好用")
+
+
+def test_constraint_requires_direction_word():
+    """约束语式 + 方向词共现才埋——"必须努力"式自述不埋。"""
+    t = "必须努力工作才能成功"
+    assert not (prompt_intercept.CONSTRAINT_RE.search(t)
+                and prompt_intercept.CONSTRAINT_DIRECTION_RE.search(t))
+    t2 = "发布到公网之前一定要人类审查，作者是yelisheng"
+    assert (prompt_intercept.CONSTRAINT_RE.search(t2)
+            and prompt_intercept.CONSTRAINT_DIRECTION_RE.search(t2))

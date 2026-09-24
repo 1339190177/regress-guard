@@ -37,6 +37,7 @@ from manifest_parser import find_active_manifest, get_all_changed_files, get_man
 from git_diff_analyzer import get_staged_files, filter_files, find_untracked_changes  # noqa: E402
 from test_runner import run_tests  # noqa: E402
 from history import record as _history_record  # noqa: E402
+from journal import pending_corrections as _pending_corrections  # noqa: E402
 
 
 def _running_version():
@@ -541,6 +542,33 @@ def main():
                 "· 非定稿类/确要跳过：文件头加 docgate: exempt；"
                 "config docgate.enabled=false；或 REGRESS_DOCGATE=off"
             , "docgate_missing")
+
+    # ─── 2.9 纠正未处置留痕（v1.94.0，122：record-only，环境级）───────
+    # PD 闭环的提交侧探针：pending 纠正>0 → 留 correction_unreviewed 事件 +
+    # 一行附注（emit_warn 不拦）。phase-1 全不阻断是裁决过的取舍（ESLint
+    # warn 疲劳教训反过来用：无升格路径的提醒=装饰，但升格要等两轮野外
+    # 数据——disposition 率/pending FP 率进 focus 观察位，人裁后才议拦截）。
+    # 环境级（不绑清单）：0158a98b 标本正是无清单会话。双逃生照 docgate 惯例。
+    _cl_cfg = config.get("correction_loop") or {}
+    if (_cl_cfg.get("enabled", True)
+            and os.environ.get("RG_CORRECTION_LOOP", "") != "off"):
+        try:
+            _pending = _pending_corrections(project_dir)
+        except Exception:
+            _pending = []
+        if _pending:
+            record(regress_dir, "correction_unreviewed", "",
+                   n=len(_pending),
+                   newest=str(_pending[-1].get("ts") or ""))
+            # 纯附注不走 emit_warn（它会 exit(0) 短路后续检查——record-only
+            # 语义要求 held-out/验收/深查照常跑）
+            print(
+                "REGRESS-GUARD (note): （v1.94.0 纠正闭环）"
+                f"{len(_pending)} 条用户纠正未处置（已留痕不拦）——"
+                "Stop 侧提醒里有带游标的一行确认命令；"
+                "处置=顾问对质或自判标注后 ack-corrections。"
+                "关闭：RG_CORRECTION_LOOP=off 或 config correction_loop.enabled=false",
+                file=sys.stderr)
 
     # ─── 3. 检查 bypass ───────────────────────────────
     if bypass_until:

@@ -97,19 +97,53 @@ def journal_digest(project_dir, top=8):
 
     返回跨会话出现 ≥2 次的重复签名——单会话高频是重试噪声，
     跨会话重复才是稳定经验（与 history.py 的噪声过滤哲学一致）。
+    v1.94.0 起纳入 user_correction（纠正聚类，kind 字段区分来源）：
+    同主题纠正跨会话 ≥2 次 = 用户反复踩同一类误解，规律候选。
     """
     from collections import Counter
 
-    events = [e for e in load_journal(project_dir) if e.get("kind") == "tool_fail"]
+    def _sig_of(e):
+        if e.get("kind") == "user_correction":
+            return "correction:" + str(e.get("excerpt") or "?")[:16]
+        return e.get("sig") or "?"
+
+    events = [e for e in load_journal(project_dir)
+              if e.get("kind") in ("tool_fail", "user_correction")]
     sig_sessions = {}
+    sig_kind = {}
     for e in events:
-        sig = e.get("sig") or "?"
+        sig = _sig_of(e)
         sig_sessions.setdefault(sig, set()).add(e.get("session", "?"))
+        sig_kind[sig] = e.get("kind")
     stable = {s: len(sess) for s, sess in sig_sessions.items() if len(sess) >= 2}
-    total = Counter(e.get("sig") or "?" for e in events)
+    total = Counter(_sig_of(e) for e in events)
     return [
-        {"sig": sig, "sessions": n, "total": total.get(sig, 0)}
+        {"sig": sig, "kind": sig_kind.get(sig), "sessions": n,
+         "total": total.get(sig, 0)}
         for sig, n in sorted(stable.items(), key=lambda x: -x[1])[:top]
+    ]
+
+
+def pending_corrections(project_dir, scan_cap=200):
+    """处置高水位（v1.94.0，122）：晚于最近一条 correction_disposition 的
+    user_correction 即 pending。
+
+    高水位语义（顾问裁决的 A 变体）：ack 只需一行命令（PD 教训——ack 贵了
+    就没人确认），但游标安全——disposition 的 upto 字段由 Stop 提醒内嵌
+    （最新 pending 的 ts），只清"已展示"的；展示之后新到的纠正仍 pending。
+    ISO 时间串字典序即时间序；缺 ts 的坏事件按"最早"处理（不误报 pending）。
+    scan_cap 只扫尾部，长寿地层 O(cap)。
+    """
+    events = load_journal(project_dir)[-scan_cap:]
+    high = ""
+    for e in events:
+        if e.get("kind") == "correction_disposition":
+            mark = str(e.get("upto") or e.get("ts") or "")
+            if mark > high:
+                high = mark
+    return [
+        e for e in events
+        if e.get("kind") == "user_correction" and str(e.get("ts") or "") > high
     ]
 
 
@@ -169,6 +203,26 @@ if __name__ == "__main__":
             sys.exit(2)
         print(json.dumps({"ok": journal_append(sys.argv[3], start_dir=_d, **_fields)},
                          ensure_ascii=False))
+    elif _cmd == "ack-corrections":
+        # journal.py <dir> ack-corrections '{"how":"advisor|self|not_correction","upto":"...","note":"..."}'
+        # 批量确认（v1.94.0，122）：一行打完。how 语义：advisor=已对质顾问 /
+        # self=自行判断处置（含标注未获第二意见）/ not_correction=判定非纠正（FP 出口）。
+        # upto 缺省=now；抄 Stop 提醒里内嵌的游标值则只清已展示的同批（顾问安全变体）。
+        try:
+            _fields = json.loads(sys.argv[3]) if len(sys.argv) > 3 else {}
+        except json.JSONDecodeError as _e:
+            print(f"json 解析失败: {_e}", file=sys.stderr)
+            sys.exit(2)
+        if not isinstance(_fields, dict):
+            print("用法: journal.py <dir> ack-corrections '<json对象>'", file=sys.stderr)
+            sys.exit(2)
+        _fields.setdefault("how", "self")
+        _fields.setdefault("upto", datetime.now().isoformat())
+        print(json.dumps({
+            "ok": journal_append("correction_disposition", start_dir=_d, **_fields),
+            "cleared_after": _fields["upto"],
+            "still_pending": len(pending_corrections(_d)),
+        }, ensure_ascii=False))
     elif _cmd == "stats":
         print(json.dumps(journal_stats(_d), ensure_ascii=False, indent=2))
     elif _cmd == "adoption":
