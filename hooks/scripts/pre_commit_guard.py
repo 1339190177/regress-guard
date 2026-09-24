@@ -1341,6 +1341,16 @@ def main():
                         "质量自己把握。S 档/quick 豁免。"
                     , "deepcheck_missing")
         passed = f"{result['passed']}/{result['total']}"
+        # v1.95.0（123）：skipped 可见性——分母已含 skipped（test_runner 对齐
+        # jest 语义），这里补留痕+注记；M/L 盖章拦截在 done 戳前。
+        _skip_n = int(result.get("skipped") or 0)
+        if _skip_n:
+            record(regress_dir, "note", manifest_id,
+                   note="test_skipped_present", skipped=_skip_n, runner=runner)
+            print(f"REGRESS-GUARD (note): 跳过不是通过——实测 {passed} 另有 "
+                  f"{_skip_n} skipped（已留痕；M/L 盖章将被拦，"
+                  "config test_runner.allow_skips=true 可显式承认）",
+                  file=sys.stderr)
         # 行尾计数对账（v1.87.1，092 晚查）：「；N/N」结尾=套件计数宣称（家规
         # 形态）——077 的「536/536」正是此形态，当场会被拦。非行尾 N/N（如
         # 「清单健康 59/59」作用域计数）只告警留痕（090 不误伤）。
@@ -1392,11 +1402,33 @@ def main():
             print("REGRESS-GUARD: 归因清单为 planning（未临行）——不盖 done，仅放行留痕",
                   file=sys.stderr)
         else:
+            # v1.95.0（123）：跳过不是通过——M/L done 盖章时套件存在 skipped 即拦
+            # （外部评审实证洞："1 passed, 1 skipped"曾被盖成全过）。逃生三路：
+            # config test_runner.allow_skips=true（xfail 型项目显式承认）/
+            # S 档 / quick 模式——与验收入环同构的豁免面。
+            if (_skip_n and _tier in ("M", "L")
+                    and str((_mp_scan or {}).get("mode") or "") != "quick"
+                    and (config.get("test_runner") or {}).get("allow_skips") is not True):
+                record(regress_dir, "commit_blocked", manifest_id,
+                       reason="done_with_skips", skipped=_skip_n, tier=_tier)
+                emit_block(
+                    f"提交被拦：M/L 盖章 done 但套件存在 {_skip_n} 个 skipped"
+                    f"（跳过不是通过，v1.95.0）：<id {manifest_id}>\n\n"
+                    "实测 " + passed + f" + {_skip_n} skipped——skipped 的用例"
+                    "既没证明也没证伪，盖全过章=纸面反馈（外部评审实证洞："
+                    "1 passed+1 skipped 曾被报成 1/1 全过）。\n\n"
+                    "放行路径（三选一）：\n"
+                    "  ① 让跳过变成明确判据：修掉 skip（过时用例删除/条件修复）\n"
+                    "  ② config test_runner.allow_skips=true——xfail 型项目显式"
+                    "承认（开着即负债，review 时会看到）\n"
+                    "  ③ S 档/quick 模式清单（豁免面与验收入环一致）"
+                , "done_with_skips")
             try:
                 update_frontmatter(manifest, {
                     "status": "done",
                     "test_verified_by": "hook",
-                    "test_result": f"{passed} passed",
+                    "test_result": f"{passed} passed"
+                                   + (f"，{_skip_n} skipped" if _skip_n else ""),
                 })
             except Exception as e:
                 # 写清单失败不阻断（测试已通过，清单写入是辅助记录）

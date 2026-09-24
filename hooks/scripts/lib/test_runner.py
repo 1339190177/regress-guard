@@ -265,6 +265,13 @@ def _parse_jest(output, exit_code, project_dir=None):
             1 for s in suites for a in s.get("assertionResults", [])
             if a.get("status") == "failed"
         )
+        # v1.95.0（123）：skipped 可见性——jest 分母本就含这些断言（total=全部），
+        # 但 skipped 数从未透传（外部评审实证的盲区另一半）。todo/pending/
+        # disabled 在 jest/vitest 语义里都是"没真正跑"。
+        skipped = sum(
+            1 for s in suites for a in s.get("assertionResults", [])
+            if a.get("status") in ("skipped", "pending", "todo", "disabled")
+        )
         failures = [
             {
                 "test": a.get("fullName", ""),
@@ -277,6 +284,7 @@ def _parse_jest(output, exit_code, project_dir=None):
             "runner": "jest",
             "status": "pass" if failed == 0 and exit_code == 0 else "fail",
             "total": total, "passed": passed, "failed": failed,
+            "skipped": skipped,
             "duration_ms": 0,
             "failures": failures[:20],
             "raw_snippet": "",
@@ -296,22 +304,31 @@ def _parse_jest(output, exit_code, project_dir=None):
 
 
 def _parse_pytest(output, exit_code):
-    """解析 pytest 输出。"""
+    """解析 pytest 输出。
+
+    v1.95.0（123）：skipped 进分母（与 jest 的 total=全部断言语义对齐）——
+    此前 total=passed，"1 passed, 1 skipped"被报成 1/1 全过（外部评审实证：
+    行尾 N/N 对账同瞎，宣称=实测=1/1 的一致假象）。xfailed/deselected 语义
+    不同（已知问题/显式筛除）故意不进分母，见 WORKFLOW 跳过语义节。
+    """
     # pytest 末尾通常有：===== 3 passed in 0.12s =====
-    match = re.search(
-        r'(\d+) passed(?:.*?(\d+) failed)?(?:.*?(\d+) error)?',
-        output
-    )
-    passed = failed = errors = 0
-    if match:
-        passed = int(match.group(1))
-        failed = int(match.group(2) or 0)
-        errors = int(match.group(3) or 0)
+    # v1.95.0（123）：各 token 独立搜索——原链式正则的 failed 组只往 passed
+    # 之后找，而 pytest 惯例"1 failed, 1 passed"（failed 在前），fail 分支的
+    # failed 计数一直漏抓（skipped 进分母后此错显形，顺手根治）。
+    # xpassed/xfailed 不被误抓（"1 xpassed"的数字不紧邻 passed）。
+    def _cnt(tok):
+        m = re.search(rf'(\d+) {tok}', output)
+        return int(m.group(1)) if m else 0
+    passed = _cnt("passed")
+    failed = _cnt("failed")
+    errors = _cnt("error")
+    skipped = _cnt("skipped")
 
     if exit_code == 0 and failed == 0 and errors == 0:
         return {
             "runner": "pytest", "status": "pass",
-            "total": passed, "passed": passed, "failed": 0,
+            "total": passed + skipped, "passed": passed, "failed": 0,
+            "skipped": skipped,
             "duration_ms": 0, "failures": [], "raw_snippet": ""
         }
 
@@ -323,8 +340,9 @@ def _parse_pytest(output, exit_code):
 
     return {
         "runner": "pytest", "status": "fail",
-        "total": passed + failed + errors,
+        "total": passed + failed + errors + skipped,
         "passed": passed, "failed": failed + errors,
+        "skipped": skipped,
         "duration_ms": 0,
         "failures": failures[:20] if failures else [{"test": "(unknown)", "message": output[-200:]}],
         "raw_snippet": output[-300:]

@@ -263,6 +263,20 @@ TOP-1 召回行（`RG_PROMPT_CONTEXT=off` 逃生）——防线从"拦截时才�
 - 断点续作：`/regress:resume` 一句话重建现场
 - 机器级经验：finish 代谢缝自动落机器事实卡（v1.31，见下节）
 
+## 跳过语义（v1.95：跳过不算通过——外部评审实证洞）
+
+"1 passed, 1 skipped" 不是全过：skipped 的用例既没证明也没证伪。
+
+- **分母含 skipped**（pytest 对齐 jest 既有语义）：套件计数 N/N 的分母=全部执行的
+  用例——行尾计数宣称会自然对不上（"；1/1" vs 实测 1/2，既有反谎报闸拦）
+- **M/L done 盖章拦截**：skipped>0 时盖章被拦（done_with_skips）。放行三路：
+  修掉 skip / config `test_runner.allow_skips: true`（xfail 型项目显式承认，
+  开着即负债）/ S 档·quick 豁免（与验收入环同构）
+- **边界**：xfailed/xpassed/deselected **不进分母**——xfailed=代码里已承认的已知
+  问题，deselected=显式筛除，语义与"没跑"不同；skip 密集仓一开即红是特性不是
+  bug（逼出显式裁决），滥用 allow_skips 放水的面进观察位
+- jest/vitest：skipped/todo/pending/disabled 计入 skipped 字段（分母本就含）
+
 ## 纠正闭环（v1.94：correction-as-incident，0158a98b 标本推动）
 
 用户纠正此前"只埋不挖"（化石入地层后无人消费——标本会话顾问零调用）。本层

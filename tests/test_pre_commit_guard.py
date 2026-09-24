@@ -1415,3 +1415,60 @@ def test_correction_acked_not_recorded(project):
     assert code == 0, err
     assert not any(e.get("event") == "correction_unreviewed"
                    for e in read_history(project))
+
+
+# ─── v1.95.0（123）：跳过不算通过——分母收编+盖章拦截 ───
+
+def _skipping_runner(project):
+    """一个过+一个跳的 pytest 现场（外部评审实证洞的活体形态）。"""
+    (project / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    (project / "test_smoke.py").write_text(
+        "import pytest\n"
+        "def test_ok():\n    assert True\n"
+        "@pytest.mark.skip(reason='batch123 specimen')\n"
+        "def test_skip():\n    assert False\n",
+        encoding="utf-8")
+
+
+def test_skip_claimed_full_blocked_by_count(project):
+    """『1 passed, 1 skipped』+ 行尾宣称『；1/1』→ 既有对账拦（实测 1/2）。"""
+    _skipping_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    _stage(project, "src/app.js", "x = 9\n")
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    assert code == 2 and "1/2" in err  # 分母含 skipped 后对账天然拦
+
+
+def test_done_with_skips_blocks(project):
+    """计数诚实（；1/2）但 M 档盖章 done 时有 skipped → 拦（done_with_skips）。"""
+    _skipping_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    _stage(project, "src/app.js", "x = 10\n")
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/2", project)
+    assert code == 2 and "盖章 done 但套件存在 1 个 skipped" in err
+    assert any(e.get("reason") == "done_with_skips" for e in read_history(project))
+    assert "跳过不是通过" in err
+
+
+def test_allow_skips_escape_passes(project):
+    """逃生阀：config test_runner.allow_skips=true → 放行且留痕 skipped。"""
+    _skipping_runner(project)
+    _write_manifest(project, _M_FULL + _ACC_OK)
+    _stage(project, "src/app.js", "x = 11\n")
+    cfg = project / ".regress" / "config.json"
+    cfg.write_text('{"strict": true, "test_runner": {"allow_skips": true}}',
+                   encoding="utf-8")
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/2", project)
+    assert code == 0, err
+    assert "1 skipped" in err and "留痕" in err
+    assert any(e.get("note") == "test_skipped_present" for e in read_history(project))
+
+
+def test_s_tier_skip_note_only(project):
+    """S 档：无行尾计数（豁免）→ skipped 只留痕不拦。"""
+    _skipping_runner(project)
+    _write_manifest(project, _M_FULL.replace("tier: M", "tier: S") + _ACC_OK)
+    _stage(project, "src/app.js", "x = 12\n")
+    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    assert code == 0, err
+    assert "skipped" in err  # 可见性注记在场

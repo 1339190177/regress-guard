@@ -225,3 +225,57 @@ def test_timeout_config_knob(tmp_path):
     assert tr._timeout_for(str(d)) == 300  # 配置生效
     (d / ".regress" / "config.json").write_text("{bad", encoding="utf-8")
     assert tr._timeout_for(str(d)) == 120  # 坏配置回退
+
+
+# ─── v1.95.0（123）：跳过不算通过——skipped 进分母+透传 ───
+
+def test_parse_pytest_skip_in_denominator():
+    """外部评审实证洞的回归锚：『1 passed, 1 skipped』≠ 1/1 全过。"""
+    out = ".....s.\n===== 1 passed, 1 skipped in 0.05s ====="
+    r = _parse_pytest(out, 0)
+    assert r["status"] == "pass"
+    assert r["total"] == 2 and r["passed"] == 1 and r["skipped"] == 1
+
+
+def test_parse_pytest_skip_word_order_variant():
+    """词序变体兜底：skipped 出现在 deselected 混排里也能抓到。"""
+    out = "===== 2 passed, 1 deselected, 3 skipped in 0.1s ====="
+    r = _parse_pytest(out, 0)
+    assert r["skipped"] == 3 and r["total"] == 5 and r["passed"] == 2
+
+
+def test_parse_pytest_xfailed_not_in_denominator():
+    """xfailed 语义=已知问题（代码里承认过），故意不进分母（WORKFLOW 记边界）。"""
+    out = "===== 2 passed, 1 xfailed in 0.1s ====="
+    r = _parse_pytest(out, 0)
+    assert r["skipped"] == 0 and r["total"] == 2
+
+
+def test_parse_pytest_no_skip_unchanged():
+    out = "===== 3 passed in 0.1s ====="
+    r = _parse_pytest(out, 0)
+    assert r["total"] == 3 and r["passed"] == 3 and r["skipped"] == 0
+
+
+def test_parse_pytest_skip_in_fail_branch():
+    out = "FF.s\n===== 1 failed, 1 passed, 1 skipped in 0.1s ====="
+    r = _parse_pytest(out, 1)
+    assert r["status"] == "fail" and r["skipped"] == 1
+    assert r["total"] == 3 and r["failed"] == 1
+
+
+def test_parse_jest_skip_todo_counted():
+    """jest/vitest：skipped/todo/pending/disabled 计入 skipped 字段（分母本含）。"""
+    jest_output = json.dumps({
+        "testResults": [{
+            "assertionResults": [
+                {"status": "passed", "fullName": "a"},
+                {"status": "skipped", "fullName": "b"},
+                {"status": "todo", "fullName": "c"},
+                {"status": "pending", "fullName": "d"},
+                {"status": "failed", "fullName": "e",
+                 "failureMessages": ["boom"]},
+            ]}]})
+    r = _parse_jest(jest_output, 1)
+    assert r["total"] == 5 and r["passed"] == 1 and r["failed"] == 1
+    assert r["skipped"] == 3
