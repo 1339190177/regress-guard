@@ -181,6 +181,38 @@ def do_upgrade(source):
     return upgraded
 
 
+def verify_content_integrity(source):
+    """内容对账探针（120，验证位审计产出）：部署 vs 源仓 md5——REQUIRED 清单
+    只查在场性不查内容，半升级窗口/手工编辑/历史残留（根位置死 self_heal 曾使
+    哨兵巡检跑旧版）都会静默漂移。对账映射按**注册位**：self_heal→lib/、
+    heldout_gate→根、其余钩子→根、lib/*→lib/。返回漂移清单（源文件不存在时
+    静默跳过=非本机源仓场景不误报）。
+    """
+    import hashlib
+
+    def _md5(p):
+        return hashlib.md5(open(p, "rb").read()).hexdigest()
+
+    def _pair(src, dst):
+        if not (os.path.exists(src) and os.path.exists(dst)):
+            return None
+        return None if _md5(src) == _md5(dst) else (src, dst)
+
+    pairs = []
+    scripts_dir = os.path.join(source, "hooks", "scripts")
+    for f in REQUIRED_HOOK_FILES:
+        if f == "heldout_gate.py":
+            s = os.path.join(source, "scripts", f)
+        else:
+            s = os.path.join(scripts_dir, f)
+        pairs.append(_pair(s, os.path.join(HOOK_HOME, f)))
+    for f in REQUIRED_LIB_FILES:
+        src_p = (os.path.join(scripts_dir, "self_heal.py")
+                 if f == "self_heal.py" else os.path.join(scripts_dir, "lib", f))
+        pairs.append(_pair(src_p, os.path.join(HOOK_HOME, "lib", f)))
+    return [p for p in pairs if p]
+
+
 def _current_regress_dir():
     """定位当前项目的 .regress/（向上最多 10 级）。"""
     d = (
@@ -361,7 +393,14 @@ def check_and_heal():
         if _ver_gt(source_ver, installed_ver):
             upgraded = do_upgrade(source)
             healed.append(f"自动升级 v{installed_ver} → v{source_ver}（{len(upgraded)} 个文件）")
-            # 升级后不需要再检查文件完整性（刚全量覆盖）
+            # 120：升级后仍对账（do_upgrade 排除 self_heal 自己——lib/self_heal.py
+            # 的漂移只能在这里暴露；版本相等路径同样要对账防手工编辑漂移）
+            drift = verify_content_integrity(source) if source else []
+            for s, d in drift:
+                if d.endswith("lib/self_heal.py"):
+                    issues.append("self_heal 自身漂移（do_upgrade 不自举）→ 修复：bash install.sh")
+                else:
+                    healed.append(f"内容对账漂移（已由升级拉平后仍不一致，疑手工编辑）: {os.path.basename(d)}")
             return issues, healed
 
     # ─── 1. hook 脚本 ─────────────────────────────────
@@ -414,6 +453,15 @@ def check_and_heal():
                     issues.append(f"命令缺失且无法恢复: {cmd}")
             else:
                 issues.append(f"命令缺失: {cmd}")
+
+    # 120：无升级路径的内容对账（版本相等≠内容相等——手工编辑/半升级窗口/
+    # do_upgrade 不自举的 self_heal 都在此暴露；源仓不在场静默跳过）
+    if source:
+        for s, d in verify_content_integrity(source):
+            if d.endswith("lib/self_heal.py"):
+                issues.append("self_heal 自身漂移（do_upgrade 不自举）→ 修复：bash install.sh")
+            else:
+                issues.append(f"内容漂移（部署≠源仓）: {os.path.basename(d)} → 修复：bash install.sh")
 
     return issues, healed
 

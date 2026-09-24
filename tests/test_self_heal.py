@@ -265,3 +265,66 @@ def test_backfill_lock_gitignore_idempotent(tmp_path):
     (rg / "manifests" / ".gitignore").write_text("自定义内容\n", encoding="utf-8")
     assert mod.backfill_lock_gitignore(str(rg)) is None
     assert "自定义内容" in (rg / "manifests" / ".gitignore").read_text(encoding="utf-8")
+
+
+# ─── v1.92.9（120）：内容对账探针（验证位审计产出） ───
+
+def _mk_integrity_env(tmp_path, monkeypatch):
+    """造源仓+部署双布局（注册位映射：self_heal→lib、heldout→根、钩子→根、lib→lib）。"""
+    import importlib.util as _ilu
+    spec = _ilu.spec_from_file_location(
+        "sh_int", os.path.join(os.path.dirname(__file__), "..",
+                               "hooks", "scripts", "self_heal.py"))
+    mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    src_root = tmp_path / "src"
+    for sub in ("hooks/scripts/lib", "scripts", "commands", "templates"):
+        (src_root / sub).mkdir(parents=True, exist_ok=True)
+    (src_root / ".zcode-plugin").mkdir(exist_ok=True)
+    (src_root / ".zcode-plugin" / "plugin.json").write_text(
+        '{"version": "9.9.9"}', encoding="utf-8")
+    hook_home = tmp_path / "hookhome"
+    (hook_home / "lib").mkdir(parents=True)
+    import shutil
+    # 拷真实源文件进双布局
+    real = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts")
+    for f in mod.REQUIRED_HOOK_FILES:
+        s = (src_root / "scripts" / f) if f == "heldout_gate.py" else (src_root / "hooks" / "scripts" / f)
+        shutil.copy(os.path.join(real, f) if f != "heldout_gate.py"
+                    else os.path.join(os.path.dirname(__file__), "..", "scripts", f), s)
+        shutil.copy(s, hook_home / f)
+    shutil.copy(os.path.join(real, "self_heal.py"),
+                src_root / "hooks" / "scripts" / "self_heal.py")
+    shutil.copy(os.path.join(real, "self_heal.py"),
+                hook_home / "lib" / "self_heal.py")
+    for f in mod.REQUIRED_LIB_FILES:
+        if f == "self_heal.py":
+            continue
+        shutil.copy(os.path.join(real, "lib", f), src_root / "hooks" / "scripts" / "lib" / f)
+        shutil.copy(os.path.join(real, "lib", f), hook_home / "lib" / f)
+    monkeypatch.setattr(mod, "HOOK_HOME", str(hook_home))
+    return mod, src_root, hook_home
+
+
+def test_content_integrity_clean(tmp_path, monkeypatch):
+    """双布局内容一致 → 对账零输出（静默绿）。"""
+    mod, src_root, _ = _mk_integrity_env(tmp_path, monkeypatch)
+    assert mod.verify_content_integrity(str(src_root)) == []
+
+
+def test_content_integrity_catches_drift(tmp_path, monkeypatch):
+    """人为漂移（改部署侧一份）→ 对账检出该文件。"""
+    mod, src_root, hook_home = _mk_integrity_env(tmp_path, monkeypatch)
+    (hook_home / "pre_commit_guard.py").write_text(
+        (hook_home / "pre_commit_guard.py").read_text(encoding="utf-8") + "\n# 手工编辑\n",
+        encoding="utf-8")
+    drift = mod.verify_content_integrity(str(src_root))
+    assert len(drift) == 1 and drift[0][1].endswith("pre_commit_guard.py")
+
+
+def test_content_integrity_selfheal_lib_mapping(tmp_path, monkeypatch):
+    """注册位映射：lib/self_heal.py 漂移可检出（根位置非比对面）。"""
+    mod, src_root, hook_home = _mk_integrity_env(tmp_path, monkeypatch)
+    (hook_home / "lib" / "self_heal.py").write_text("x = 999\n", encoding="utf-8")
+    drift = mod.verify_content_integrity(str(src_root))
+    assert any(d[1].endswith("lib/self_heal.py") for d in drift)

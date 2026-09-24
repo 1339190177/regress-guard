@@ -83,6 +83,7 @@ cp "${PLUGIN_ROOT}/hooks/scripts/boundary_guard.py" "${HOOK_HOME}/"
 cp "${PLUGIN_ROOT}/hooks/scripts/stop_notify.py" "${HOOK_HOME}/"  # P0-2(评审2026-023)：注册了却从不拷贝——安装到自愈前每轮 Stop 报文件不存在
 cp "${PLUGIN_ROOT}/hooks/scripts/plan_bridge.py" "${HOOK_HOME}/"  # v1.39 原生计划桥（同族教训预防）
 cp "${PLUGIN_ROOT}/hooks/scripts/self_heal.py" "${HOOK_HOME}/lib/"
+rm -f "${HOOK_HOME}/self_heal.py"  # 120：清历史残留死文件（注册位在 lib/，根位置曾致哨兵巡检误跑旧版）
 cp "${PLUGIN_ROOT}/hooks/scripts/lib/"*.py "${HOOK_HOME}/lib/"
 mkdir -p "${HOOK_HOME}/templates"
 cp "${PLUGIN_ROOT}/templates/"*.md "${HOOK_HOME}/templates/"   # v1.26.1：全部模板（product-context 缺部署会断 init 链）

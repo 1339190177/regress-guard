@@ -121,7 +121,7 @@ def test_deploy_flat_layout_resolution(tmp_path):
     deploy.mkdir()
     # 平铺布局：heldout_gate.py + 钩子 + lib 同目录（install.sh 形态）
     src_hooks = os.path.join(os.path.dirname(SCRIPTS), "hooks", "scripts")
-    for f in ("pre_commit_guard.py", "read_before_edit_guard.py"):
+    for f in ("pre_commit_guard.py", "read_before_edit_guard.py", "execution_valve.py"):
         shutil.copy(os.path.join(src_hooks, f), deploy / f)
     shutil.copytree(os.path.join(src_hooks, "lib"), deploy / "lib",
                     dirs_exist_ok=True)
@@ -136,6 +136,9 @@ def test_deploy_flat_layout_resolution(tmp_path):
         assert os.path.dirname(flat.GUARD) == str(deploy), \
             f"平铺布局应解析到部署目录: {flat.GUARD}"
         assert os.path.exists(flat.GUARD) and os.path.exists(flat.RGUARD)
+        assert os.path.dirname(flat.VALVE) == str(deploy), \
+            f"VALVE 也须走 _HOOKS（119 漏网标本）: {flat.VALVE}"
+        assert os.path.exists(flat.VALVE)
     finally:
         sys.path.remove(str(deploy))
         for m in [k for k in list(sys.modules) if k == "heldout_gate"]:
