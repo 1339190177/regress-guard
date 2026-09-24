@@ -32,15 +32,17 @@ def _detect_in(project_dir):
             deps.update(data.get("devDependencies", {}))
             if "jest" in deps:
                 return ("jest", ["npx", "jest", "--json",
-                                 "--outputFile=.regress/.jest-result.json",
+                                 "--outputFile=" + _result_file(project_dir, ".jest-result.json"),
                                  "--coverage", "--coverageReporters=json-summary",
                                  "--coverageDirectory=.regress/.coverage",
                                  "--silent", "--passWithNoTests"])
             if "vitest" in deps:
                 # v1.95.1（124）：落盘同 jest——stdout 贪心提取保留为 fallback
                 # （旧版 vitest 的 outputFile 兼容性残余），主路走文件。
+                # v1.96.0（125）：绝对路径（相对路径随 cwd=子目录漂移——嵌套
+                # 布局潜在错位同修）。
                 return ("vitest", ["npx", "vitest", "run", "--reporter=json",
-                                   "--outputFile=.regress/.vitest-result.json"])
+                                   "--outputFile=" + _result_file(project_dir, ".vitest-result.json")])
         except (json.JSONDecodeError, OSError):
             pass  # package.json 损坏 → 跳过 Node.js 探测
         # 有 package.json 但没 jest/vitest → 看 test script
@@ -56,7 +58,13 @@ def _detect_in(project_dir):
     # Python / pytest
     for marker in ("pytest.ini", "conftest.py", "setup.cfg", "pyproject.toml"):
         if os.path.exists(os.path.join(project_dir, marker)):
-            return ("pytest", ["python3", "-m", "pytest", "-q", "--tb=line"])
+            cmd = ["python3", "-m", "pytest", "-q", "--tb=line"]
+            # v1.96.0（125）：机读面优先——junitxml 取代人读摘要正则（正则类
+            # bug 的根治：顺序依赖/词序变体/词混淆一类全灭）。绝对路径防嵌套
+            # 布局错位；.regress 不在（独立 CLI 场景）则走正则 fallback。
+            if os.path.isdir(os.path.join(project_dir, ".regress")):
+                cmd.append("--junitxml=" + _result_file(project_dir, ".pytest-result.xml"))
+            return ("pytest", cmd)
 
     # Java / Maven
     if os.path.exists(os.path.join(project_dir, "pom.xml")):
@@ -99,6 +107,47 @@ def hermetic_env():
 
 _SKIP_DIRS = {".git", ".regress", "node_modules", "venv", ".venv",
               "__pycache__", "docs", "dist", "build"}
+
+
+def _result_file(project_dir, name):
+    """结果文件绝对路径（125）：落在 project 的 .regress——相对路径随
+    cwd=子目录漂移（嵌套布局潜在错位），绝对路径锚死写入位=消费位。"""
+    return os.path.join(project_dir, ".regress", name)
+
+
+def _parse_junitxml(path):
+    """解析 pytest junitxml（125 机读面）。返回 None（缺档/坏档）或计数 dict。
+
+    实证（/tmp/jx-probe）：testsuite 聚合 skipped 把 skip 与 xfail 混算
+    （1 skip + 1 xfail → skipped=2）——必须逐 case 按 <skipped type> 拆：
+    pytest.skip 计入分母（跳过不是通过），pytest.xfail/xpass 不计（代码里
+    已承认的已知问题，WORKFLOW 跳过语义节的既定边界）。未知 type 保守计入
+    skipped（分母宁大勿小）。root 是 testsuites 包装层，须 iter('testsuite')。
+    """
+    try:
+        import xml.etree.ElementTree as ET
+        root = ET.parse(path).getroot()
+    except (OSError, SyntaxError, ValueError):
+        return None  # 缺档/坏档（ParseError 是 SyntaxError 子类）→ 正则 fallback
+    passed = failed = errors = skipped = 0
+    for ts in root.iter("testsuite"):
+        for tc in ts.iter("testcase"):
+            kids = list(tc)
+            if not kids:
+                passed += 1
+            elif kids[0].tag == "failure":
+                failed += 1
+            elif kids[0].tag == "error":
+                errors += 1
+            elif kids[0].tag == "skipped":
+                if kids[0].get("type") in ("pytest.xfail", "pytest.xpass"):
+                    pass  # 已知问题/意外通过：不计入任何侧
+                else:
+                    skipped += 1
+            else:
+                passed += 1  # 其余附属元素（如 rerun 中间态）按通过计
+    return {"passed": passed, "failed": failed, "errors": errors,
+            "skipped": skipped}
 
 
 def _looks_like_tests(d):
@@ -176,6 +225,14 @@ def run_tests(project_dir, timeout=None):
         }
 
     try:
+        # 125：运行前清残档——上次运行留下的结果文件被当本次结果是静默错读
+        # （心虚探测位：最阴的失效形态），主动删先。
+        for _res in (".pytest-result.xml", ".jest-result.json",
+                     ".vitest-result.json"):
+            try:
+                os.remove(_result_file(project_dir, _res))
+            except OSError:
+                pass
         proc = subprocess.run(
             cmd,
             capture_output=True, text=True,
@@ -205,7 +262,7 @@ def run_tests(project_dir, timeout=None):
     if runner == "jest":
         return _parse_jest(output, exit_code, project_dir)
     elif runner == "pytest":
-        return _parse_pytest(output, exit_code)
+        return _parse_pytest(output, exit_code, project_dir)
     else:
         # mvn/gradle/go：靠 exit code 判断，不精细解析
         return {
@@ -309,32 +366,48 @@ def _parse_jest(output, exit_code, project_dir=None):
     }
 
 
-def _parse_pytest(output, exit_code):
-    """解析 pytest 输出。
+def _parse_pytest(output, exit_code, project_dir=None):
+    """解析 pytest 结果：junitxml 机读面优先（125），人读摘要正则 fallback。
 
     v1.95.0（123）：skipped 进分母（与 jest 的 total=全部断言语义对齐）——
     此前 total=passed，"1 passed, 1 skipped"被报成 1/1 全过（外部评审实证：
     行尾 N/N 对账同瞎，宣称=实测=1/1 的一致假象）。xfailed/deselected 语义
     不同（已知问题/显式筛除）故意不进分母，见 WORKFLOW 跳过语义节。
+    v1.96.0（125）：机读面根治正则类 bug（顺序依赖/词序变体/词混淆全灭）；
+    聚合 skipped 混淆 skip+xfail 的坑见 _parse_junitxml 实证注。
     """
-    # pytest 末尾通常有：===== 3 passed in 0.12s =====
-    # v1.95.0（123）：各 token 独立搜索——原链式正则的 failed 组只往 passed
-    # 之后找，而 pytest 惯例"1 failed, 1 passed"（failed 在前），fail 分支的
-    # failed 计数一直漏抓（skipped 进分母后此错显形，顺手根治）。
-    # xpassed/xfailed 不被误抓（"1 xpassed"的数字不紧邻 passed）。
-    def _cnt(tok):
-        m = re.search(rf'(\d+) {tok}', output)
-        return int(m.group(1)) if m else 0
-    passed = _cnt("passed")
-    failed = _cnt("failed")
-    errors = _cnt("error")
-    skipped = _cnt("skipped")
+    counts = _parse_junitxml(_result_file(project_dir or os.getcwd(),
+                                          ".pytest-result.xml")) \
+        if project_dir else None
+    if counts:
+        try:  # 读后即清（同 jest 惯例）：残档留在 .regress 有被误提交的面
+            os.remove(_result_file(project_dir, ".pytest-result.xml"))
+        except OSError:
+            pass
+    if counts:
+        passed = counts["passed"]
+        failed = counts["failed"]
+        errors = counts["errors"]
+        skipped = counts["skipped"]
+    else:
+        # fallback：人读摘要正则（旧环境无 junitxml/写失败）
+        # v1.95.0（123）：各 token 独立搜索——原链式正则的 failed 组只往 passed
+        # 之后找，而 pytest 惯例"1 failed, 1 passed"（failed 在前），fail 分支的
+        # failed 计数一直漏抓（skipped 进分母后此错显形，顺手根治）。
+        # xpassed/xfailed 不被误抓（"1 xpassed"的数字不紧邻 passed）。
+        def _cnt(tok):
+            m = re.search(rf'(\d+) {tok}', output)
+            return int(m.group(1)) if m else 0
+        passed = _cnt("passed")
+        failed = _cnt("failed")
+        errors = _cnt("error")
+        skipped = _cnt("skipped")
 
     if exit_code == 0 and failed == 0 and errors == 0:
         return {
             "runner": "pytest", "status": "pass",
             "total": passed + skipped, "passed": passed, "failed": 0,
-            "skipped": skipped,
+            "skipped": skipped, "parse": "junitxml" if counts else "regex",
             "duration_ms": 0, "failures": [], "raw_snippet": ""
         }
 
@@ -348,7 +421,7 @@ def _parse_pytest(output, exit_code):
         "runner": "pytest", "status": "fail",
         "total": passed + failed + errors + skipped,
         "passed": passed, "failed": failed + errors,
-        "skipped": skipped,
+        "skipped": skipped, "parse": "junitxml" if counts else "regex",
         "duration_ms": 0,
         "failures": failures[:20] if failures else [{"test": "(unknown)", "message": output[-200:]}],
         "raw_snippet": output[-300:]

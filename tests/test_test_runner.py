@@ -10,7 +10,8 @@ import json
 LIB = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "lib")
 sys.path.insert(0, LIB)
 
-from test_runner import detect_runner, _parse_jest, _parse_pytest
+from test_runner import (detect_runner, _parse_jest, _parse_pytest,
+                         run_tests, _parse_junitxml)
 
 
 # ─── detect_runner 测试 ───────────────────────────────
@@ -287,4 +288,86 @@ def test_detect_vitest_output_file(tmp_path):
         {"devDependencies": {"vitest": "^1.0.0"}}), encoding="utf-8")
     runner, cmd = detect_runner(str(tmp_path))
     assert runner == "vitest"
-    assert any("--outputFile=.regress/.vitest-result.json" in c for c in cmd)
+    # v1.96.0（125）：绝对路径（锚定 project 的 .regress，防嵌套布局错位）
+    assert (f"--outputFile={tmp_path}/.regress/.vitest-result.json" in cmd)
+
+
+# ─── v1.96.0（125）：junitxml 机读面 ───
+
+def test_junit_real_pytest_all_forms(tmp_path):
+    """真 pytest 子进程端到端：1 过+1 跳+1 xfail+1 败——xfail 不进分母（聚合
+    skipped 混淆 skip+xfail 的实证坑，逐 case type 拆）。"""
+    import subprocess as sp
+    (tmp_path / ".regress").mkdir()
+    (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    (tmp_path / "test_jx.py").write_text(
+        "import pytest\n"
+        "def test_ok():\n    assert True\n"
+        "@pytest.mark.skip(reason='125')\n"
+        "def test_skipped():\n    assert False\n"
+        "@pytest.mark.xfail(reason='known')\n"
+        "def test_xfailed():\n    assert False\n"
+        "def test_failed():\n    assert 1 == 2\n",
+        encoding="utf-8")
+    runner, cmd = detect_runner(str(tmp_path))
+    assert runner == "pytest" and any(c.startswith("--junitxml=") for c in cmd)
+    r = run_tests(str(tmp_path))
+    assert r["parse"] == "junitxml"
+    assert r["status"] == "fail"
+    assert r["passed"] == 1 and r["failed"] == 1
+    assert r["skipped"] == 1 and r["total"] == 3  # xfail 蒸发（既定语义）
+
+
+def test_junit_stale_result_file_not_misread(tmp_path):
+    """残档错读防线：运行前主动清残档——上次留下的 xml 不会被当本次结果。"""
+    (tmp_path / ".regress").mkdir()
+    (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    (tmp_path / "test_jx2.py").write_text(
+        "def test_only():\n    assert True\n", encoding="utf-8")
+    # 预埋一份"上次"的残档（形态=多例有败）
+    (tmp_path / ".regress" / ".pytest-result.xml").write_text(
+        '<testsuites><testsuite tests="9" errors="0" failures="5" skipped="0">'
+        "</testsuite></testsuites>", encoding="utf-8")
+    r = run_tests(str(tmp_path))
+    assert r["parse"] == "junitxml" and r["status"] == "pass"
+    assert r["passed"] == 1 and r["total"] == 1  # 残档 9/5 没有被误读
+
+
+def test_regex_fallback_when_no_regress(tmp_path):
+    """无 .regress（独立 CLI 场景）不加 junitxml flag → 正则 fallback 行为不变。"""
+    (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    (tmp_path / "test_fb.py").write_text(
+        "import pytest\n"
+        "def test_ok():\n    assert True\n"
+        "@pytest.mark.skip(reason='x')\n"
+        "def test_sk():\n    assert False\n", encoding="utf-8")
+    runner, cmd = detect_runner(str(tmp_path))
+    assert runner == "pytest" and not any(c.startswith("--junitxml=") for c in cmd)
+    r = run_tests(str(tmp_path))
+    assert r["parse"] == "regex"
+    assert r["passed"] == 1 and r["skipped"] == 1 and r["total"] == 2
+
+
+def test_parse_junitxml_unit():
+    """解析器单元：xfail/xpass type 拆分+testsuites 包装层+坏档 None。"""
+    from test_runner import _parse_junitxml
+    import xml.etree.ElementTree as ET
+    good = tmp_path_maker = None  # noqa: F841
+    p_xml = ("<?xml version='1.0'?><testsuites><testsuite name='t'>"
+             "<testcase name='a'/>"
+             "<testcase name='b'><skipped type='pytest.skip'/></testcase>"
+             "<testcase name='c'><skipped type='pytest.xfail'/></testcase>"
+             "<testcase name='d'><skipped type='pytest.xpass'/></testcase>"
+             "<testcase name='e'><failure message='x'/></testcase>"
+             "<testcase name='f'><error message='y'/></testcase>"
+             "</testsuite></testsuites>")
+    import pathlib, tempfile
+    d = pathlib.Path(tempfile.mkdtemp())
+    f = d / "r.xml"
+    f.write_text(p_xml, encoding="utf-8")
+    c = _parse_junitxml(str(f))
+    assert c == {"passed": 1, "failed": 1, "errors": 1, "skipped": 1}
+    assert _parse_junitxml(str(d / "nope.xml")) is None
+    bad = d / "bad.xml"
+    bad.write_text("not-xml <<<", encoding="utf-8")
+    assert _parse_junitxml(str(bad)) is None
