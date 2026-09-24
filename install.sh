@@ -4,11 +4,11 @@
 # 用法：bash install.sh
 #
 # 做的事：
-#   1. 把 3 个 skill 复制到 ~/.zcode/skills/
-#   2. 把所有命令复制到 ~/.zcode/commands/
-#   3. 把 hook 脚本复制到 ~/.zcode/regress-guard-hooks/
-#   4. 在 ~/.zcode/cli/config.json 注册 PreToolUse hook
-#   5. 在 ~/.zcode/AGENTS.md 注入回归契约
+#   1. 把所有命令复制到 ~/.zcode/commands/（v1.95.1 起不再装 skill——
+#      skills/ 已从仓内移除，旧宣称与实况不符由外部评审实证）
+#   2. 把 hook 脚本复制到 ~/.zcode/regress-guard-hooks/
+#   3. 在 ~/.zcode/cli/config.json 注册 PreToolUse hook
+#   4. 在 ~/.zcode/AGENTS.md 注入回归契约
 #
 # 幂等：重复运行不会重复添加，只会更新。
 
@@ -19,7 +19,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${SCRIPT_DIR}"
 
 ZCODE_HOME="${HOME}/.zcode"
-SKILLS_DIR="${ZCODE_HOME}/skills"
 COMMANDS_DIR="${ZCODE_HOME}/commands"
 HOOK_HOME="${ZCODE_HOME}/regress-guard-hooks"
 CONFIG_FILE="${ZCODE_HOME}/cli/config.json"

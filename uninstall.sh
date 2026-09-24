@@ -4,8 +4,9 @@
 # 用法：bash uninstall.sh
 #
 # 清理：
-#   1. 删除 ~/.zcode/skills/ 下的 3 个 skill
-#   2. 删除 ~/.zcode/commands/ 下的 7 个命令
+#   1. 清理 ~/.zcode/skills/ 下的旧版 skill（v1.95.1 起带所有权检查：
+#      仅删含 .regress-guard-skill 标记的目录，其余只提示人工确认）
+#   2. 删除 ~/.zcode/commands/ 下的 regress:* 命令（命名空间专属，安全）
 #   3. 删除 ~/.zcode/regress-guard-hooks/
 #   4. 从 config.json 移除 hook 注册
 #   5. 从 AGENTS.md 移除回归契约块
@@ -14,7 +15,7 @@
 
 set -euo pipefail
 
-ZCODE_HOME="${HOME}/.zcode"
+ZCODE_HOME="${REGRESS_ZCODE_HOME:-${HOME}/.zcode}"  # 可覆写：沙箱测试（124）
 HOOK_HOME="${ZCODE_HOME}/regress-guard-hooks"
 CONFIG_FILE="${ZCODE_HOME}/cli/config.json"
 AGENTS_FILE="${ZCODE_HOME}/AGENTS.md"
@@ -30,11 +31,21 @@ echo "  regress-guard 卸载"
 echo "════════════════════════════════════════════"
 echo ""
 
-# ─── 1. 删除旧版 skills（兼容清理）──────────────────
+# ─── 1. 旧版 skills 清理（v1.95.1，124：所有权检查）──────────
+# 现版本已不装 skill（skills/ 不在仓内）；这 6 个名字是旧版遗产。旧版装时
+# 未打标记，无法机械区分"我们装的"与"用户自建同名"——宁可不删也不错删
+# （外部评审实证面：卸载误删同名技能）。判定：skill 目录内含
+# .regress-guard-skill 标记文件才自动删；否则只提示人工确认。
 for skill in regression-planning characterization-testing change-impact-analysis requirement-parsing adaptive-thinking adaptive-learning; do
-    if [ -d "${ZCODE_HOME}/skills/${skill}" ]; then
-        rm -rf "${ZCODE_HOME}/skills/${skill}"
-        info "清理旧 skill: ${skill}"
+    d="${ZCODE_HOME}/skills/${skill}"
+    if [ -d "$d" ]; then
+        if [ -f "${d}/.regress-guard-skill" ]; then
+            rm -rf "$d"
+            info "清理旧 skill（含所有权标记）: ${skill}"
+        else
+            warn "跳过 ${skill}：无所有权标记（可能是用户自建同名 skill）——"
+            echo "      确认非自建后手动删除：rm -rf ${d}"
+        fi
     fi
 done
 

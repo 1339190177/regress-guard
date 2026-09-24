@@ -44,7 +44,10 @@ toggled/upgraded natively.
 **Dev track**: clone this repo, then `bash install.sh` (or tell the AI
 `/regress:install`). Use one track at a time.
 
-Requirements: ZCode client + Python 3.10+.
+Requirements: ZCode client + Python 3.10+. Runtime has **zero third-party
+Python dependencies** (`filelock` is optional — absent → degrades to lock-free
+atomic write, v1.95.1). To run this repo's own test suite:
+`pip install -r requirements-dev.txt` (pytest / anyio / filelock).
 
 ## Five-minute start
 
@@ -88,7 +91,7 @@ MIT. Third-party: none at runtime (stdlib only).
 
 **实况（由 gen_reference.py 生成，勿手改本区）**
 
-- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：656 个
+- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：660 个
 
 | 命令 | 说明 |
 |---|---|

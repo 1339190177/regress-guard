@@ -279,3 +279,12 @@ def test_parse_jest_skip_todo_counted():
     r = _parse_jest(jest_output, 1)
     assert r["total"] == 5 and r["passed"] == 1 and r["failed"] == 1
     assert r["skipped"] == 3
+
+
+def test_detect_vitest_output_file(tmp_path):
+    """v1.95.1（124）：vitest 落盘同 jest——主路走文件，stdout 贪心提取仅 fallback。"""
+    (tmp_path / "package.json").write_text(json.dumps(
+        {"devDependencies": {"vitest": "^1.0.0"}}), encoding="utf-8")
+    runner, cmd = detect_runner(str(tmp_path))
+    assert runner == "vitest"
+    assert any("--outputFile=.regress/.vitest-result.json" in c for c in cmd)

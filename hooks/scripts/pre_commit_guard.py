@@ -599,8 +599,20 @@ def main():
                 tmp = config_file + ".tmp"
                 with file_lock(config_file):
                     with open(tmp, "w", encoding="utf-8") as f:
-                        json.dump(config, f, indent=2)
+                        json.dump(config, f, indent=2, ensure_ascii=False)
                     os.replace(tmp, config_file)
+            except ImportError:
+                # v1.95.1（124）：filelock 缺席（干净环境）降级为无锁原子写——
+                # os.replace 本身原子；失去的只是并发互斥。此前 ImportError 不在
+                # OSError 兜底内，门禁以崩溃形态红（外部评审"干净环境红 48"的
+                # 组成部分）。依赖清单见 requirements-dev.txt。
+                try:
+                    tmp = config_file + ".tmp"
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        json.dump(config, f, indent=2, ensure_ascii=False)
+                    os.replace(tmp, config_file)
+                except OSError:
+                    pass
             except OSError:
                 pass  # 清除失败不阻断（下次会再试清除）
 

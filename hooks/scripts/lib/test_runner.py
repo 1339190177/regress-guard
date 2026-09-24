@@ -37,7 +37,10 @@ def _detect_in(project_dir):
                                  "--coverageDirectory=.regress/.coverage",
                                  "--silent", "--passWithNoTests"])
             if "vitest" in deps:
-                return ("vitest", ["npx", "vitest", "run", "--reporter=json"])
+                # v1.95.1（124）：落盘同 jest——stdout 贪心提取保留为 fallback
+                # （旧版 vitest 的 outputFile 兼容性残余），主路走文件。
+                return ("vitest", ["npx", "vitest", "run", "--reporter=json",
+                                   "--outputFile=.regress/.vitest-result.json"])
         except (json.JSONDecodeError, OSError):
             pass  # package.json 损坏 → 跳过 Node.js 探测
         # 有 package.json 但没 jest/vitest → 看 test script
@@ -228,21 +231,24 @@ def _read_jest_coverage(project_dir):
 
 
 def _parse_jest(output, exit_code, project_dir=None):
-    """解析 jest --json 输出。优先读 --outputFile 文件。"""
+    """解析 jest/vitest --json 输出。优先读 --outputFile 文件。"""
     data = None
     # 优先读 outputFile（避免 stdout 混入诊断信息）
-    # jest 以 cwd=project_dir 运行，文件写在 project_dir/.regress/ 下
+    # jest/vitest 以 cwd=project_dir 运行，文件写在 project_dir/.regress/ 下
     base = project_dir or os.getcwd()
-    jest_file = os.path.join(base, ".regress", ".jest-result.json")
-    if os.path.exists(jest_file):
-        try:
-            with open(jest_file) as f:
-                data = json.load(f)
-        except (json.JSONDecodeError, IOError):
-            data = None
-        finally:
-            try: os.remove(jest_file)
-            except OSError: pass
+    for _res_name in (".jest-result.json", ".vitest-result.json"):  # 124：vitest 同路
+        jest_file = os.path.join(base, ".regress", _res_name)
+        if os.path.exists(jest_file):
+            try:
+                with open(jest_file) as f:
+                    data = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                data = None
+            finally:
+                try: os.remove(jest_file)
+                except OSError: pass
+            if data:
+                break
 
     # fallback：从 stdout 提取
     if not data:
