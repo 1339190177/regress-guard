@@ -69,9 +69,15 @@ def main(src_root=None, installed=None):
     else:
         print(f"✅ 语法面：{len(py_files)} 个 .py 全部编译通过")
 
-    # ② 注册面
+    # ② 注册面（v1.94.0：basename 全树搜——部署布局合法搬位；120 把
+    #    self_heal 挪进 lib/ 后根目录假设假红过一次，装完即红的误导面）
+    _installed_names = set()
+    for base, _dirs, files in os.walk(installed):
+        if "__pycache__" in base:
+            continue
+        _installed_names.update(files)
     missing = [n for n in sorted(_referenced_scripts(src_root))
-               if not os.path.exists(os.path.join(installed, n))]
+               if n not in _installed_names]
     if missing:
         fails.append("注册面")
         print(f"❌ 注册面：hooks.json 引用但已装目录缺失 {len(missing)} 个：")

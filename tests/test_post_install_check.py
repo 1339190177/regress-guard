@@ -86,3 +86,14 @@ def test_plugin_form_version_mismatch(tmp_path, capsys):
         json.dumps({"version": "0.0.1"}), encoding="utf-8")
     assert m.main(src, ins) == 1
     assert "版本面" in capsys.readouterr().out
+
+
+def test_relocated_script_in_lib_passes(tmp_path, capsys):
+    """v1.94.0：部署布局合法搬位（如 self_heal.py 进 lib/）不再假红——
+    注册面按 basename 全树搜（120 搬位后根目录假设误报过一次）。"""
+    m = _load()
+    src, ins = _good_tree(tmp_path)
+    os.makedirs(os.path.join(ins, "lib"))
+    os.rename(os.path.join(ins, "guard.py"), os.path.join(ins, "lib", "guard.py"))
+    assert m.main(src, ins) == 0
+    assert "三查全绿" in capsys.readouterr().out
