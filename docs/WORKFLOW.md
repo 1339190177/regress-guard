@@ -263,6 +263,24 @@ TOP-1 召回行（`RG_PROMPT_CONTEXT=off` 逃生）——防线从"拦截时才�
 - 断点续作：`/regress:resume` 一句话重建现场
 - 机器级经验：finish 代谢缝自动落机器事实卡（v1.31，见下节）
 
+## 批评臂（v1.97：裁决矩阵 A 位——独立批评家 pass）
+
+一致性偏见的结构解：批作者与批验证者同模型同时点，恰在最需拒绝时放行——批评臂
+引入**跨模型独立批评家**（本地 DeepSeek 直连；不可达降级 fresh subagent，降级
+打标分段统计不等同视之）。
+
+```bash
+python3 scripts/critic_pass.py --assemble <manifest.md> [--report <批报告>]
+python3 scripts/critic_pass.py --run <ferry> [--canary]   # canary=埋已知缺陷种子测发现率
+python3 scripts/critic_pass.py --rebuttal '{"p1_0": "逐条回应"}'
+```
+
+- 摆渡包=工件（清单全文+HEAD diff+提交主题+报告原文），禁引作者自评叙事
+- 输出 P1 缺陷断言（附代码行证据）/P2 疑点/P3 提问；**advisory 零拦截**——
+  升格=两轮试点人裁（发现率 vs 0158a98b 人审基线+假阳性重提率，journal
+  critic_findings/critic_rebuttal 事件采集，mode 字段分段 normal/degraded）
+- 与深查节互补：自问（反问三）vs 他者问——不互代
+
 ## 清洁环境矩阵（v1.96.1：本地自造"外部环境"）
 
 外部评审"干净环境红 48"类指控，本地即可自造环境提前逮住：
