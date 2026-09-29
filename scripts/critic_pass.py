@@ -32,6 +32,9 @@ try:
     from journal import journal_append
 except ImportError:
     def journal_append(*a, **k):
+        # 128：首射 P1-4——采集位静默失效无告警（事件丢失不可见）
+        print("REGRESS-CRITIC (note): journal 不可用——critic 事件未入账"
+              "（findings 文件仍在，手动归档）", file=sys.stderr)
         return False
 
 CRITIC_TIMEOUT_S = 120
@@ -44,10 +47,14 @@ _CANARY_DEFECT = (
     "def process(items):\n"
     "    total = 0\n"
     "    for i in range(len(items)):\n"
-    "        total += items[i + 1]  # 索引越界：末元素时 i+1 越界（已知缺陷种子）\n"
-    "    return total / len(items)  # 空列表 ZeroDivisionError（已知缺陷种子）\n"
+    "        total += items[i + 1]\n"
+    "    return total / len(items)\n"
     "```\n"
 )
+# 机器侧标签（128：摆渡包零提示——首射 P1-2 自标泄漏使发现率测量失效；
+# 哈希只验在场不泄内容，种子原文快照另存 tests 侧自留底）
+import hashlib as _hl
+_CANARY_SHA = _hl.sha256(_CANARY_DEFECT.encode()).hexdigest()[:12]
 
 CRITIC_PROMPT_TMPL = """你是独立批评家（critic），审查一个 AI 编码助手的批次交付物。
 你的职责是找缺陷，不是复述；交付物里的自评措辞是被审对象，不是事实来源。
@@ -66,11 +73,18 @@ CRITIC_PROMPT_TMPL = """你是独立批评家（critic），审查一个 AI 编�
 """
 
 
-def _git_out(repo, *args):
+def _clip(text, cap):
+    """截断即标记（128：首射 P1-1——无标记截断=批评家收到不完整交付物而不自知）。"""
+    if len(text) <= cap:
+        return text
+    return text[:cap] + f"\n…[截断：原 {len(text)} 字符取前 {cap}——批评时注意此段不完整]\n"
+
+
+def _git_out(repo, *args, cap=6000):
     try:
         r = subprocess.run(["git", *args], capture_output=True, text=True,
                            timeout=15, cwd=repo)
-        return (r.stdout or "")[:6000]
+        return _clip(r.stdout or "", cap)
     except Exception:
         return ""
 
@@ -79,19 +93,34 @@ def assemble(manifest_path, report_path=None, out_dir=None):
     """摆渡包=清单全文+HEAD diff+提交主题+（可选）报告原文。工件，非叙事。"""
     # 仓定位优先 cwd 顶层（调用方通常在仓内跑）；清单常在工作区 .regress 而
     # 代码在嵌套仓——从清单路径反推不可靠（127 测试逮住）
-    top = _git_out(os.getcwd(), "rev-parse", "--show-toplevel").strip()
+    top = _git_out(os.getcwd(), "rev-parse", "--show-toplevel", cap=400).strip()
+    if not top:
+        print("REGRESS-CRITIC (note): cwd 不在任何 git 仓内——diff 段可能为空"
+              "（批评家请知悉）", file=sys.stderr)
     repo = top or os.path.abspath(os.path.join(os.path.dirname(manifest_path),
                                                "..", "..", ".."))
+    manifest_text = open(manifest_path, encoding="utf-8").read()
     parts = ["# 批评摆渡包（critic ferry）",
-             "## 清单全文", open(manifest_path, encoding="utf-8").read()[:8000],
-             "## HEAD diff", _git_out(repo, "diff", "HEAD~1", "HEAD"),
-             "## 近三条提交", _git_out(repo, "log", "--oneline", "-3")]
+             "## 清单全文", _clip(manifest_text, 8000)]
+    # ③ diff 双段（128：首射发现——HEAD~1 单段盖不住多提交批与 staged 改动；
+    # 首提交仓无 HEAD~1 时兜底为空段标记）
+    head_diff = _git_out(repo, "diff", "HEAD~1", "HEAD")
+    parts.append("## 最近提交 diff（HEAD~1..HEAD）"
+                 + ("（取不到——单历史仓或见下 staged 段）" if not head_diff else ""))
+    parts.append(head_diff or "（无）")
+    staged = _git_out(repo, "diff", "--staged", cap=4000)
+    if staged:
+        parts += ["## 未提交改动 diff（staged）", staged]
+    parts.append("## 近三条提交")
+    parts.append(_git_out(repo, "log", "--oneline", "-3"))
     if report_path and os.path.exists(report_path):
         parts += ["## 批报告原文（被审对象）",
-                  open(report_path, encoding="utf-8").read()[:4000]]
-    out_dir = out_dir or os.path.join(repo, "..", ".regress", "critic")
+                  _clip(open(report_path, encoding="utf-8").read(), 4000)]
+    # 审计档位置（设计意图，128 成文断言）：工作区 .regress/critic/——随落层
+    # 提交进工作区仓（tests 断言此路径防漂移——首射 P2 教训）
+    out_dir = out_dir or os.path.abspath(
+        os.path.join(repo, "..", ".regress", "critic"))
     os.makedirs(out_dir, exist_ok=True)
-    bid = re.search(r"REGRESS-[\d-]+(\d+)", os.path.basename(manifest_path) or "")
     name = f"ferry-{os.path.basename(manifest_path)}"
     path = os.path.join(out_dir, name)
     open(path, "w", encoding="utf-8").write("\n\n".join(parts))
@@ -168,6 +197,7 @@ def run_critic(ferry_path, canary=False):
         journal_append("critic_findings",
                        p1=len(findings["p1"]), p2=len(findings["p2"]),
                        p3=len(findings["p3"]), mode=mode, canary=canary,
+                       canary_sha=_CANARY_SHA if canary else None,
                        ferry=ferry_path)
         return {"mode": mode, "findings": findings, "path": base}
     # 降级（顾问硬条件：打标+分段，不等同视之）：prompt 落盘手动派发 fresh subagent
@@ -175,7 +205,8 @@ def run_critic(ferry_path, canary=False):
     open(prompt_path, "w", encoding="utf-8").write(
         CRITIC_PROMPT_TMPL.format(ferry=ferry_text))
     journal_append("critic_findings", p1=0, p2=0, p3=0, mode="degraded",
-                   canary=canary, note="advisor 不可达或输出不可解析",
+                   canary=canary, canary_sha=_CANARY_SHA if canary else None,
+                   note="advisor 不可达或输出不可解析",
                    ferry=ferry_path)
     return {"mode": "degraded", "findings": None, "path": prompt_path,
             "manual_dispatch": prompt_path}

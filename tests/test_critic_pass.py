@@ -40,7 +40,7 @@ def test_assemble_carries_artifacts(tmp_path, monkeypatch):
     monkeypatch.chdir(repo)  # 仓定位走 cwd 顶层（127：清单路径反推不可靠）
     path = cp.assemble(str(mf), out_dir=str(tmp_path / "c"))
     body = open(path, encoding="utf-8").read()
-    assert "REGRESS-2026-127" in body and "HEAD diff" in body
+    assert "REGRESS-2026-127" in body and "最近提交 diff" in body
     assert "近三条提交" in body and "init" in body
 
 
@@ -98,7 +98,7 @@ def test_canary_defect_embedded(monkeypatch, tmp_path):
     ferry.write_text("# 摆渡包", encoding="utf-8")
     seen = {}
     def fake_post(url, tok, text):
-        seen["canary_in_ferry"] = "已知缺陷种子" in text
+        seen["canary_in_ferry"] = "process(items)" in text  # 种子本体在场（128 去标签）
         return '{"p1":[],"p2":[],"p3":[]}'
     monkeypatch.setenv("ADVISOR_DSH_TOKEN", "stub")
     monkeypatch.setattr(cp, "_post_critic", fake_post)
@@ -113,3 +113,69 @@ def test_rebuttal_cli(monkeypatch):
                         lambda kind, **f: got.update(f) or True)
     r = cp.rebuttal('{"p1_0": "已修：边界补丁", "verdict": "confirmed"}')
     assert r["ok"] and got["p1_0"] == "已修：边界补丁"
+
+
+# ─── v1.97.1（128）：首射发现全回收的回归锚 ───
+
+def test_truncation_marked():
+    """① 截断即标记：批评家必须知道段不完整（首射 P1-1）。"""
+    cp = _load()
+    t = cp._clip("x" * 100, 10)
+    assert "截断：原 100 字符取前 10" in t
+    assert cp._clip("short", 100) == "short"  # 不截断无标记
+
+
+def test_canary_clean_ferry_and_hash_event(monkeypatch, tmp_path):
+    """② 种子去标签：摆渡包零提示；哈希进事件（机器侧可追溯）。"""
+    cp = _load()
+    ferry = tmp_path / "ferry-C.md"
+    ferry.write_text("# 摆渡包", encoding="utf-8")
+    seen = {}
+    def fake_post(url, tok, text):
+        seen["ferry_text"] = text
+        return '{"p1":[],"p2":[],"p3":[]}'
+    monkeypatch.setenv("ADVISOR_DSH_TOKEN", "stub")
+    monkeypatch.setattr(cp, "_post_critic", fake_post)
+    events = []
+    monkeypatch.setattr(cp, "journal_append",
+                        lambda kind, **f: events.append(f) or True)
+    r = cp.run_critic(str(ferry), canary=True)
+    assert r["mode"] == "normal"
+    assert "已知缺陷种子" not in seen["ferry_text"]  # 自标已除（首射 P1-2）
+    assert "process(items)" in seen["ferry_text"]     # 种子本体仍在
+    assert any(e.get("canary_sha") for e in events)
+
+
+def test_diff_edges_first_commit_and_staged(monkeypatch, tmp_path):
+    """③ 首提交仓（无 HEAD~1）不炸且带空段标记；staged 非空单独成段。"""
+    import subprocess as sp
+    cp = _load()
+    repo = tmp_path / "fresh"
+    repo.mkdir()
+    sp.run(["git", "init", "-q"], cwd=str(repo), check=True)
+    sp.run(["git", "config", "user.email", "t@t"], cwd=str(repo), check=True)
+    sp.run(["git", "config", "user.name", "t"], cwd=str(repo), check=True)
+    (repo / "b.txt").write_text("2\n", encoding="utf-8")
+    sp.run(["git", "add", "-A"], cwd=str(repo), check=True)  # staged 未提交
+    mf = tmp_path / "R2.md"
+    mf.write_text("---\nid: R2\n---\nbody", encoding="utf-8")
+    monkeypatch.setenv("REGRESS_JOURNAL", "off")
+    monkeypatch.chdir(repo)
+    path = cp.assemble(str(mf), out_dir=str(tmp_path / "c2"))
+    body = open(path, encoding="utf-8").read()
+    assert "取不到——单历史仓" in body      # 首提交兜底标记
+    assert "未提交改动 diff（staged）" in body  # staged 段在场
+
+
+def test_audit_location_asserted(tmp_path, monkeypatch):
+    """顾问增补：审计档位置=工作区 .regress/critic/ 成断言（防漂移复发）。"""
+    cp = _load()
+    repo = _mk_repo(tmp_path)
+    mf = tmp_path / "R3.md"
+    mf.write_text("---\nid: R3\n---\nx", encoding="utf-8")
+    monkeypatch.setenv("REGRESS_JOURNAL", "off")
+    monkeypatch.chdir(repo)
+    out_default = cp.assemble(str(mf))  # 不传 out_dir → 默认仓外 .regress/critic
+    assert os.path.basename(os.path.dirname(out_default)) == "critic"
+    assert out_default.endswith(os.path.join(".regress", "critic",
+                                              "ferry-R3.md"))
