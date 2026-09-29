@@ -477,7 +477,17 @@ def feature_fire_health(regress_dir, registry_path=None):
         marker = feat.get("fire_marker") or {}
         ev_name = marker.get("event")
         window = float(feat.get("window_days") or 30)
-        shipped = float(feat.get("shipped_at") or 0)
+        # 129：注册行 ISO 字符串（批127 手笔曾令本命令整崩两日）——双格式兼容；
+        # 其他不可解析格式按 0 处理（days_since 大，老特征按 zero-fire 展示）
+        shipped_raw = feat.get("shipped_at") or 0
+        try:
+            shipped = float(shipped_raw)
+        except (TypeError, ValueError):
+            try:
+                from datetime import datetime as _dt
+                shipped = _dt.fromisoformat(str(shipped_raw)).timestamp()
+            except (ValueError, TypeError):
+                shipped = 0.0
         days_since = (now - shipped) / 86400 if shipped else None
         if not ev_name:
             fires, status = 0, "unmeasurable"

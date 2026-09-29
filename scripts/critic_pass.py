@@ -89,7 +89,7 @@ def _git_out(repo, *args, cap=6000):
         return ""
 
 
-def assemble(manifest_path, report_path=None, out_dir=None):
+def assemble(manifest_path, report_path=None, out_dir=None, rev_range=None):
     """摆渡包=清单全文+HEAD diff+提交主题+（可选）报告原文。工件，非叙事。"""
     # 仓定位优先 cwd 顶层（调用方通常在仓内跑）；清单常在工作区 .regress 而
     # 代码在嵌套仓——从清单路径反推不可靠（127 测试逮住）
@@ -104,18 +104,30 @@ def assemble(manifest_path, report_path=None, out_dir=None):
              "## 清单全文", _clip(manifest_text, 8000)]
     # ③ diff 双段（128：首射发现——HEAD~1 单段盖不住多提交批与 staged 改动；
     # 首提交仓无 HEAD~1 时兜底为空段标记）
-    head_diff = _git_out(repo, "diff", "HEAD~1", "HEAD")
-    parts.append("## 最近提交 diff（HEAD~1..HEAD）"
-                 + ("（取不到——单历史仓或见下 staged 段）" if not head_diff else ""))
+    if rev_range:
+        a_b = rev_range.split("..")
+        dargs = (["diff", a_b[0], a_b[1]] if len(a_b) == 2
+                 else ["diff", rev_range])
+    else:
+        dargs = ["diff", "HEAD~1", "HEAD"]
+    head_diff = _git_out(repo, *dargs)
+    # 129：诊断标记进 ferry（run2 受众错位——stderr 批评家看不见）；
+    # 空 staged 也留存在性行（run2 验收缺口）
+    diag = ""
+    if not head_diff and not rev_range:
+        diag = "（取不到——单历史仓/git 失败/区间为空，批评时知悉）"
+    parts.append(f"## 最近提交 diff（{' '.join(dargs[1:])}）{diag}")
     parts.append(head_diff or "（无）")
     staged = _git_out(repo, "diff", "--staged", cap=4000)
-    if staged:
-        parts += ["## 未提交改动 diff（staged）", staged]
+    parts.append("## 未提交改动 diff（staged）")
+    parts.append(staged if staged else "（无未提交改动）")
     parts.append("## 近三条提交")
     parts.append(_git_out(repo, "log", "--oneline", "-3"))
     if report_path and os.path.exists(report_path):
+        # 129：报告段不截（run2"被告知未到可审"——关键证据段整段进，
+        # 长度风险由批评家上下文窗承担，超长时宁要证据不要优雅）
         parts += ["## 批报告原文（被审对象）",
-                  _clip(open(report_path, encoding="utf-8").read(), 4000)]
+                  open(report_path, encoding="utf-8").read()]
     # 审计档位置（设计意图，128 成文断言）：工作区 .regress/critic/——随落层
     # 提交进工作区仓（tests 断言此路径防漂移——首射 P2 教训）
     out_dir = out_dir or os.path.abspath(
@@ -221,13 +233,16 @@ def rebuttal(payload_json):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--assemble")
+    ap.add_argument("--rev-range", dest="rev_range", default=None,
+                    help="历史批审计：diff 取该 rev 区间（如 abc123..def456）")
     ap.add_argument("--report")
     ap.add_argument("--run")
     ap.add_argument("--canary", action="store_true")
     ap.add_argument("--rebuttal")
     a = ap.parse_args()
     if a.assemble:
-        print(json.dumps({"ferry": assemble(a.assemble, a.report)},
+        print(json.dumps({"ferry": assemble(a.assemble, a.report,
+                                            rev_range=a.rev_range)},
                          ensure_ascii=False))
     elif a.run:
         print(json.dumps(run_critic(a.run, canary=a.canary), ensure_ascii=False))

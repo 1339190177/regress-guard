@@ -458,3 +458,28 @@ def test_feature_fire_journal_fold(regress_dir):
     rows = feature_fire_health(str(regress_dir))["features"]
     # 可定时的 plan_approved×1 计数；无法定时的那条不进窗口也不炸（FP1 加固）
     assert rows[0]["status"] == "firing" and rows[0]["fires"] == 1
+
+
+def test_feature_health_iso_shipped_at(tmp_path):
+    """129：registry shipped_at ISO 字符串（批127 手笔曾令命令整崩两日）——
+    双格式兼容，不崩且折算正确。"""
+    import json as _json, time as _time
+    m = _load() if False else None
+    import importlib.util as ilu, os as _os
+    H = _os.path.join(_os.path.dirname(__file__), "..", "hooks",
+                      "scripts", "lib", "history.py")
+    spec = ilu.spec_from_file_location("h_iso", H)
+    h = ilu.module_from_spec(spec); spec.loader.exec_module(h)
+    rg = tmp_path / ".regress"
+    rg.mkdir()
+    _json.dump([{"slug": "iso-feat",
+                 "shipped_at": "2026-09-28T09:23:45",
+                 "fire_marker": {"event": "commit_passed"}}],
+               open(rg / "feature-registry.json", "w"))
+    from datetime import datetime as _dtm
+    (rg / "history.jsonl").write_text(_json.dumps(
+        {"timestamp": _dtm.now().isoformat(),
+         "event": "commit_passed"}) + "\n")
+    r = h.feature_fire_health(str(rg))  # regress_dir=.regress 本身（CLI 同参）
+    row = [f for f in r["features"] if f["slug"] == "iso-feat"]
+    assert row and row[0]["fires"] >= 1  # ISO 行不崩且事件可数

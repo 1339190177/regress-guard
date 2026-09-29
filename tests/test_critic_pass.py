@@ -179,3 +179,74 @@ def test_audit_location_asserted(tmp_path, monkeypatch):
     assert os.path.basename(os.path.dirname(out_default)) == "critic"
     assert out_default.endswith(os.path.join(".regress", "critic",
                                               "ferry-R3.md"))
+
+
+# ─── v1.97.2（129）：run2 回收+历史批审计 ───
+
+def test_staged_empty_has_presence_line(monkeypatch, tmp_path):
+    """staged 为空也要有存在性行（run2 验收缺口：if staged: 才 append）。"""
+    cp = _load()
+    repo = _mk_repo(tmp_path)
+    mf = tmp_path / "R4.md"
+    mf.write_text("---\nid: R4\n---\nx", encoding="utf-8")
+    monkeypatch.setenv("REGRESS_JOURNAL", "off")
+    monkeypatch.chdir(repo)
+    body = open(cp.assemble(str(mf), out_dir=str(tmp_path / "c4")),
+                encoding="utf-8").read()
+    assert "未提交改动 diff（staged）" in body
+    assert "（无未提交改动）" in body  # 空也留行
+
+
+def test_rev_range_diff(monkeypatch, tmp_path):
+    """历史批审计：--rev-range 取指定区间 diff（真 canary 测量的钥匙）。"""
+    import subprocess as sp
+    cp = _load()
+    repo = _mk_repo(tmp_path)
+    (repo / "c.txt").write_text("3\n", encoding="utf-8")
+    sp.run(["git", "add", "-A"], cwd=str(repo), check=True)
+    sp.run(["git", "commit", "-qm", "second"], cwd=str(repo), check=True)
+    two = sp.run(["git", "rev-parse", "HEAD~1", "HEAD"], cwd=str(repo),
+                 capture_output=True, text=True).stdout.split()
+    rng = f"{two[0]}..{two[1]}"  # A..B 形态（rev-parse 区间形态是两行 sha）
+    mf = tmp_path / "R5.md"
+    mf.write_text("---\nid: R5\n---\nx", encoding="utf-8")
+    monkeypatch.setenv("REGRESS_JOURNAL", "off")
+    monkeypatch.chdir(repo)
+    path = cp.assemble(str(mf), out_dir=str(tmp_path / "c5"), rev_range=rng)
+    body = open(path, encoding="utf-8").read()
+    assert "+3" in body  # 区间 diff 在场（c.txt 新增行）
+
+
+def test_empty_head_diff_diagnosis_in_ferry(monkeypatch, tmp_path):
+    """诊断标记进 ferry 正文（run2 受众错位：stderr 批评家看不见）。"""
+    import subprocess as sp
+    cp = _load()
+    repo = tmp_path / "solo"
+    repo.mkdir()
+    sp.run(["git", "init", "-q"], cwd=str(repo), check=True)
+    sp.run(["git", "config", "user.email", "t@t"], cwd=str(repo), check=True)
+    sp.run(["git", "config", "user.name", "t"], cwd=str(repo), check=True)
+    (repo / "d.txt").write_text("1\n", encoding="utf-8")
+    sp.run(["git", "add", "-A"], cwd=str(repo), check=True)
+    mf = tmp_path / "R6.md"
+    mf.write_text("---\nid: R6\n---\nx", encoding="utf-8")
+    monkeypatch.setenv("REGRESS_JOURNAL", "off")
+    monkeypatch.chdir(repo)
+    body = open(cp.assemble(str(mf), out_dir=str(tmp_path / "c6")),
+                encoding="utf-8").read()
+    assert "取不到" in body  # 诊断在 ferry 里（不是只有 stderr）
+
+
+def test_report_segment_not_clipped(monkeypatch, tmp_path):
+    """报告段不截（run2：被告知未到可审——关键证据整段进）。"""
+    cp = _load()
+    repo = _mk_repo(tmp_path)
+    rep = tmp_path / "report.md"
+    rep.write_text("关键证据行\n" * 5000, encoding="utf-8")
+    mf = tmp_path / "R7.md"
+    mf.write_text("---\nid: R7\n---\nx", encoding="utf-8")
+    monkeypatch.setenv("REGRESS_JOURNAL", "off")
+    monkeypatch.chdir(repo)
+    path = cp.assemble(str(mf), report_path=str(rep), out_dir=str(tmp_path / "c7"))
+    body = open(path, encoding="utf-8").read()
+    assert "截断：原" not in body.split("批报告原文")[1]  # 报告段无截断标记

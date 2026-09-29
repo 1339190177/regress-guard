@@ -280,6 +280,10 @@ python3 scripts/critic_pass.py --rebuttal '{"p1_0": "逐条回应"}'
   升格=两轮试点人裁（发现率 vs 0158a98b 人审基线+假阳性重提率，journal
   critic_findings/critic_rebuttal 事件采集，mode 字段分段 normal/degraded）
 - 与深查节互补：自问（反问三）vs 他者问——不互代
+- **canary 自指极限（v1.97.2 文告）**：自修批的 HEAD diff 本身展示种子的增删行
+  ——去标签在自修批结构性失效（run2 方法论发现）。canary 发现率测量**只对
+  非自修批有效**；历史批审计用 --rev-range 组装后跑 canary 即可
+- **历史批审计**：--rev-range A..B 组装任意历史批 ferry（diff 取指定区间）
 
 ## 清洁环境矩阵（v1.96.1：本地自造"外部环境"）
 
