@@ -132,20 +132,22 @@ def _parse_junitxml(path):
     passed = failed = errors = skipped = 0
     for ts in root.iter("testsuite"):
         for tc in ts.iter("testcase"):
-            kids = list(tc)
-            if not kids:
-                passed += 1
-            elif kids[0].tag == "failure":
-                failed += 1
-            elif kids[0].tag == "error":
-                errors += 1
-            elif kids[0].tag == "skipped":
-                if kids[0].get("type") in ("pytest.xfail", "pytest.xpass"):
-                    pass  # 已知问题/意外通过：不计入任何侧
-                else:
-                    skipped += 1
+            # 130（批评家 run3 历史发现）：全子元素扫描——只看首子元素在
+            # 前置附属元素/多子元素形态下误分类。只认 failure/error/skipped
+            # 三标签；rerun 场景（同 case 多 failure）按次计不按例计（保守）。
+            fails = [k for k in tc if k.tag == "failure"]
+            errs = [k for k in tc if k.tag == "error"]
+            skips = [k for k in tc if k.tag == "skipped"]
+            if fails:
+                failed += len(fails)
+            elif errs:
+                errors += len(errs)
+            elif skips:
+                for k in skips:
+                    if k.get("type") not in ("pytest.xfail", "pytest.xpass"):
+                        skipped += 1  # xfail/xpass 不计入任何侧（既定语义）
             else:
-                passed += 1  # 其余附属元素（如 rerun 中间态）按通过计
+                passed += 1
     return {"passed": passed, "failed": failed, "errors": errors,
             "skipped": skipped}
 
@@ -402,6 +404,11 @@ def _parse_pytest(output, exit_code, project_dir=None):
         failed = _cnt("failed")
         errors = _cnt("error")
         skipped = _cnt("skipped")
+        # 130（批评家 run3）：collection error 场景 pytest 死在写 junitxml 前、
+        # -q 摘要又无计数（conftest 坏=活体）——fail 态零计数时至少记 1：
+        # 计数未知 ≠ 计数为零（零会让"fail 但 0/0"的矛盾形态外泄）
+        if exit_code != 0 and not (failed or errors):
+            errors = 1
 
     if exit_code == 0 and failed == 0 and errors == 0:
         return {

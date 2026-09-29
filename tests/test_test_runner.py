@@ -371,3 +371,36 @@ def test_parse_junitxml_unit():
     bad = d / "bad.xml"
     bad.write_text("not-xml <<<", encoding="utf-8")
     assert _parse_junitxml(str(bad)) is None
+
+
+def test_parse_junitxml_unit_multi_child():
+    """130（批评家 run3 历史发现）：前置附属元素/多子元素形态——全子元素
+    扫描不误分类（旧 kids[0] 逻辑会把带前置 system-out 的失败例记 passed）。"""
+    import pathlib, tempfile
+    from test_runner import _parse_junitxml
+    d = pathlib.Path(tempfile.mkdtemp())
+    xml = ("<?xml version='1.0'?><testsuites><testsuite>"
+           "<testcase name='pre'><system-out>noise</system-out>"
+           "<failure message='x'/></testcase>"
+           "<testcase name='rerun'><failure message='a'/>"
+           "<failure message='b'/></testcase>"
+           "<testcase name='ok'/></testcase>"
+           "</testsuite></testsuites>").replace(
+               "<testcase name='ok'/></testcase>", "<testcase name='ok'/>")
+    f = d / "m.xml"
+    f.write_text(xml, encoding="utf-8")
+    c = _parse_junitxml(str(f))
+    assert c["failed"] == 3   # pre 记败（旧逻辑误 passed）+rerun 按次计 2
+    assert c["passed"] == 1
+
+
+def test_junit_collection_error_end_to_end(tmp_path):
+    """130：errors 桶集成锚（批评家 run3：无锚的桶=纸面能力）——坏 conftest
+    真子进程：collection error 计入 failed、状态 fail。"""
+    (tmp_path / ".regress").mkdir()
+    (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    (tmp_path / "conftest.py").write_text("def broken(:\n", encoding="utf-8")
+    r = run_tests(str(tmp_path))
+    assert r["status"] == "fail"
+    assert (r["failed"] or 0) >= 1  # collection error 入 errors→failed 侧
+    assert r["parse"] == "junitxml" or r["parse"] == "regex"
