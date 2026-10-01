@@ -33,10 +33,12 @@ PROBES = [
     ("rules_ledger.health", [sys.executable, f"{_LIB}/rules_ledger.py", ".", "health"]),
     ("history.features", [sys.executable, f"{_LIB}/history.py", ".regress", "features"]),
     ("history.cache", [sys.executable, f"{_LIB}/history.py", ".regress", "cache"]),
+    # empty_ok 语义（132）：只给"空输出=健康"的探针——仓洁净 status 空=✓。
+    # 数据探针默认零输出=❌（防真静默被掩盖）——新增探针勿随手加 empty_ok。
     ("repo.clean", ["git", "-C",
                     os.path.join(os.path.dirname(os.path.dirname(
                         os.path.abspath(__file__))), "..", "regress-guard"),
-                    "status", "--short"]),
+                    "status", "--short"], True),
 ]
 
 
@@ -51,12 +53,15 @@ def run_probes(workspace=None, probes=None, timeout=PER_PROBE_TIMEOUT):
     """
     workspace = workspace or os.getcwd()
     rows, ok_all = [], True
-    for label, cmd in (probes or PROBES):
+    for entry in (probes or PROBES):
+        label, cmd = entry[0], entry[1]
+        empty_ok = entry[2] if len(entry) > 2 else False
         try:
             p = subprocess.run(cmd, capture_output=True, text=True,
                                cwd=workspace, timeout=timeout)
             out = (p.stdout or "") + (p.stderr or "")
-            ok = (p.returncode == 0 and bool((p.stdout or "").strip()))
+            ok = (p.returncode == 0
+                  and (bool((p.stdout or "").strip()) or empty_ok))
             if not ok:
                 why = _tail(p.stderr) or _tail(p.stdout)
                 detail = f"exit {p.returncode}: {why}" if p.returncode else (

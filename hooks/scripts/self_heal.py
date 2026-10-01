@@ -483,7 +483,7 @@ def _gc_tmp_state(max_age_days=7):
             except OSError:
                 pass
         if n:
-            return f"gc:{n}"
+            return f"清理了 {n} 个过期临时状态文件"  # 132：恢复≠清理，措辞诚实
     except Exception:
         pass
     return None

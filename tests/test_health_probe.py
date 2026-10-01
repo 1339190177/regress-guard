@@ -66,3 +66,12 @@ def test_builtin_probe_list_nonempty_and_anchored():
     assert len(labels) >= 10
     assert "history.features" in labels and "history.cache" in labels
     assert "repo.clean" in labels
+
+
+def test_empty_ok_probe_passes_when_silent(tmp_path):
+    """132：'空输出=健康'语义探针（仓洁净）零输出→✓；数据探针仍红。"""
+    hp = _load()
+    probes = [("clean", [_probe("exit 0")], True),   # 空=好
+              ("data", [_probe("exit 0")], False)]   # 空=静默层
+    rows, ok = hp.run_probes(str(tmp_path), probes=probes)
+    assert rows[0][1] and not rows[1][1] and not ok
