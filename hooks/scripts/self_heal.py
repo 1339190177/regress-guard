@@ -589,7 +589,7 @@ def main():
     digest = _project_digest()
     context = "\n\n".join(p for p in (sentinel, digest) if p)
     if healed:
-        msg = "regress-guard 自愈：恢复了 " + ", ".join(healed)
+        msg = "regress-guard 自愈/卫生：" + "，".join(healed)  # 133：条目自述动词，包装词中性
         if context:
             msg += "\n\n" + context
         print(json.dumps({"status": "healed", "additionalContext": msg}))
