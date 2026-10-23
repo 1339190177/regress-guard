@@ -161,3 +161,48 @@ def test_valve_disabled_config_rescues_crash(tmp_path):
     p = _mk_project(tmp_path, config={"execution_valve": False})
     code, _ = _run(VALVE, '"str"', project=p)
     assert code == 0
+
+
+# ─── 波C：触发与提取的词序/锚定盲区（本批两次提交绕过门禁的活体） ──
+
+def _imp():
+    import importlib.util as ilu
+    spec = ilu.spec_from_file_location(
+        "pcg", os.path.join(LIB, "pre_commit_guard.py"))
+    m = ilu.module_from_spec(spec); spec.loader.exec_module(m)
+    return m
+
+
+def _payload(cmd):
+    return json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}})
+
+
+def test_is_git_commit_dash_c_variant():
+    """`git -C <路径> commit` 必须命中（旧 \\bgit\\s+commit\\b 漏判=门禁整体
+    不跑——本批 e1a7684/b2b18d5 两次提交实证绕过）。"""
+    m = _imp()
+    assert m.is_git_commit(_payload("git -C /some/path commit -m 'x'"))
+    assert m.is_git_commit(_payload('git -C /a/b commit -m "y（NNN）"'))
+    assert m.is_git_commit(_payload("git --work-tree=/x commit -m z"))
+    assert m.is_git_commit(_payload("git commit -m plain"))
+    # 非提交不误命中
+    assert not m.is_git_commit(_payload("git -C /x log --oneline"))
+    assert not m.is_git_commit(_payload("git status --short"))
+
+
+def test_message_from_cmd_anchors_after_commit_verb():
+    """复合命令里 grep -m 不得劫持提取（活体：sed+grep -m 4+commit 链）。"""
+    m = _imp()
+    cmd = ("sed -i 's|x|y|g' f && grep -m 4 \"file:\" f && "
+           "git commit -m \"批N 说明；REGRESS-2026-135（810/810）\"")
+    msg = m._message_from_cmd(_payload(cmd))
+    assert "REGRESS-2026-135" in msg, msg
+    assert not msg.strip().isdigit(), "提取到 grep 的数字参数=劫持未修"
+
+
+def test_compound_dash_c_variant():
+    """`git -C x add . && git -C x commit` 的复合形态照拦（-C 词序同族）。"""
+    m = _imp()
+    assert m.is_compound_stage_commit(
+        _payload("git -C /p add . && git -C /p commit -m x"))
+    assert m.is_compound_stage_commit(_payload("git add -A && git commit -m x"))

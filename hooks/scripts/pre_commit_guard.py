@@ -277,8 +277,11 @@ def is_git_commit(tool_input_str):
         pass
     cmd = re.sub(r"'[^']*'", "''", cmd)
     cmd = re.sub(r'"[^"]*"', '""', cmd)
-    # git commit / git ci
-    if re.search(r'\bgit\s+commit\b|\bgit\s+ci\b', cmd):
+    # git commit / git ci（批135 波C：词序覆盖 `git -C <路径> commit` /
+    # `git --work-tree=x commit` 变体——旧 `\bgit\s+commit\b` 只认紧邻形态，
+    # `git -C` 隔开动词即漏判=触发型 fail-open，本批两次提交实证绕过门禁）
+    if re.search(r'\bgit\s+(?:-{1,2}[A-Za-z][\w-]*(?:=\S+\s+|\s+\S+\s+|\s+))*'
+                 r'(?:commit|ci)\b', cmd):
         return True
     # npm version / npm publish（npm version 会自动 commit）
     if re.search(r'\bnpm\s+(version|publish)\b', cmd):
@@ -306,7 +309,14 @@ def _message_from_cmd(tool_input_str):
         cmd = ti.get("command", "") if isinstance(ti, dict) else ""
     except Exception:
         return ""
-    m = re.search(r'(?:^|\s)-\w*m\w*\s+("([^"]*)"|\'([^\']*)\'|(\S+))', cmd)
+    # 批135 波C：-m 提取锚定提交动词之后——复合命令里 grep -m 等无关 -m 会
+    # 劫持首个匹配（本批活体标本：sed+grep -m 4+commit 链提取到 grep 的"4"，
+    # 门禁误判信息缺清单号）。找不到动词锚则退全串（保守=旧行为）。
+    anchor = re.search(
+        r'\bgit\s+(?:-{1,2}[A-Za-z][\w-]*(?:=\S+\s+|\s+\S+\s+|\s+))*'
+        r'(?:commit|ci)\b', cmd)
+    scope = cmd[anchor.end():] if anchor else cmd
+    m = re.search(r'(?:^|\s)-\w*m\w*\s+("([^"]*)"|\'([^\']*)\'|(\S+))', scope)
     if not m:
         return ""
     return m.group(2) or m.group(3) or m.group(4) or ""
@@ -336,9 +346,11 @@ def is_compound_stage_commit(tool_input_str):
         pass
     t = re.sub(r"'[^']*'", "''", t)
     t = re.sub(r'"[^"]*"', '""', t)
-    if re.search(r'\bgit\s+(?:-\S+\s+)*add\b', t):
+    # 批135 波C：旗标带值形态（-C <路径>/--work-tree=x）两分支同修——
+    # 旧 `-\S+\s+` 只吃旗标不吃值，`git -C /p add` 的 add 落不进匹配
+    if re.search(r'\bgit\s+(?:-\S+\s+(?:\S+\s+)?)*add\b', t):
         return True
-    m = re.search(r'\bgit\s+(?:commit|ci)\s+(-[a-zA-Z-]+)?', t)
+    m = re.search(r'\bgit\s+(?:-\S+\s+(?:\S+\s+)?)*(?:commit|ci)\s+(-[a-zA-Z-]+)?', t)
     if m and m.group(1):
         flag = m.group(1)
         if (not flag.startswith("--") and "a" in flag) or flag == "--all":
