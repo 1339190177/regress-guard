@@ -13,20 +13,16 @@ allowed-tools: Read, Write, Edit, Bash
 先检查项目里是否有重复的 regress-guard 代码（会导致和全局级冲突）：
 
 ```bash
-# 检查项目级是否有重复 skill/command
-ls .zcode/skills/regression-planning 2>/dev/null
-ls .zcode/skills/characterization-testing 2>/dev/null
-ls .zcode/skills/change-impact-analysis 2>/dev/null
-ls .agents/skills/regression-planning 2>/dev/null
+# 检查项目级是否有重复 command/hook 副本（skills 已于 v1.95.1 退役）
 ls regress-guard/hooks/ 2>/dev/null
+ls .zcode/commands/regress* 2>/dev/null
 ```
 
 如果发现重复 → **警告并询问是否删除项目级副本**：
 ```
-⚠️ 检测到项目级有 regress-guard 的 skill/command 副本：
-  .zcode/skills/regression-planning/
+⚠️ 检测到项目级有 regress-guard 的 command/hook 副本：
 
-全局级已安装（~/.zcode/skills/），项目级副本会导致：
+全局级已安装（~/.zcode/commands/ 与 ~/.zcode/regress-guard-hooks/），项目级副本会导致：
   - 用到旧版本
   - 更新不同步
   - ZCode 优先级混乱

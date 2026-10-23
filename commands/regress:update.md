@@ -40,6 +40,6 @@ python3 "<安装路径>/regress-guard-hooks/lib/self_heal.py"
                          ↓ self_heal 检测到
                     0.6.0 > 0.5.0
                          ↓ 自动全量覆盖
-                    skills/commands/hooks/lib 全部更新
+                    commands/hooks/lib 全部更新
                     .source 的 source_version 更新为 0.6.0
 ```

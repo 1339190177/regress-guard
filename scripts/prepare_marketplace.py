@@ -23,7 +23,7 @@ DIST = os.path.join(ROOT, "dist", "plugins", "regress-guard")
 # 注意：.zcode-plugin/ 以点开头但必须保留（清单所在）——只点名排除真 dev 件
 EXCLUDE_TOP = {"tests", "deploy", "dist", ".git", ".github", "marketplace.json",
                "pytest.ini", "validate.sh", "__pycache__", ".gitignore",
-               ".gitattributes", ".regress"}
+               ".gitattributes", ".regress", ".pytest_cache"}
 EXCLUDE_SCRIPTS = {"publish.py", "gen_reference.py", "check_docs.py",
                    "prepare_marketplace.py"}
 EXCLUDE_SUFFIX = (".pyc",)
@@ -41,7 +41,8 @@ def build():
         if os.path.isdir(src):
             for dirpath, dirnames, filenames in os.walk(src):
                 dirnames[:] = [d for d in dirnames
-                               if d not in ("__pycache__", ".git")]
+                               if d not in ("__pycache__", ".git",
+                                            ".pytest_cache")]
                 rel_dir = os.path.relpath(dirpath, ROOT)
                 for fn in sorted(filenames):
                     if fn.endswith(EXCLUDE_SUFFIX) or fn == ".DS_Store":
@@ -59,13 +60,28 @@ def build():
     return n
 
 
+def build_pr_payload(out_root):
+    """批137：官方市场 PR 载荷一键蒸馏——external_plugins/regress-guard 形态。
+
+    取代手工全树拼装（run14/run49 的 134 文件 payload 混入 tests/deploy/
+    publish.py 等 dev 件——官方 CONTRIBUTING 禁 caches/dev 工具外泄）。"""
+    build()
+    dst = os.path.join(out_root, "external_plugins", "regress-guard")
+    if os.path.exists(dst):
+        shutil.rmtree(dst)
+    shutil.copytree(DIST, dst)
+    n = sum(len(fs) for _, _, fs in os.walk(dst))
+    print(f"PR 载荷就绪：{n} 文件 -> {dst}")
+    return n
+
+
 def entry():
     """市场条目（写进对方根 marketplace.json 的 plugins 数组）。"""
     m = json.load(open(os.path.join(ROOT, ".zcode-plugin", "plugin.json"),
                        encoding="utf-8"))
     return {
         "name": m["name"],
-        "source": "./plugins/regress-guard",
+        "source": "./external_plugins/regress-guard",
         "description": m["description"],
         "description_i18n": m["description_i18n"],
         "version": m["version"],
@@ -76,6 +92,12 @@ def entry():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) >= 3 and sys.argv[1] == "--pr-payload":
+        n = build_pr_payload(sys.argv[2])
+        if n < 60:
+            print(f"自检失败：PR 载荷文件数异常 {n}", file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)
     n = build()
     e = entry()
     out = os.path.join(ROOT, "dist", "marketplace-entry.json")

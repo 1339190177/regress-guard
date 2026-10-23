@@ -26,8 +26,7 @@ echo "找不到 uninstall.sh"
 
 ## 清理内容
 
-- 删除 `~/.zcode/skills/` 下的 3 个 skill
-- 删除 `~/.zcode/commands/` 下的 8 个命令
+- 删除 `~/.zcode/commands/` 下的 16 个命令
 - 删除 `~/.zcode/regress-guard-hooks/` 目录
 - 从 `config.json` 移除 PreToolUse + SessionStart hook
 - 从 `AGENTS.md` 移除回归契约块

@@ -7,11 +7,15 @@
 import os
 import re
 import glob
+import json
 
 import pytest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-CLAIM_FILES = ["install.sh", "uninstall.sh", "README.md"]
+# 批137：claims 面扩 commands/*.md（uninstall.md「3 skill/8 命令」陈旧宣称实证）
+CLAIM_FILES = (["install.sh", "uninstall.sh", "README.md"]
+               + sorted(os.path.basename(p) for p in
+                        glob.glob(os.path.join(ROOT, "commands", "*.md"))))
 
 # 数字宣称形态：「N 个 skill」「N 个命令」「N 个 hook」（中英数字均认）
 _NUM_CLAIM = re.compile(r"(\d+)\s*个\s*(skill|命令|hook)", re.I)
@@ -20,7 +24,8 @@ _NUM_CLAIM = re.compile(r"(\d+)\s*个\s*(skill|命令|hook)", re.I)
 def _repo_files():
     out = {}
     for f in CLAIM_FILES:
-        p = os.path.join(ROOT, f)
+        p = os.path.join(ROOT, "commands", f) if f.startswith("regress:") \
+            else os.path.join(ROOT, f)
         out[f] = open(p, encoding="utf-8").read() if os.path.exists(p) else ""
     return out
 
@@ -50,11 +55,14 @@ def test_numeric_claims_match_reality():
 
 
 def test_referenced_dirs_exist():
-    """安装器引用的相对目录必须存在（skills/ 已移除后任何残留引用即红）。"""
+    """仓相对目录引用必须存在（skills/ 已移除后任何残留引用即红）；
+    ~/.zcode/ 前缀的用户级引用合法不查（machine-facts 等用户 skill 真住在那）。"""
     bad = []
     for fname, text in _repo_files().items():
-        for m in re.finditer(r"(?:~/.zcode/)?(skills|commands)/[A-Za-z0-9:_\-]", text):
-            rel = m.group(1)
+        for m in re.finditer(r"(~/.zcode/)?(skills|commands)/[A-Za-z0-9:_\-]", text):
+            if m.group(1):  # 用户级引用，非仓内宣称
+                continue
+            rel = m.group(2)
             if not os.path.isdir(os.path.join(ROOT, rel)):
                 bad.append(f"{fname}: 引用 {rel}/ 但仓内不存在")
     assert not bad, "悬空目录引用：\n  " + "\n  ".join(bad)
@@ -65,3 +73,16 @@ def test_requirements_dev_lists_actual_deps():
     req = open(os.path.join(ROOT, "requirements-dev.txt"), encoding="utf-8").read()
     for pkg in ("pytest", "anyio", "filelock"):
         assert re.search(rf"^{pkg}\b", req, re.M), f"requirements-dev 缺 {pkg}"
+
+
+def test_root_marketplace_version_matches_plugin():
+    """批137：根 marketplace.json（个人源轨）版本必须随 plugin.json——
+    1.81.0 停摆 17 minor 的陈旧面实证（PR#34 载荷同源化伴生）。"""
+    pj = json.load(open(os.path.join(ROOT, ".zcode-plugin", "plugin.json"),
+                        encoding="utf-8"))
+    mp = json.load(open(os.path.join(ROOT, "marketplace.json"), encoding="utf-8"))
+    ent = (mp.get("plugins") or [{}])[0]
+    assert ent.get("version") == pj["version"], \
+        f"根市场版本 {ent.get('version')} != plugin.json {pj['version']}"
+    assert ent.get("description_i18n") == pj.get("description_i18n"), \
+        "根市场 description_i18n 与 plugin.json 漂移（官方校验器要求全等）"
