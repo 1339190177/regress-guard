@@ -34,6 +34,7 @@ _HOOKS = next((d for d in _HOOKS_CANDIDATES
 GUARD = os.path.join(_HOOKS, "pre_commit_guard.py")
 VALVE = os.path.join(_HOOKS, "execution_valve.py")  # 120：119 解析序列漏网（部署位 ROOT 断链致 H6 假 fail，部署位束逮住）
 RGUARD = os.path.join(_HOOKS, "read_before_edit_guard.py")
+BGN = os.path.join(_HOOKS, "boundary_guard.py")  # 135：fail-closed 场景面
 
 _S_MANIFEST = ("---\nid: R1\nstatus: in-progress\ntier: S\n"
                "rollback: git revert\nplanned_changes:\n  - id: F1\n"
@@ -98,20 +99,26 @@ def _mk_sub(root, name, files):
     return p
 
 
-def _sh(script, command, project, argv=None, env_extra=None, payload=None):
+def _sh(script, command, project, argv=None, env_extra=None, payload=None,
+        raw=None):
     """run_guard 契约：JSON stdin、剥离会话变量、钉 PROJECT_DIR。
     v1.92.3（114）扩：argv（读门禁等需 mode 参数的脚本）、env_extra（会话隔离——
     读门禁状态按会话键隔离，场景必须各用独立会话防串场）、payload
-    （stdin 的 tool_input 覆写——Edit/Write 形态场景用）。"""
+    （stdin 的 tool_input 覆写——Edit/Write 形态场景用）。
+    批135 扩：raw——整条 stdin 原文（非 dict/畸形 JSON 的 fail-closed 场景，
+    _sh 自建的 dict 载荷表达不了形态破坏）。"""
     env = dict(os.environ)
     env.pop("CLAUDE_SESSION_ID", None)
     env.pop("ZCODE_SESSION_ID", None)
     env["CLAUDE_PROJECT_DIR"] = str(project)
     env.update(env_extra or {})
-    ti = payload if payload is not None else {"command": command}
-    inp = json.dumps({"tool_name": ti.get("_tool", "Bash"),
-                      "tool_input": {k: v for k, v in ti.items()
-                                     if not k.startswith("_")}})
+    if raw is not None:
+        inp = raw
+    else:
+        ti = payload if payload is not None else {"command": command}
+        inp = json.dumps({"tool_name": ti.get("_tool", "Bash"),
+                          "tool_input": {k: v for k, v in ti.items()
+                                         if not k.startswith("_")}})
     proc = subprocess.run(
         ["python3", script] + (argv or []), input=inp, capture_output=True,
         text=True, env=env, cwd=str(project), timeout=30)
@@ -243,6 +250,26 @@ def _sc_h14(root):  # 补戳后外部改仍拦（116 牙齿保留）
     ]}
 
 
+def _sc_h15(root):  # 非 dict 载荷 → 边界守卫应拦（批135 fail-closed）
+    p = _mk_project(root, "h15")
+    return BGN, "", p, {"raw": "[1, 2, 3]"}
+
+
+def _sc_h16(root):  # 非 dict 载荷 → 读门禁应拦（批135）
+    p = _mk_project(root, "h16")
+    return RGUARD, "", p, {"raw": '"just a string"', "argv": ["pre"]}
+
+
+def _sc_h17(root):  # 畸形 JSON 统一拦截 → 边界守卫（批135 顾问裁决②）
+    p = _mk_project(root, "h17")
+    return BGN, "", p, {"raw": "{not valid json]"}
+
+
+def _sc_h18(root):  # 畸形 JSON → 门禁 is_git_commit 上抛×P0-1a 兜底（批135）
+    p = _mk_project(root, "h18")
+    return GUARD, "", p, {"raw": "{bad json"}
+
+
 SCENARIOS = [
     {"id": "H1-compound", "build": _sc_h1, "code": 2, "has": "复合"},
     {"id": "H2-count-absent", "build": _sc_h2, "code": 2, "has": "计数"},
@@ -260,6 +287,14 @@ SCENARIOS = [
     {"id": "H13-post-stamp-no-block", "build": _sc_h13, "code": 0,
      "has": "", "expect_none": "指纹不匹配"},
     {"id": "H14-post-stamp-teeth", "build": _sc_h14, "code": 2, "has": "指纹"},
+    {"id": "H15-boundary-nondict", "build": _sc_h15, "code": 2,
+     "has": "fail-closed"},
+    {"id": "H16-rbe-nondict", "build": _sc_h16, "code": 2,
+     "has": "fail-closed"},
+    {"id": "H17-boundary-malformed", "build": _sc_h17, "code": 2,
+     "has": "fail-closed"},
+    {"id": "H18-gate-malformed", "build": _sc_h18, "code": 2,
+     "has": "fail-safe"},
 ]
 
 
@@ -305,7 +340,8 @@ def run_battery(scenarios=SCENARIOS, verbose=True):
                         code, err = _sh(script, command, proj,
                                         argv=sh.get("argv"),
                                         env_extra=sh.get("env"),
-                                        payload=sh.get("payload"))
+                                        payload=sh.get("payload"),
+                                        raw=sh.get("raw"))
                         if code not in (0, None) and st is not extra["steps"][-1]:
                             outcomes[s["id"]] = f"error:midstep{code}"
                             break
@@ -318,7 +354,8 @@ def run_battery(scenarios=SCENARIOS, verbose=True):
                                     argv=extra.get("argv") or s.get("argv"),
                                     env_extra=extra.get("env") or s.get("env"),
                                     payload=extra.get("payload")
-                                    or s.get("payload"))
+                                    or s.get("payload"),
+                                    raw=extra.get("raw") or s.get("raw"))
                 ok = (code == s["code"]
                       and (not s["has"] or s["has"] in err)
                       and (not s.get("expect_none")

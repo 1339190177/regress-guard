@@ -168,6 +168,34 @@ def evaluate(command, project_dir=None):
     return reasons
 
 
+def _fail_closed(reason):
+    """fail-closed（批135，P0-1c 全量收口）：载荷契约破坏/内部异常一律拦。
+
+    旧行为：非 dict 只修了一半（无说明静默 exit 2），其余未捕获异常 →
+    traceback → exit 1 → 阀门放行。逃生阀前置（顾问条件）：_valve_disabled
+    只读 config/env，不碰载荷解析。
+    """
+    try:
+        if _valve_disabled():
+            sys.exit(0)
+    except Exception:
+        pass
+    try:
+        print(
+            f"REGRESS-GUARD: ⛔ 执行阀 fail-closed\n"
+            f"  {reason}\n\n"
+            f"  阀门无法判定状态时按「拦」处理——这是设计不是故障\n"
+            f"  （静默放行=不可逆命令无守卫）。\n"
+            f"  · 修复/排查后重试\n"
+            f"  · 确要执行 → 命令前显式加令牌 {TOKEN}（禁止习惯性携带）\n"
+            f"  · 关闭阀门（留痕）：.regress/config.json 设 execution_valve: false",
+            file=sys.stderr,
+        )
+    except Exception:
+        pass
+    sys.exit(2)
+
+
 def main():
     raw = sys.stdin.read() if not sys.stdin.isatty() else ""
     if not raw:
@@ -175,18 +203,21 @@ def main():
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        sys.exit(0)
+        # 批135（顾问裁决②）：畸形 JSON 统一拦截——stdin 来自宿主，
+        # 畸形=宿主契约破坏；旧行为 exit 0 放行 = 阀门可被形态绕过
+        _fail_closed("载荷不是合法 JSON（宿主契约破坏）")
 
-    # 灾难级命令阀 fail-closed（评审批次一 P0-1c）：顶层非 dict 载荷
-    # 旧代码 data.get 直接 AttributeError → exit 1 = 放行，与阀门语义相反
-    # （tool_input 非 dict 由下方 isinstance 判断兜住，无需强转）
+    # 灾难级命令阀 fail-closed（评审批次一 P0-1c + 批135 补说明）
     if not isinstance(data, dict):
-        sys.exit(2)
+        _fail_closed("载荷不是 JSON 对象（非 dict 形态）")
 
     if data.get("tool_name", "") != "Bash":
         sys.exit(0)
     ti = data.get("tool_input", {})
-    command = (ti.get("command") or "") if isinstance(ti, dict) else ""
+    if not isinstance(ti, dict):
+        # 批135：非 dict tool_input 统一拦（原空命令静默放行=形态绕过面）
+        _fail_closed("tool_input 不是 JSON 对象")
+    command = ti.get("command") or ""
     if not command:
         sys.exit(0)
 
@@ -215,4 +246,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        # 全局兜底（批135，照 pre_commit_guard P0-1a 形态）：未捕获异常→拦
+        _fail_closed(f"内部异常 {type(e).__name__}: {e}")

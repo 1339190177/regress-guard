@@ -450,6 +450,19 @@ ui-ux-pro-max。
 - `.regress/config.json` → `"strict": false`：门禁降级为仅警告
 - `"boundary_enforced": false`：关闭边界守卫
 - `/regress:bypass <分钟>`：限时赦免 + 审计（不可赦名单：执行阀=物理不可逆、先读后改=防盲改）
+- `"read_before_edit_ratio": 0`：关闭先读后改门禁（降级留痕）
+- `"execution_valve": false` / `RG_VALVE=off`：关闭执行阀（留痕）
+
+### fail-closed 语义（v1.99，批135）
+
+拦截器（边界/读门禁/执行阀/提交门禁/launcher）崩溃、载荷形态破坏（非 dict/
+畸形 JSON）一律 **exit 2 拦截**——这是设计不是故障：宿主钩子语义「非 2=放行」，
+静默 fail-open 是看不见的治理退化（宿主契约漂移必须响亮失败）。拦截消息必带
+逃生路径；赦免判定（bypass 窗口/config 关闭项）独立于载荷解析——守卫坏了不
+等于连 bypass 都救不回来。观测/增强钩子（risk/fail watch、self_heal、桥）崩溃
+则干净跳过（exit 0 + stderr 一行）。已知残余：模块级 import 崩溃（PYTHONPATH
+投毒）先于兜底层——注册命令 `python3 -E` 封 env 面 + health_probe 钩子探针兜
+可见性；5s 超时击杀结构性放行，同样只靠探针可见性。
 
 ### 深查节规约（v1.93.0/121，M/L 档）
 

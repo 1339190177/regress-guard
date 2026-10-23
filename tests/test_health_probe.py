@@ -75,3 +75,19 @@ def test_empty_ok_probe_passes_when_silent(tmp_path):
               ("data", [_probe("exit 0")], False)]   # 空=静默层
     rows, ok = hp.run_probes(str(tmp_path), probes=probes)
     assert rows[0][1] and not rows[1][1] and not ok
+
+
+def test_hook_probes_registered():
+    """批135：钩子入口探针（boundary/valve/rbe-post）须在场——崩/挂/形态错
+    的可见性依赖这三条（5s 超时击穿无包装可修，探针是唯一对策）。"""
+    import importlib.util as ilu
+    HP = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), "..", "scripts", "health_probe.py"))
+    spec = ilu.spec_from_file_location("hp", HP)
+    m = ilu.module_from_spec(spec); spec.loader.exec_module(m)
+    labels = {p[0] for p in m.PROBES}
+    assert {"hook.boundary", "hook.valve", "hook.rbe-post"} <= labels
+    # 三探针都是 empty_ok（钩子通过时 stdout 本就为空）
+    for p in m.PROBES:
+        if p[0].startswith("hook."):
+            assert p[2] is True

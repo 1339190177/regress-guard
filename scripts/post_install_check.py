@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""安装后自检（v1.76，065）：三查一屏——公网用户装完即知好坏。
+"""安装后自检（v1.76 起；批135 增④）：四查一屏——公网用户装完即知好坏。
 
 ①语法面：已装目录全部 *.py py_compile 零错（半拷贝/截断文件当场现形）
 ②注册面：hooks.json 引用的每个脚本文件在已装目录存在（注册了却缺文件=首次
   使用才炸的最阴形态）
 ③版本面：.source 戳 source_version 与源仓 plugin.json 一致（装旧不知旧）
+④注册重复面：config.json Stop 事件只许一组 regress 条目（独立 stop_notify
+  残留=每次 Stop 双发；批135 install.sh 幂等过滤修复的装完即验）
 任一红 → exit 1 + 修复指引——装坏要大声失败（顾问"勿砍"项）。
 
-用法：post_install_check.py [源仓根] [已装目录]
-缺省：源仓=脚本上两级；已装=~/.zcode/regress-guard-hooks
+用法：post_install_check.py [源仓根] [已装目录] [config.json]
+缺省：源仓=脚本上两级；已装=~/.zcode/regress-guard-hooks；config=~/.zcode/cli/config.json
 """
 import json
 import os
@@ -41,11 +43,13 @@ def _referenced_scripts(src_root):
     return names
 
 
-def main(src_root=None, installed=None):
+def main(src_root=None, installed=None, config_json=None):
     src_root = src_root or os.path.abspath(
         os.path.join(os.path.dirname(__file__), ".."))
     installed = installed or os.path.join(
         os.path.expanduser("~/.zcode"), "regress-guard-hooks")
+    config_json = config_json or os.path.join(
+        os.path.expanduser("~/.zcode"), "cli", "config.json")
     fails = []
 
     # ① 语法面
@@ -123,12 +127,32 @@ def main(src_root=None, installed=None):
         fails.append("版本面")
         print(f"❌ 版本面：已装 v{stamp_ver}（{form}） != 源仓 v{src_ver}")
 
+    # ④ 注册重复面（批135）：config Stop 事件只许一组 regress 条目
+    #    （install.sh 旧幂等过滤只认 reflection_check——独立 stop_notify 残留
+    #    =每次 Stop 双发，冷却去重兜底但属注册漂移，装完即知）
+    try:
+        _ev = json.load(open(config_json, encoding="utf-8")
+                        ).get("hooks", {}).get("events", {})
+        _stop = _ev.get("Stop", []) or []
+        _ours = [e for e in _stop
+                 if "regress-guard" in json.dumps(e)
+                 or "reflection_check" in json.dumps(e)]
+        stop_dup = len(_ours) > 1
+    except Exception:
+        stop_dup = False  # config 不可读=非本插件装机形态，不在此查红
+    if stop_dup:
+        fails.append("注册重复面")
+        print("❌ 注册重复面：config.json Stop 事件存在多条 regress 条目"
+              "（独立 stop_notify 残留）——重跑 install.sh 幂等清理")
+    else:
+        print("✅ 注册重复面：Stop 事件无重复 regress 条目")
+
     if fails:
         print(f"\n自检未过（{'/'.join(fails)}）——请重跑 bash "
               f"{os.path.join(src_root, 'install.sh')}；仍红则 "
               f"bash {os.path.join(src_root, 'uninstall.sh')} 后重装", file=sys.stderr)
         return 1
-    print("自检三查全绿")
+    print("自检四查全绿（语法/注册/版本/注册重复）")
     return 0
 
 

@@ -320,6 +320,48 @@ def is_exempt(fp_rel, fp_abs):
     return False
 
 
+def _escape_valve_open():
+    """崩溃路径逃生阀前置检查（批135，顾问前置条件）：
+
+    赦免判定只读 env+config，不碰载荷解析——任何 fail-closed 分支先过这里，
+    确保「守卫坏了」不会变成「连 bypass 都救不回来的死锁」。
+    """
+    try:
+        project_dir = find_project_dir()
+        if project_dir and (config_disables_boundary(project_dir)
+                            or bypass_active(project_dir)):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _fail_closed(reason):
+    """fail-closed（批135）：载荷契约破坏/内部异常一律拦。
+
+    旧行为：非 dict 载荷 AttributeError / 未捕获异常 → traceback → exit 1 →
+    宿主按「非阻断错误」放行 = 编辑静默穿界。AGENT-HOOKS deny-means-deny 同律：
+    状态未知时 deny。畸形 JSON 同样拦（stdin 来自宿主，畸形=宿主契约破坏，
+    必须响亮失败——静默 fail-open 是看不见的治理退化）。
+    """
+    if _escape_valve_open():
+        sys.exit(0)
+    try:
+        print(
+            f"REGRESS-GUARD: ⛔ 边界守卫 fail-closed\n"
+            f"  {reason}\n\n"
+            f"  守卫无法判定状态时按「拦」处理——这是设计不是故障\n"
+            f"  （静默放行=看不见的越界）。\n"
+            f"  · 修复/排查后重试\n"
+            f"  · 确要临时越过 → /regress:bypass <分钟>（限时赦免，赦后记债）\n"
+            f"  · 项目级关闭 → .regress/config.json 设 boundary_enforced: false",
+            file=sys.stderr,
+        )
+    except Exception:
+        pass
+    sys.exit(2)
+
+
 def main():
     raw = sys.stdin.read() if not sys.stdin.isatty() else ""
     if not raw:
@@ -327,14 +369,16 @@ def main():
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        sys.exit(0)
+        _fail_closed("载荷不是合法 JSON（宿主契约破坏）")
+    if not isinstance(data, dict):
+        _fail_closed("载荷不是 JSON 对象（非 dict 形态）")
 
     tool = data.get("tool_name", "")
     if tool not in ("Edit", "Write", "ApplyPatch", "Bash"):
         sys.exit(0)
     ti = data.get("tool_input", {})
     if not isinstance(ti, dict):
-        sys.exit(0)
+        _fail_closed("tool_input 不是 JSON 对象")
     project_dir = find_project_dir()
     if project_dir is None:
         sys.exit(0)
@@ -492,4 +536,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        # 全局兜底（批135，照 pre_commit_guard P0-1a 形态）：未捕获异常→拦
+        _fail_closed(f"内部异常 {type(e).__name__}: {e}")

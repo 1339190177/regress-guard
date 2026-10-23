@@ -1133,7 +1133,7 @@ def test_heldout_runs_for_hooks_touch(project):
     assert bp.exists()
     import json as _j
     data = _j.loads(bp.read_text(encoding="utf-8"))
-    assert len(data["outcomes"]) == 14
+    assert len(data["outcomes"]) == 18  # 批135：束 14→18（fail-closed 四场景）
     assert all(v == "pass" for v in data["outcomes"].values())
 
 

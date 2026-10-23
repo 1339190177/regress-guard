@@ -57,9 +57,13 @@ def _last_prompt():
             return t
     except OSError:
         pass
-    sys.path.insert(0, _HERE)
-    from prompt_intercept import load_last_prompt
-    return load_last_prompt()
+    try:
+        sys.path.insert(0, _HERE)
+        from prompt_intercept import load_last_prompt
+        return load_last_prompt()
+    except Exception:
+        # 批135：接力回退源缺失/损坏不崩 Stop 推送（观测面，干净跳过）
+        return ""
 
 
 def _log(decision, extra=""):

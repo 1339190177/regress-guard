@@ -34,16 +34,16 @@ def _good_tree(tmp_path):
 def test_good_tree_passes(tmp_path, capsys):
     m = _load()
     src, ins = _good_tree(tmp_path)
-    assert m.main(src, ins) == 0
+    assert m.main(src, ins, str(tmp_path / "no-config.json")) == 0
     out = capsys.readouterr().out
-    assert "三查全绿" in out and "guard.py" not in out
+    assert "四查全绿" in out and "guard.py" not in out
 
 
 def test_missing_script_fails(tmp_path, capsys):
     m = _load()
     src, ins = _good_tree(tmp_path)
     os.remove(os.path.join(ins, "guard.py"))
-    assert m.main(src, ins) == 1
+    assert m.main(src, ins, str(tmp_path / "no-config.json")) == 1
     assert "注册面" in capsys.readouterr().out
 
 
@@ -52,7 +52,7 @@ def test_version_mismatch_fails(tmp_path, capsys):
     src, ins = _good_tree(tmp_path)
     (tmp_path / "ins" / ".source").write_text(
         "source_path=/x\nsource_version=0.0.1\n", encoding="utf-8")
-    assert m.main(src, ins) == 1
+    assert m.main(src, ins, str(tmp_path / "no-config.json")) == 1
     assert "版本面" in capsys.readouterr().out
 
 
@@ -60,7 +60,7 @@ def test_syntax_error_fails(tmp_path, capsys):
     m = _load()
     src, ins = _good_tree(tmp_path)
     (tmp_path / "ins" / "guard.py").write_text("def broken(:\n", encoding="utf-8")
-    assert m.main(src, ins) == 1
+    assert m.main(src, ins, str(tmp_path / "no-config.json")) == 1
     assert "语法面" in capsys.readouterr().out
 
 
@@ -72,7 +72,7 @@ def test_plugin_form_version_pass(tmp_path, capsys):
     (tmp_path / "ins" / ".zcode-plugin").mkdir()
     (tmp_path / "ins" / ".zcode-plugin" / "plugin.json").write_text(
         json.dumps({"version": "9.9.9"}), encoding="utf-8")
-    assert m.main(src, ins) == 0
+    assert m.main(src, ins, str(tmp_path / "no-config.json")) == 0
     assert "plugin.json" in capsys.readouterr().out
 
 
@@ -84,7 +84,7 @@ def test_plugin_form_version_mismatch(tmp_path, capsys):
     (tmp_path / "ins" / ".zcode-plugin").mkdir()
     (tmp_path / "ins" / ".zcode-plugin" / "plugin.json").write_text(
         json.dumps({"version": "0.0.1"}), encoding="utf-8")
-    assert m.main(src, ins) == 1
+    assert m.main(src, ins, str(tmp_path / "no-config.json")) == 1
     assert "版本面" in capsys.readouterr().out
 
 
@@ -95,5 +95,22 @@ def test_relocated_script_in_lib_passes(tmp_path, capsys):
     src, ins = _good_tree(tmp_path)
     os.makedirs(os.path.join(ins, "lib"))
     os.rename(os.path.join(ins, "guard.py"), os.path.join(ins, "lib", "guard.py"))
-    assert m.main(src, ins) == 0
-    assert "三查全绿" in capsys.readouterr().out
+    assert m.main(src, ins, str(tmp_path / "no-config.json")) == 0
+    assert "四查全绿" in capsys.readouterr().out
+
+
+def test_stop_duplicate_fails(tmp_path, capsys):
+    """批135 ④：config Stop 事件多条 regress 条目（独立 stop_notify 残留）→ 红。"""
+    m = _load()
+    src, ins = _good_tree(tmp_path)
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({"hooks": {"events": {"Stop": [
+        {"hooks": [{"type": "command",
+                    "command": "python3 /x/.zcode/regress-guard-hooks/stop_notify.py"}]},
+        {"hooks": [{"type": "command",
+                    "command": "python3 /x/.zcode/regress-guard-hooks/reflection_check.py"},
+                   {"type": "command",
+                    "command": "python3 /x/.zcode/regress-guard-hooks/stop_notify.py"}]},
+    ]}}}), encoding="utf-8")
+    assert m.main(src, ins, str(cfg)) == 1
+    assert "注册重复面" in capsys.readouterr().out

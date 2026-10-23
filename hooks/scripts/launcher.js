@@ -74,9 +74,18 @@ function tryPython(idx) {
   });
 
   child.on("exit", (code) => {
-    process.exit(code ?? 1);
+    // 批135 fail-closed：信号击杀（code=null，如 OOM/外部 kill）从 1 改 2——
+    // 非 2 会被宿主当「非阻断错误」放行，门禁在崩溃瞬间不应失守
+    process.exit(code ?? 2);
   });
 }
+
+// launcher 自身未捕获异常 → fail-closed（批135）
+process.on("uncaughtException", (err) => {
+  console.error("REGRESS-GUARD: ❌ launcher 内部异常（fail-closed）: "
+    + (err && err.message));
+  process.exit(2);
+});
 
 // 直接运行才启动；被 require（测试）时只导出 cleanEnv，不 spawn
 if (require.main === module) {

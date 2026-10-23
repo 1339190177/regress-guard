@@ -169,7 +169,7 @@ if not already_installed:
 # SessionStart 自愈 hook（每次启动检查文件完整性）
 selfheal_entry = {
     "type": "command",
-    "command": f'python3 "{os.path.join(hook_home, "lib", "self_heal.py")}"',
+    "command": f'python3 -E "{os.path.join(hook_home, "lib", "self_heal.py")}"',
     "timeout": 5,
     "statusMessage": "regress-guard: 检查完整性..."
 }
@@ -183,13 +183,13 @@ events["SessionStart"] = session_cleaned
 rbe_path = os.path.join(hook_home, "read_before_edit_guard.py")
 pre_edit_entry = {
     "type": "command",
-    "command": f'python3 "{rbe_path}" pre',
+    "command": f'python3 -E "{rbe_path}" pre',
     "timeout": 5,
     "statusMessage": "regress-guard: 先读后改检查..."
 }
 post_read_entry = {
     "type": "command",
-    "command": f'python3 "{rbe_path}" post',
+    "command": f'python3 -E "{rbe_path}" post',
     "timeout": 5,
     "statusMessage": "regress-guard: 记录读取..."
 }
@@ -208,7 +208,7 @@ events["PostToolUse"] = posttool
 prompt_path = os.path.join(hook_home, "prompt_intercept.py")
 prompt_entry = {
     "type": "command",
-    "command": f'python3 "{prompt_path}"',
+    "command": f'python3 -E "{prompt_path}"',
     "timeout": 5,
     "statusMessage": "regress-guard: 需求入口检查..."
 }
@@ -219,7 +219,7 @@ events["UserPromptSubmit"] = submit_hooks
 
 # PostToolUseFailure: 失败信号采集
 failwatch_path = os.path.join(hook_home, "fail_watch.py")
-fail_entry = {"type": "command", "command": f'python3 "{failwatch_path}"',
+fail_entry = {"type": "command", "command": f'python3 -E "{failwatch_path}"',
               "timeout": 5, "statusMessage": "regress-guard: 失败信号采集..."}
 fw_hooks = events.get("PostToolUseFailure", [])
 fw_hooks = [e for e in fw_hooks if "fail_watch" not in json.dumps(e)]
@@ -228,7 +228,7 @@ events["PostToolUseFailure"] = fw_hooks
 
 # PostToolUse: 风险与重复信号采集（成功执行后：破坏性动作 + Bash 命令普查）
 riskwatch_path = os.path.join(hook_home, "risk_watch.py")
-risk_entry = {"type": "command", "command": f'python3 "{riskwatch_path}"',
+risk_entry = {"type": "command", "command": f'python3 -E "{riskwatch_path}"',
               "timeout": 5, "statusMessage": "regress-guard: 风险与重复信号采集..."}
 rw_hooks = events.get("PostToolUse", [])
 rw_hooks = [e for e in rw_hooks if "risk_watch" not in json.dumps(e)]
@@ -237,7 +237,7 @@ events["PostToolUse"] = rw_hooks
 
 # SessionStart(compact): 压缩记忆降级警告
 compact_path = os.path.join(hook_home, "compact_notice.py")
-compact_entry = {"type": "command", "command": f'python3 "{compact_path}"',
+compact_entry = {"type": "command", "command": f'python3 -E "{compact_path}"',
                  "timeout": 5, "statusMessage": "regress-guard: 压缩检查..."}
 sc_hooks = events.get("SessionStart", [])
 sc_hooks = [h for h in sc_hooks if "compact_notice" not in json.dumps(h)]
@@ -247,20 +247,24 @@ events["SessionStart"] = sc_hooks
 # Stop: 反思检查 + 钩子层自动第二意见（本地顾问，卡死时客观数据直送，
 # 未经主AI筛选；超时 1810s 是为自动咨询留余量——正常路径 <1s 返回）
 reflect_path = os.path.join(hook_home, "reflection_check.py")
-reflect_entry = {"type": "command", "command": f'python3 "{reflect_path}"',
+reflect_entry = {"type": "command", "command": f'python3 -E "{reflect_path}"',
                  "timeout": 90, "statusMessage": "regress-guard: 反思检查..."}
 # v1.32 授权门控轮末推送：授权语（自决策…）触发的自主轮收尾推手机"阶段完成"
 stopn_path = os.path.join(hook_home, "stop_notify.py")
-stopn_entry = {"type": "command", "command": f'python3 "{stopn_path}"',
+stopn_entry = {"type": "command", "command": f'python3 -E "{stopn_path}"',
                "timeout": 8, "statusMessage": "regress-guard: 阶段完成推送(授权轮)..."}
 stop_hooks = events.get("Stop", [])
-stop_hooks = [h for h in stop_hooks if "reflection_check" not in json.dumps(h)]
+stop_hooks = [h for h in stop_hooks
+              if "reflection_check" not in json.dumps(h)
+              and "stop_notify" not in json.dumps(h)]
+# 批135：过滤扩到独立 stop_notify 条目——旧过滤只认 reflection_check，
+# 残留独立 stop_notify 会与 bundled 组双发（冷却去重兜底但日志噪音）
 stop_hooks.append({"hooks": [reflect_entry, stopn_entry]})  # 同上：v1.27.1 修复——空 matcher 曾致全机钩子零装载
 events["Stop"] = stop_hooks
 
 # PreToolUse(Edit|Write|ApplyPatch): 开发边界守卫（检测→拦截：越界编辑在发生前阻断）
 boundary_path = os.path.join(hook_home, "boundary_guard.py")
-boundary_entry = {"type": "command", "command": f'python3 "{boundary_path}"',
+boundary_entry = {"type": "command", "command": f'python3 -E "{boundary_path}"',
                   "timeout": 5, "statusMessage": "regress-guard: 边界检查..."}
 bg_hooks = events.get("PreToolUse", [])
 for e in bg_hooks:
@@ -283,7 +287,7 @@ events["PreToolUse"] = bg_hooks
 
 # PreToolUse(Bash): 执行阀（公理四——不可逆命令需显式令牌 REGRESS_CONFIRM=YES）
 valve_path = os.path.join(hook_home, "execution_valve.py")
-valve_entry = {"type": "command", "command": f'python3 "{valve_path}"',
+valve_entry = {"type": "command", "command": f'python3 -E "{valve_path}"',
                "timeout": 5, "statusMessage": "regress-guard: 执行阀检查..."}
 pt_hooks = events.get("PreToolUse", [])
 # 幂等：逐条目摘除旧阀（保留条目内其他 hook，如 launcher/pre_commit_guard），
@@ -302,9 +306,9 @@ events["PreToolUse"] = pt_hooks
 # v1.39 原生计划模式桥（REGRESS-2026-028）：ExitPlanMode 批准转录 / 拒绝化石。
 # 单钩子原子；注册漂移由 self_heal 警示（不自动改用户 config）。
 bridge_path = os.path.join(hook_home, "plan_bridge.py")
-bridge_post = {"type": "command", "command": f'python3 "{bridge_path}" post',
+bridge_post = {"type": "command", "command": f'python3 -E "{bridge_path}" post',
                "timeout": 5, "statusMessage": "regress-guard: 原生计划转录..."}
-bridge_fail = {"type": "command", "command": f'python3 "{bridge_path}" fail',
+bridge_fail = {"type": "command", "command": f'python3 -E "{bridge_path}" fail',
                "timeout": 5, "statusMessage": "regress-guard: 拒绝计划化石..."}
 pb_hooks = events.get("PostToolUse", [])
 pb_hooks = [e for e in pb_hooks if "plan_bridge" not in json.dumps(e)]

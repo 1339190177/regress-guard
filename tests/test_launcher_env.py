@@ -154,3 +154,44 @@ def test_require_does_not_spawn():
     assert r.returncode == 0
     assert "LOADED_OK" in r.stdout
     assert "REGRESS-GUARD" not in r.stderr
+
+
+# ─── 批135：信号击穿 fail-closed ────────────────────────────
+
+def test_signal_killed_child_exits_2(tmp_path):
+    """子进程被信号击杀（code=null）→ launcher 必须以 2 退出（fail-closed）。
+
+    旧行为 code ?? 1 → exit 1 → 宿主按「非阻断错误」放行 = 门禁在崩溃瞬间
+    失守。构造：guard 阻塞读 stdin（管道不关），外层 kill -9 子进程。"""
+    import time
+    mk = tmp_path / "mk"
+    mk.write_text(
+        'import subprocess, sys, os, signal, time, json\n'
+        'p = subprocess.Popen(["node", sys.argv[1]],\n'
+        '                     stdin=subprocess.PIPE, stdout=subprocess.PIPE,\n'
+        '                     stderr=subprocess.PIPE)\n'
+        'time.sleep(0.8)  # 等 launcher 完成解释器探测并 spawn guard\n'
+        '# 找到 guard 孙进程（python3 pre_commit_guard.py）杀之\n'
+        'out = subprocess.run(["pgrep", "-P", str(p.pid), "-f", "pre_commit_guard"],\n'
+        '                     capture_output=True, text=True)\n'
+        'kids = out.stdout.split()\n'
+        'if not kids:\n'
+        '    print("NO_GRANDCHILD", file=sys.stderr); sys.exit(97)\n'
+        'os.kill(int(kids[0]), signal.SIGKILL)\n'
+        'rc = p.wait()\n'
+        'print(rc)\n', encoding="utf-8")
+    proc = subprocess.run(["python3", str(mk), LAUNCHER],
+                          capture_output=True, text=True, timeout=30)
+    assert "NO_GRANDCHILD" not in proc.stderr, proc.stderr
+    assert proc.stdout.strip() == "2", f"信号击穿应 exit 2，得 {proc.stdout!r}"
+
+
+def test_launcher_uncaught_exception_exits_2():
+    """launcher 自身未捕获异常 → exit 2（uncaughtException 兜底）。"""
+    proc = subprocess.run(
+        ["node", "-e",
+         f'process.on("uncaughtException", function() {{ process.exit(2); }});'
+         f'require({json.dumps(LAUNCHER)});'
+         'setTimeout(function() { throw new Error("boom"); }, 50);'],
+        capture_output=True, text=True, timeout=15)
+    assert proc.returncode == 2

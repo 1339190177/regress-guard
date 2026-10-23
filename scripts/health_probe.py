@@ -39,6 +39,22 @@ PROBES = [
                     os.path.join(os.path.dirname(os.path.dirname(
                         os.path.abspath(__file__))), "..", "regress-guard"),
                     "status", "--short"], True),
+    # 钩子入口探针（批135）：良性载荷喂已部署钩子——崩溃/挂起/形态错从
+    # 「静默 fail-open」变「探针红」（empty_ok：钩子通过时 stdout 本就为空；
+    # 5s 超时击穿无包装可修，可见性是唯一对策）。载荷刻意选无副作用形态：
+    # boundary=无写目标、valve=良性命令、rbe=post 记账。
+    ("hook.boundary",
+     ["bash", "-c",
+      'echo \'{"tool_name":"Bash","tool_input":{"command":"true"}}\' | '
+      f'python3 -E "{HOOKS}/boundary_guard.py"'], True),
+    ("hook.valve",
+     ["bash", "-c",
+      'echo \'{"tool_name":"Bash","tool_input":{"command":"echo hi"}}\' | '
+      f'python3 -E "{HOOKS}/execution_valve.py"'], True),
+    ("hook.rbe-post",
+     ["bash", "-c",
+      'echo \'{"tool_name":"Read","tool_input":{"file_path":"/tmp"}}\' | '
+      f'python3 -E "{HOOKS}/read_before_edit_guard.py" post'], True),
 ]
 
 

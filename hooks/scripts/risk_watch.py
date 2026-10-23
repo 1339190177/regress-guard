@@ -170,9 +170,12 @@ def main():
         data = json.loads(raw)
     except json.JSONDecodeError:
         sys.exit(0)
+    if not isinstance(data, dict):
+        # 批135：形态破坏不记事件（观测钩子，非阻断）——防 .get AttributeError
+        sys.exit(0)
 
     tool = data.get("tool_name", "?")
-    tool_input = data.get("tool_input", data if isinstance(data, dict) else {})
+    tool_input = data.get("tool_input", data)
 
     if tool in ("Edit", "Write"):
         _manifest_event(tool, tool_input)
@@ -247,4 +250,13 @@ def recent_usage(window_min=15):
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        # 观测面兜底（批135）：信号采集是增强不是依赖——崩了干净跳过，
+        # 一行 stderr（不 traceback 刷屏），exit 0 不扰宿主
+        print(f"risk_watch: 采集异常（跳过本轮）{type(e).__name__}: {e}",
+              file=sys.stderr)
+        sys.exit(0)

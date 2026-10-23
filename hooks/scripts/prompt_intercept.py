@@ -436,4 +436,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        # 增强面兜底（批135）：入口分析崩了不许扰用户发言——干净跳过
+        print(f"prompt_intercept: 入口检查异常（跳过本轮）{type(e).__name__}: {e}",
+              file=sys.stderr)
+        sys.exit(0)

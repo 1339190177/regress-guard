@@ -105,7 +105,7 @@ def test_real_battery_integration(tmp_path):
     assert r.returncode == 0, r.stderr
     data = json.loads((p / ".regress" / "heldout-baseline.json")
                       .read_text(encoding="utf-8"))
-    assert len(data["outcomes"]) == 14
+    assert len(data["outcomes"]) == 18  # 批135：束 14→18（fail-closed 四场景）
     assert all(v == "pass" for v in data["outcomes"].values()), data["outcomes"]
     # v1.92.7（118）：写后补戳链两场景必须在束且过（116 回归点）
     assert data["outcomes"].get("H13-post-stamp-no-block") == "pass"

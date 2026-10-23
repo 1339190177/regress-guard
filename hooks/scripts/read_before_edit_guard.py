@@ -131,6 +131,53 @@ def save_state(state):
         pass
 
 
+def _fail_closed(reason):
+    """fail-closed（批135）：载荷契约破坏/内部异常一律拦。
+
+    旧行为：非 dict 载荷 AttributeError / 未捕获异常 → traceback → exit 1 →
+    宿主放行 = 编辑静默穿门。逃生阀前置（顾问条件）：ratio=0 或未接入项目时
+    赦免——判定只读 env+config，不碰载荷解析。
+    """
+    try:
+        pd = (os.environ.get("CLAUDE_PROJECT_DIR")
+              or os.environ.get("ZCODE_PROJECT_DIR") or os.getcwd())
+        search = pd
+        for _ in range(10):
+            cfg = os.path.join(search, ".regress", "config.json")
+            if os.path.exists(cfg):
+                try:
+                    with open(cfg, encoding="utf-8") as f:
+                        ratio = json.load(f).get(
+                            "read_before_edit_ratio", DEFAULT_RATIO)
+                    if ratio <= 0:
+                        sys.exit(0)
+                except (IOError, json.JSONDecodeError, ValueError):
+                    pass
+                break
+            parent = os.path.dirname(search)
+            if parent == search:
+                break
+            search = parent
+        # 无 config → ratio 走默认（门禁活性态）→ 崩溃路径照拦（rbe 是
+        # 全局门禁，无 .regress 不等于未接入——与 main 的 config_path None
+        # → DEFAULT_RATIO 语义一致）
+    except Exception:
+        pass  # 逃生检查自身异常不救崩溃路径的拦截语义
+    try:
+        print(
+            f"REGRESS-GUARD: ⛔ 先读后改门禁 fail-closed\n"
+            f"  {reason}\n\n"
+            f"  守卫无法判定状态时按「拦」处理——这是设计不是故障\n"
+            f"  （静默放行=看不见的盲改）。\n"
+            f"  · 修复/排查后重试\n"
+            f"  · 关闭此门禁（留痕）：.regress/config.json 设 read_before_edit_ratio: 0",
+            file=sys.stderr,
+        )
+    except Exception:
+        pass
+    sys.exit(2)
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "pre"
 
@@ -141,12 +188,14 @@ def main():
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        sys.exit(0)
+        _fail_closed("载荷不是合法 JSON（宿主契约破坏）")
+    if not isinstance(data, dict):
+        _fail_closed("载荷不是 JSON 对象（非 dict 形态）")
 
     tool_name = data.get("tool_name", "")
-    tool_input = data.get("tool_input", data) if isinstance(data, dict) else {}
+    tool_input = data.get("tool_input", data)
     if not isinstance(tool_input, dict):
-        tool_input = {}
+        _fail_closed("tool_input 不是 JSON 对象")
 
     session_id = (
         os.environ.get("CLAUDE_SESSION_ID")
@@ -364,4 +413,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        # 全局兜底（批135，照 pre_commit_guard P0-1a 形态）：未捕获异常→拦
+        _fail_closed(f"内部异常 {type(e).__name__}: {e}")

@@ -664,4 +664,15 @@ def _project_digest(max_lines=5):
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        # 会话增强兜底（批135）：自愈崩了不拦会话——JSON 降级输出 + 一行 stderr
+        # （SessionStart 的 stdout 走 additionalContext 通道，须保持 JSON 形态）
+        print(json.dumps({"status": "error",
+                          "note": f"self_heal crashed: {e}"}))
+        print(f"self_heal: 自愈异常（跳过本轮）{type(e).__name__}: {e}",
+              file=sys.stderr)
+        sys.exit(0)

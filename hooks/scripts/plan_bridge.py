@@ -335,11 +335,12 @@ def main(argv=None):
         data = {}
     if "PlanMode" not in str(data.get("tool_name", "")):  # matcher 已滤，防御
         return 0
-    project_dir = find_project_dir()
-    sid = (sid_from_env() if sid_from_env else None) or "default"
-    if not project_dir:  # 未接入项目：桥不惊动（无 .regress 不建产物）
-        return 0
     try:
+        # 批135：定位两行入 try（原在 try 外——find_project_dir/sid 崩=exit 1）
+        project_dir = find_project_dir()
+        sid = sid_from_env() or "default"
+        if not project_dir:  # 未接入项目：桥不惊动（无 .regress 不建产物）
+            return 0
         if mode == "fail":
             plan = (data.get("tool_input") or {}).get("plan") or ""
             if plan:

@@ -263,33 +263,36 @@ def is_git_commit(tool_input_str):
         return False
     try:
         data = json.loads(tool_input_str)
-        ti = data.get("tool_input", data) if isinstance(data, dict) else {}
-        cmd = ti.get("command", "") if isinstance(ti, dict) else ""
-        try:
-            from boundary_guard import _strip_heredoc_bodies
-            cmd = _strip_heredoc_bodies(cmd)
-        except ImportError:
-            pass
-        cmd = re.sub(r"'[^']*'", "''", cmd)
-        cmd = re.sub(r'"[^"]*"', '""', cmd)
-        # git commit / git ci
-        if re.search(r'\bgit\s+commit\b|\bgit\s+ci\b', cmd):
-            return True
-        # npm version / npm publish（npm version 会自动 commit）
-        if re.search(r'\bnpm\s+(version|publish)\b', cmd):
-            return True
-        # pnpm publish / yarn version
-        if re.search(r'\b(pnpm|yarn)\s+(publish|version)\b', cmd):
-            return True
-        # commitizen (cz)
-        if re.search(r'\bcz\b|\bgit-cz\b', cmd):
-            return True
-        # husky run hook
-        if re.search(r'\bhusky\s+run\b', cmd):
-            return True
-        return False
     except Exception:
-        return False
+        # 批135：解析异常上抛进 P0-1a 全局兜底（exit 2）——旧宽 except 吞成
+        # return False = 触发判定失效即 emit_pass（fail-open：载荷契约破坏
+        # 的提交命令会被当非提交放行）。畸形 JSON 属宿主契约破坏，必须响亮。
+        raise
+    ti = data.get("tool_input", data) if isinstance(data, dict) else {}
+    cmd = ti.get("command", "") if isinstance(ti, dict) else ""
+    try:
+        from boundary_guard import _strip_heredoc_bodies
+        cmd = _strip_heredoc_bodies(cmd)
+    except ImportError:
+        pass
+    cmd = re.sub(r"'[^']*'", "''", cmd)
+    cmd = re.sub(r'"[^"]*"', '""', cmd)
+    # git commit / git ci
+    if re.search(r'\bgit\s+commit\b|\bgit\s+ci\b', cmd):
+        return True
+    # npm version / npm publish（npm version 会自动 commit）
+    if re.search(r'\bnpm\s+(version|publish)\b', cmd):
+        return True
+    # pnpm publish / yarn version
+    if re.search(r'\b(pnpm|yarn)\s+(publish|version)\b', cmd):
+        return True
+    # commitizen (cz)
+    if re.search(r'\bcz\b|\bgit-cz\b', cmd):
+        return True
+    # husky run hook
+    if re.search(r'\bhusky\s+run\b', cmd):
+        return True
+    return False
 
 
 def _message_from_cmd(tool_input_str):

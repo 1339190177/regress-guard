@@ -12,13 +12,13 @@
           },
           {
             "type": "command",
-            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/boundary_guard.py\"",
+            "command": "python3 -E \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/boundary_guard.py\"",
             "timeout": 5,
             "statusMessage": "regress-guard: 边界检查(Bash)..."
           },
           {
             "type": "command",
-            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/execution_valve.py\"",
+            "command": "python3 -E \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/execution_valve.py\"",
             "timeout": 5,
             "statusMessage": "regress-guard: 执行阀检查..."
           }
@@ -29,13 +29,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/read_before_edit_guard.py\" pre",
+            "command": "python3 -E \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/read_before_edit_guard.py\" pre",
             "timeout": 5,
             "statusMessage": "regress-guard: 先读后改检查..."
           },
           {
             "type": "command",
-            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/boundary_guard.py\"",
+            "command": "python3 -E \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/boundary_guard.py\"",
             "timeout": 5,
             "statusMessage": "regress-guard: 边界检查..."
           }
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/risk_watch.py\"",
+            "command": "python3 -E \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/risk_watch.py\"",
             "timeout": 5,
             "statusMessage": "regress-guard: 风险与重复信号采集..."
           }
@@ -59,7 +59,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/read_before_edit_guard.py\" post",
+            "command": "python3 -E \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/read_before_edit_guard.py\" post",
             "timeout": 5,
             "statusMessage": "regress-guard: 读计数..."
           }
@@ -70,7 +70,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/plan_bridge.py\" post",
+            "command": "python3 -E \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/plan_bridge.py\" post",
             "timeout": 5,
             "statusMessage": "regress-guard: 原生计划转录..."
           }
@@ -83,7 +83,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/fail_watch.py\"",
+            "command": "python3 -E \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/fail_watch.py\"",
             "timeout": 5,
             "statusMessage": "regress-guard: 失败信号采集..."
           }
@@ -94,7 +94,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/plan_bridge.py\" fail",
+            "command": "python3 -E \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/plan_bridge.py\" fail",
             "timeout": 5,
             "statusMessage": "regress-guard: 拒绝计划化石..."
           }
@@ -107,7 +107,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/self_heal.py\"",
+            "command": "python3 -E \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/self_heal.py\"",
             "timeout": 5,
             "statusMessage": "regress-guard: 检查完整性..."
           }
@@ -118,7 +118,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/compact_notice.py\"",
+            "command": "python3 -E \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/compact_notice.py\"",
             "timeout": 5,
             "statusMessage": "regress-guard: 压缩检查..."
           }
@@ -130,13 +130,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/reflection_check.py\"",
+            "command": "python3 -E \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/reflection_check.py\"",
             "timeout": 90,
             "statusMessage": "regress-guard: 反思检查..."
           },
           {
             "type": "command",
-            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/stop_notify.py\"",
+            "command": "python3 -E \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/stop_notify.py\"",
             "timeout": 8,
             "statusMessage": "regress-guard: 阶段完成推送(授权轮)..."
           }
@@ -148,7 +148,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/prompt_intercept.py\"",
+            "command": "python3 -E \"${ZCODE_PLUGIN_ROOT}/hooks/scripts/prompt_intercept.py\"",
             "timeout": 5,
             "statusMessage": "regress-guard: 需求入口检查..."
           }
