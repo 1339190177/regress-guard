@@ -41,13 +41,40 @@ toggled/upgraded natively.
 **Personal-source track**: add marketplace source
 `github:1339190177/regress-guard` in ZCode settings, then install.
 
-**Dev track**: clone this repo, then `bash install.sh` (or tell the AI
-`/regress:install`). Use one track at a time.
+**Dev track**: clone this repo (`git clone
+https://github.com/1339190177/regress-guard.git`), then `bash install.sh`
+(or tell the AI `/regress:install`). Use one track at a time.
 
-Requirements: ZCode client + Python 3.10+. Runtime has **zero third-party
-Python dependencies** (`filelock` is optional — absent → degrades to lock-free
-atomic write, v1.95.1). To run this repo's own test suite:
-`pip install -r requirements-dev.txt` (pytest / anyio / filelock).
+Requirements: ZCode client + Python 3.10+ (the installer checks and refuses
+early with an upgrade path — no obscure heredoc crashes). Runtime has
+**zero third-party Python dependencies** (`filelock` is optional — absent →
+degrades to lock-free atomic write, v1.95.1). To run this repo's own test
+suite: `pip install -r requirements-dev.txt` (pytest / anyio / filelock).
+
+### What your first interception looks like
+
+After install, hooks fail **open** in projects without `.regress/` (nothing
+changes until you `/regress:init`). Once a manifest is active:
+
+- Editing a file outside the manifest boundary → the edit is **blocked
+  before it happens**, with three escape routes printed in the message
+  (extend via track / finish the current task / disable per project).
+- Committing → the gate re-runs the project's tests; failures, unchecked
+  acceptance rows, or leaked secrets block the commit with the reason and
+  the bypass path.
+- A crashing guard **blocks** rather than silently passes (fail-closed,
+  v1.99) — escape hatches: `/regress:bypass <minutes>` or the per-feature
+  config switches in docs/WORKFLOW.md.
+
+Note on `RG_*` env switches: hooks registered via `launcher.js` run in a
+**sanitized environment** (v1.69) — `RG_*`/`WECOM_*`/`GIT_*` variables set
+in your shell do **not** reach those hooks by design. Use config switches
+(`.regress/config.json`) or `/regress:bypass` instead.
+
+Fresh-install smoke test (the machine-runnable stranger funnel):
+`bash scripts/install_dogfood.sh` — installs into a throwaway home, runs
+the four post-install checks, and exercises boundary-block / valve-block /
+gate-pass end to end.
 
 ## Five-minute start
 
@@ -91,7 +118,7 @@ MIT. Third-party: none at runtime (stdlib only).
 
 **实况（由 gen_reference.py 生成，勿手改本区）**
 
-- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：723 个
+- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：727 个
 
 | 命令 | 说明 |
 |---|---|

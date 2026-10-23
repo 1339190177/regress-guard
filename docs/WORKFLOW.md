@@ -453,9 +453,12 @@ ui-ux-pro-max。
 - `"read_before_edit_ratio": 0`：关闭先读后改门禁（降级留痕）
 - `"execution_valve": false` / `RG_VALVE=off`：关闭执行阀（留痕）
 
-### fail-closed 语义（v1.99，批135）
+**RG_\* 环境开关的到达面（批138 文档修正）**：经 `launcher.js` 注册的钩子在
+洁净环境跑（v1.69 白名单）——你 shell 里的 `RG_*`/`WECOM_*`/`GIT_*` **到不了**
+那些钩子（防注入设计）。环境开关只对直跑 CLI 生效；要影响钩子行为用
+config 开关或 `/regress:bypass`。
 
-拦截器（边界/读门禁/执行阀/提交门禁/launcher）崩溃、载荷形态破坏（非 dict/
+### fail-closed 语义（v1.99，批135）拦截器（边界/读门禁/执行阀/提交门禁/launcher）崩溃、载荷形态破坏（非 dict/
 畸形 JSON）一律 **exit 2 拦截**——这是设计不是故障：宿主钩子语义「非 2=放行」，
 静默 fail-open 是看不见的治理退化（宿主契约漂移必须响亮失败）。拦截消息必带
 逃生路径；赦免判定（bypass 窗口/config 关闭项）独立于载荷解析——守卫坏了不

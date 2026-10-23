@@ -18,7 +18,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${SCRIPT_DIR}"
 
-ZCODE_HOME="${HOME}/.zcode"
+ZCODE_HOME="${REGRESS_ZCODE_HOME:-${HOME}/.zcode}"
 COMMANDS_DIR="${ZCODE_HOME}/commands"
 HOOK_HOME="${ZCODE_HOME}/regress-guard-hooks"
 CONFIG_FILE="${ZCODE_HOME}/cli/config.json"
@@ -50,7 +50,21 @@ if ! command -v node >/dev/null 2>&1; then
     exit 1
 fi
 if ! command -v python3 >/dev/null 2>&1; then
-    warn "未找到 python3，hook 将无法运行。请安装 Python 3.6+。"
+    # 批138：旧版只 warn 然后死于 :98 heredoc 的晦涩报错——明白话退出
+    error "未找到 python3——全部钩子无法运行。"
+    error "  安装路径：https://python.org（勾选 Add to PATH）"
+    error "            或系统包管理器（apt/dnf/brew install python3）"
+    error "            或 uv python install 3.12 / pyenv install 3.12"
+    exit 1
+fi
+# 批138：版本门（README 声明 3.10+；3.8/3.9 已 EOL——晦涩语法失败不如明确退出）。
+# tr 消毒：stub/损坏的 python 输出非数字时按 0 处理（fail-closed 而非绕过）
+PY_V="$(python3 -c 'import sys; print("%d%03d" % sys.version_info[:2])' 2>/dev/null | tr -cd '0-9')"
+[ -n "${PY_V}" ] || PY_V=0
+if [ "${PY_V}" -lt 3010 ]; then
+    error "python3 版本过低：$(python3 -V 2>&1)（需 3.10+）"
+    error "  升级路径：uv python install 3.12 / pyenv install 3.12 / python.org"
+    exit 1
 fi
 
 echo "插件源: ${PLUGIN_ROOT}"
