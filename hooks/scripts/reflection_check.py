@@ -80,21 +80,14 @@ def _recent_consult(window_min=15):
 
 
 def _read_advisor_token():
-    """本地 dsh 顾问 token：env 优先，fallback ~/.dsh/settings.yaml 的 advisor.token。"""
-    tok = os.environ.get("ADVISOR_DSH_TOKEN")
-    if tok:
-        return tok
+    """本地 dsh 顾问 token：三级回退（批139 委托 lib/advisor_token——
+    env→cordis.patch.yml→settings.yaml；dsh 0.2.1 迁移实证收口）。"""
     try:
-        path = os.path.join(os.path.expanduser("~"), ".dsh", "settings.yaml")
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
-        parts = re.split(r"^advisor:\s*$", text, flags=re.M)
-        if len(parts) < 2:
-            return None
-        seg = re.split(r"^[A-Za-z][\w-]*:\s*$", parts[1], flags=re.M)[0]
-        m = re.search(r"^\s{2,}token:\s*['\"]?([^'\"\s]+)", seg, re.M)
-        return m.group(1) if m else None
-    except (IOError, OSError):
+        sys.path.insert(0, os.path.join(os.path.dirname(
+            os.path.abspath(__file__)), "lib"))
+        from advisor_token import read_advisor_token
+        return read_advisor_token()
+    except ImportError:
         return None
 
 

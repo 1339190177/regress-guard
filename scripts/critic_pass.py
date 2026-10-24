@@ -140,19 +140,14 @@ def assemble(manifest_path, report_path=None, out_dir=None, rev_range=None):
 
 
 def _read_advisor_token():
-    tok = os.environ.get("ADVISOR_DSH_TOKEN")
-    if tok:
-        return tok
+    """三级回退（批139 委托 lib/advisor_token——dsh 0.2.1 迁移收口）。"""
     try:
-        import re as _re
-        text = open(os.path.expanduser("~/.dsh/settings.yaml"), encoding="utf-8").read()
-        parts = _re.split(r"^advisor:\s*$", text, flags=_re.M)
-        if len(parts) < 2:
-            return None
-        seg = _re.split(r"^[A-Za-z][\w-]*:\s*$", parts[1], flags=_re.M)[0]
-        m = _re.search(r"^\s{2,}token:\s*['\"]?([^'\"\s]+)", seg, _re.M)
-        return m.group(1) if m else None
-    except (IOError, OSError):
+        lib = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "hooks", "scripts", "lib")
+        sys.path.insert(0, lib)
+        from advisor_token import read_advisor_token
+        return read_advisor_token()
+    except ImportError:
         return None
 
 
