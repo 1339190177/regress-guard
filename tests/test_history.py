@@ -483,3 +483,44 @@ def test_feature_health_iso_shipped_at(tmp_path):
     r = h.feature_fire_health(str(rg))  # regress_dir=.regress 本身（CLI 同参）
     row = [f for f in r["features"] if f["slug"] == "iso-feat"]
     assert row and row[0]["fires"] >= 1  # ISO 行不崩且事件可数
+
+
+# ─── 批145：带外提交聚合（材料包 B 可见性） ────────────────
+
+def test_outofband_summary_counts_and_rate(tmp_path):
+    """带外 3 + 过门禁 1（passed） → 计数与率正确，recent 溯源在场。"""
+    import importlib.util as ilu
+    import json as _json
+    H = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), "..", "hooks", "scripts", "lib", "history.py"))
+    spec = ilu.spec_from_file_location("hist", H)
+    h = ilu.module_from_spec(spec); spec.loader.exec_module(h)
+    hp = tmp_path / ".regress" / "history.jsonl"
+    hp.parent.mkdir(parents=True)
+    evs = [
+        {"event": "commit_observed", "timestamp": "2026-10-20T10:00:00",
+         "subject": "fix: 带外一"},
+        {"event": "commit_observed", "timestamp": "2026-10-21T10:00:00",
+         "subject": "feat: 带外二"},
+        {"event": "commit_observed", "timestamp": "2026-10-22T10:00:00",
+         "subject": "chore: 带外三"},
+        {"event": "commit_passed", "timestamp": "2026-10-23T10:00:00"},
+        {"event": "commit_blocked", "timestamp": "2026-10-23T11:00:00"},
+    ]
+    hp.write_text("\n".join(_json.dumps(e, ensure_ascii=False) for e in evs) + "\n",
+                  encoding="utf-8")
+    s = h.outofband_summary(str(tmp_path / ".regress"))
+    assert s["outofband"] == 3 and s["passed"] == 1 and s["blocked"] == 1
+    assert s["gated"] == 2 and s["total_commits"] == 5
+    assert abs(s["rate"] - 0.6) < 1e-9
+    assert any("带外三" in r for r in s["recent"])
+
+
+def test_outofband_empty(tmp_path):
+    import importlib.util as ilu
+    H = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), "..", "hooks", "scripts", "lib", "history.py"))
+    spec = ilu.spec_from_file_location("hist2", H)
+    h = ilu.module_from_spec(spec); spec.loader.exec_module(h)
+    s = h.outofband_summary(str(tmp_path / ".regress"))
+    assert s["total_commits"] == 0 and s["rate"] == 0.0

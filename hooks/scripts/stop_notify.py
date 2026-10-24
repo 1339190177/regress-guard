@@ -152,6 +152,24 @@ def _drift_notice_once():
         pass  # 警示是增强不是依赖：不改退出码不阻塞
 
 
+def _pending_corrections_line(pd):
+    """批144（材料包 A 消费面）：纠正 pending 进轮末推送。
+
+    49 次 record-only 无人消费的根因=stderr 没人看，手机才是真消费面。
+    追加进现有 chat（当日合并纪律天然满足，不另开 chat 防噪音）。
+    读失败静默——推送是增强不是依赖。"""
+    try:
+        sys.path.insert(0, os.path.join(_HERE, "lib"))
+        from journal import pending_corrections
+        n = len(pending_corrections(pd))
+        if n > 0:
+            return (f"\n⚠️ {n} 条用户纠正待处置——Stop 反思 stderr 里有"
+                    "可抄的 ack 命令，处置后此行消失")
+    except Exception:
+        pass
+    return ""
+
+
 def main():
     try:
         _ = sys.stdin.read()
@@ -170,6 +188,7 @@ def main():
         title, body = f"🏁 阶段完成：{excerpt}", "授权轮已收尾，可下发下一步或回来验收"
     else:
         title, body = f"💬 回复完成：{excerpt}", "本轮对话已收尾，可继续追问或离场"
+    body += _pending_corrections_line(pd)
     try:
         notify(pd, "chat", title, body)  # v1.38：独立 chat 事件，不再冒充 done 污染统计
         _mark()

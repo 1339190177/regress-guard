@@ -170,3 +170,50 @@ def test_drift_equal_or_none_silent(tmp_path, monkeypatch, capsys):
     _run_main()
     assert "版本漂移" not in capsys.readouterr().err
     assert not (tmp_path / "regress-drift-noticed.json").exists()
+
+
+# ─── 批144：纠正 pending 进轮末推送（材料包 A 消费面） ──────
+
+def _mk_pending_journal(proj, n):
+    """proj/.regress/journal/ 落 n 条未处置纠正（结构占位非用户原文）。"""
+    import datetime as _dt
+    jp = proj / ".regress" / "journal" / "events.jsonl"
+    jp.parent.mkdir(parents=True, exist_ok=True)
+    base = _dt.datetime(2026, 10, 24, 10, 0, 0)
+    with open(jp, "w", encoding="utf-8") as f:
+        for i in range(n):
+            ev = {"ts": (base + _dt.timedelta(minutes=i)).isoformat(),
+                  "kind": "user_correction", "session": "t",
+                  "excerpt": f"synthetic-{i}"}
+            f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+
+
+def test_pending_corrections_in_chat_body(tmp_path, monkeypatch):
+    """pending=2 → chat body 含计数与 ack 指路。"""
+    proj, mach = _mk_proj(tmp_path, [_channel_stub(tmp_path, tmp_path / "p1") + " {title} {body}"])
+    monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
+    monkeypatch.setenv("ZCODE_PROJECT_DIR", str(proj))
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setenv("REGRESS_JOURNAL", "on")  # pending 读侧需开（conftest 默认关）
+    _mk_pending_journal(proj, 2)
+    from prompt_intercept import save_prompt
+    save_prompt("继续，自决策推进")
+    _run_main()
+    out = (tmp_path / "p1").read_text(encoding="utf-8")
+    assert "2 条用户纠正待处置" in out and "ack" in out
+
+
+def test_pending_zero_no_line(tmp_path, monkeypatch):
+    """pending=0 → body 无该行（防噪音）。"""
+    proj, mach = _mk_proj(tmp_path, [_channel_stub(tmp_path, tmp_path / "p2") + " {title} {body}"])
+    monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
+    monkeypatch.setenv("ZCODE_PROJECT_DIR", str(proj))
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setenv("REGRESS_JOURNAL", "on")
+    (proj / ".regress" / "journal").mkdir(parents=True, exist_ok=True)
+    (proj / ".regress" / "journal" / "events.jsonl").write_text("", encoding="utf-8")
+    from prompt_intercept import save_prompt
+    save_prompt("继续，自决策推进")
+    _run_main()
+    out = (tmp_path / "p2").read_text(encoding="utf-8")
+    assert "纠正待处置" not in out

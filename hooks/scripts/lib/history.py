@@ -564,6 +564,32 @@ def cache_stats(regress_dir):
     return out
 
 
+def outofband_summary(regress_dir):
+    """批145：带外提交 vs 门禁提交聚合（材料包 B 可见性）。
+
+    commit_observed=init 装的 post-commit observer 记的带外提交（IDE/终端
+    直提，门禁不在场）；commit_passed/blocked=门禁在场判定。只聚合不判断。
+    """
+    out_of_band, passed, blocked = [], 0, 0
+    for e in load_history(regress_dir):
+        ev = e.get("event")
+        if ev == "commit_observed":
+            out_of_band.append(e)
+        elif ev == "commit_passed":
+            passed += 1
+        elif ev == "commit_blocked":
+            blocked += 1
+    recent = [f"{str(e.get('timestamp', ''))[:16]} {str(e.get('subject', ''))[:60]}"
+              for e in out_of_band[-5:]]
+    n_ob = len(out_of_band)
+    gated = passed + blocked
+    total = n_ob + gated
+    return {"outofband": n_ob, "passed": passed, "blocked": blocked,
+            "gated": gated, "total_commits": total,
+            "rate": (n_ob / total) if total else 0.0,
+            "recent": recent}
+
+
 if __name__ == "__main__":
     import sys
     regress_dir = sys.argv[1] if len(sys.argv) > 1 else ".regress"
@@ -636,3 +662,19 @@ if __name__ == "__main__":
             for f in r["features"]:
                 d = f"{f['days_since']}天" if f["days_since"] is not None else "?"
                 print(f"  {f['status']:>13}  {f['slug']}（出厂 {d}，火 {f['fires']} 次）")
+    elif cmd == "outofband":
+        # 批145（材料包 B 可见性）：带外提交聚合——init 装的 post-commit
+        # observer 记 commit_observed（IDE/终端直提），门禁记 passed/blocked。
+        # 只聚合显示不判断（带外是常态非异常，人按需查/哨兵轮选用）。
+        rows = outofband_summary(regress_dir)
+        if rows["total_commits"] == 0:
+            print("（无提交记录——带外聚合空）")
+        else:
+            print(f"带外提交：{rows['outofband']} 次（IDE/终端直提未过门禁）"
+                  f"｜过门禁 {rows['gated']}（通过 {rows['passed']}"
+                  f"/拦下 {rows['blocked']}）"
+                  f"｜带外率 {rows['rate']:.0%}（全量窗口）")
+            if rows["recent"]:
+                print("  最近带外（溯源 subject）：")
+                for s in rows["recent"]:
+                    print(f"    · {s}")
