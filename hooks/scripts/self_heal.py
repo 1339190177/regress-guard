@@ -572,6 +572,7 @@ def main():
         healed.append(gc_note)
     check_bridge_registration()
     check_version_drift()
+    _degraded = []  # 批142：降级残留提醒（持态非事件，会话级节奏）
 
     # 老项目自动升级：零号入口缺失即补（幂等，永不覆盖已定制内容）
     rg = _current_regress_dir()
@@ -582,12 +583,25 @@ def main():
         note = backfill_lock_gitignore(rg)
         if note:
             healed.append(note)
+        # 批142：降级残留可见性（h3 标本——ratio=0 置于 v1.92 前，per-file
+        # 死亡螺旋修复后 25 天三会话无人知可恢复）。提醒带恢复动作与依据；
+        # SessionStart 每会话一次天然不刷屏。
+        try:
+            _cfg = json.load(open(os.path.join(rg, "config.json"),
+                                  encoding="utf-8"))
+            if _cfg.get("read_before_edit_ratio", 1) <= 0:
+                _degraded.append(
+                    "读门禁降级中（read_before_edit_ratio: 0）——v1.92 起 "
+                    "per-file 语义已根治死亡螺旋（f77a/h3 标本），改回 2/3 "
+                    "即可恢复防盲改保护（config 一行，降级/恢复皆有留痕）")
+        except Exception:
+            pass
 
     # 项目经验注入（越用越聪明的 ambient 层）：摘要有变化才注入，避免每次启动刷屏
     # 活跃清单哨兵：有任务在进行则必注入（每会话一次，指路 /regress:resume）
     sentinel = _active_manifest_sentinel()
     digest = _project_digest()
-    context = "\n\n".join(p for p in (sentinel, digest) if p)
+    context = "\n\n".join(p for p in (sentinel, digest, *_degraded) if p)
     if healed:
         msg = "regress-guard 自愈/卫生：" + "，".join(healed)  # 133：条目自述动词，包装词中性
         if context:

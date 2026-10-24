@@ -132,7 +132,9 @@ approved:                 # 批准落产物：转写器填，或人类直接填 
   at: ""
   note: ""
 planned_changes: [...]    # 全量字段见 templates/regress-manifest.md
+                          # file=提交所在仓的相对路径（嵌套仓=子仓相对，别带 regress-guard/ 前缀）
 fragile_points:           # 公理一：穷举关键脆弱点（字段见模板）
+                          # verify 须带 cd <仓目录> && 前缀（复验 cwd=工作区根）
   - id: V1
     kind: env
     description: "CUDA 由 module 加载，重启后丢失"

@@ -37,6 +37,8 @@ provisional:            # 临行（v1.18 伪全自动）：预授权任务经顾
   advisor: ""            # 预审一句话结论——顾问有一票否决权，没有一票批准权
 planned_changes:
   - id: F1
+    # file 用「提交所在仓的相对路径」（嵌套仓拓扑下=子仓相对，如 hooks/scripts/x.py
+    # 而非 regress-guard/hooks/scripts/x.py——清单声明空间与 F3 匹配以提交仓为基准）
     file: "{{FILE_PATH}}"
     type: method-logic
     reason: "{{REASON}}"
@@ -51,6 +53,8 @@ fragile_points:        # 公理一：穷举致使失败的关键脆弱点，逐�
   - id: V1
     kind: env          # env | dependency | resource | data | concurrency | api | oracle | sensory | product | arch
     description: "{{FRAGILE_DESCRIPTION}}"
+    # verify 命令的 cwd=工作区根（门禁 5.6 复验位）——验仓内文件须带
+    # cd <仓目录> && 前缀，否则复验时 FileNotFoundError 假红（run2 起已知坑）
     verify: "{{VERIFY_COMMAND}}"   # 可执行命令，/regress:verify 跑它拿证据
     rescue: "{{RESCUE_COMMAND}}"   # 可选：verify 失败/见典型报错时先敲这个（自救）
     # status 行禁带行内注释（P1#12 病例：行尾 # 让 open 检测恒不中=公理一静默失效）

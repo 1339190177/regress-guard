@@ -328,3 +328,41 @@ def test_content_integrity_selfheal_lib_mapping(tmp_path, monkeypatch):
     (hook_home / "lib" / "self_heal.py").write_text("x = 999\n", encoding="utf-8")
     drift = mod.verify_content_integrity(str(src_root))
     assert any(d[1].endswith("lib/self_heal.py") for d in drift)
+
+
+# ─── 批142：降级残留可见性（h3 标本——ratio=0 挂 25 天无人知） ──
+
+def _run_main_stdout(sh, tmp_path, monkeypatch, config):
+    proj = tmp_path / "proj"
+    rg = proj / ".regress"
+    rg.mkdir(parents=True, exist_ok=True)
+    import json as _json
+    (rg / "config.json").write_text(_json.dumps(config), encoding="utf-8")
+    (tmp_path / "hookhome" / "lib").mkdir(parents=True, exist_ok=True)  # check_and_heal 铺文件目标位
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
+    monkeypatch.delenv("ZCODE_PROJECT_DIR", raising=False)
+    import io, contextlib
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        sh.main()
+    return buf.getvalue()
+
+
+def test_ratio_zero_degradation_reminder(tmp_path, monkeypatch):
+    """ratio=0 → additionalContext 含恢复提示（带动作与依据非干警告）。"""
+    import json as _json
+    sh = _load_heal(tmp_path, monkeypatch)
+    out = _run_main_stdout(sh, tmp_path, monkeypatch,
+                           {"read_before_edit_ratio": 0})
+    ctx = _json.loads(out).get("additionalContext", "")
+    assert "读门禁降级中" in ctx and "per-file" in ctx and "改回" in ctx
+
+
+def test_ratio_normal_no_reminder(tmp_path, monkeypatch):
+    """ratio=2 → 无该行（防每会话噪音）。"""
+    import json as _json
+    sh = _load_heal(tmp_path, monkeypatch)
+    out = _run_main_stdout(sh, tmp_path, monkeypatch,
+                           {"read_before_edit_ratio": 2})
+    ctx = _json.loads(out).get("additionalContext", "") or ""
+    assert "读门禁降级中" not in ctx
