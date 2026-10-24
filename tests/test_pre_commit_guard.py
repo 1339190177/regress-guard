@@ -1472,3 +1472,194 @@ def test_s_tier_skip_note_only(project):
     code, err, _ = run_guard("git commit -m 改动（R1）", project)
     assert code == 0, err
     assert "skipped" in err  # 可见性注记在场
+
+
+# ─── 批148：blast-radius 影响面门禁（通用阶梯默认） ────────────────
+
+_BR_CFG = ('{"strict": true, "blast_radius": {"high_impact": '
+           '["packages/contracts/**"], "units": ["apps/*", "packages/*"]}}')
+
+
+def _br_setup(project, files, manifest_body=None, cfg=_BR_CFG, ws=None):
+    """批148 公共夹具：配置+可选工作区文件+清单覆写+staged。"""
+    if cfg is not None:
+        (project / ".regress" / "config.json").write_text(cfg, encoding="utf-8")
+    if ws is not None:
+        (project / "pnpm-workspace.yaml").write_text(
+            "packages:\n" + "".join(f"  - {p}\n" for p in ws), encoding="utf-8")
+    if manifest_body is not None:
+        _write_manifest(project, manifest_body)
+    for rel in files:
+        _stage(project, rel, "z = 1\n")
+
+
+def _m_br(scope, extra_files=("apps/ops-web/y.ts", "packages/contracts/c.ts")):
+    """M 档清单（impact_scope 按需注入；apps/web/x.ts 恒在 planned）。"""
+    acs = "\n".join(f'  - {{id: F{i + 2}, file: "{f}"}}'
+                    for i, f in enumerate(extra_files))
+    return (f"---\nid: R1\nstatus: in-progress\ntier: M\n"
+            f"rollback: git revert 即回滚\n"
+            f"self_review:\n  计划外: 无\n  调试残留: 无\n"
+            f"understood_intent:\n  复述: \"blast-radius 门禁步\"\n"
+            f"  边界: \"做检测步；不做项目侧配置\"\n  判据: \"验收第1条\"\n"
+            f"scan:\n  entry: \"pre_commit_guard 批148 节\"\n"
+            f"  test: \"pytest -q\"\n  card: \"提交门禁层\"\n"
+            f"planned_changes:\n  - id: F1\n    file: \"apps/web/x.ts\"\n"
+            f"    type: method-logic\n"
+            f"actual_changes:\n{acs}\n"
+            f"impact_scope: [{', '.join(scope)}]\n---\n")
+
+
+_S_BR = ("---\nid: R1\nstatus: in-progress\ntier: S\n"
+         "rollback: git revert 即回滚\n"
+         "self_review:\n  计划外: 无\n  调试残留: 无\n"
+         "planned_changes:\n  - {id: F1, file: \"apps/web/x.ts\"}\n"
+         "actual_changes:\n  - {id: F2, file: \"apps/ops-web/y.ts\"}\n---\n")
+
+
+def test_blast_tier_floor_blocks(project):
+    """显式配置+跨2单元+清单无 tier → tier_floor 拦（EARS 第1条）。"""
+    _br_setup(project, ["apps/web/x.ts", "apps/ops-web/y.ts"])  # 夹具 R1 无 tier
+    code, err, _ = run_guard("git commit -m 改动", project)
+    assert code == 2 and "影响面地板" in err
+    assert any(e.get("reason") == "blast_radius_tier_floor"
+               for e in read_history(project))
+
+
+def test_blast_no_manifest_blocks(project):
+    """显式配置触发但无活跃清单 → no_manifest 拦（先于 no_active_manifest 放行）。"""
+    (project / ".regress" / "manifests" / "R1.md").unlink()
+    _br_setup(project, ["apps/web/x.ts", "apps/ops-web/y.ts"])
+    code, err, _ = run_guard("git commit -m 改动", project)
+    assert code == 2 and "无活跃清单" in err
+    assert any(e.get("reason") == "blast_radius_no_manifest"
+               for e in read_history(project))
+
+
+def test_blast_scope_missing_blocks(project):
+    """M 档清单缺 impact_scope 声明 → scope_missing 拦。"""
+    _br_setup(project, ["apps/web/x.ts", "apps/ops-web/y.ts"],
+              manifest_body=_m_br([]))
+    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    assert code == 2 and "impact_scope" in err
+    assert any(e.get("reason") == "blast_radius_scope_missing"
+               for e in read_history(project))
+
+
+def test_blast_scope_mismatch_blocks(project):
+    """声明未覆盖第二单元 → scope_mismatch 拦（声明面须 ⊇ 触碰面）。"""
+    _br_setup(project, ["apps/web/x.ts", "apps/ops-web/y.ts"],
+              manifest_body=_m_br(["apps/web"]))
+    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    assert code == 2 and "未覆盖" in err
+    assert any(e.get("reason") == "blast_radius_scope_mismatch"
+               for e in read_history(project))
+
+
+def test_blast_enforce_pass_records_note(project):
+    """M 档+impact_scope 覆盖全部检出单元 → 放行+blast_radius_passed 入档。"""
+    _passing_runner(project)
+    _br_setup(project, ["apps/web/x.ts", "apps/ops-web/y.ts"],
+              manifest_body=_m_br(["apps/web", "apps/ops-web"]) + _ACC_OK)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    assert code == 0, err
+    assert any(e.get("note") == "blast_radius_passed"
+               for e in read_history(project))
+
+
+def test_blast_hint_without_config(project):
+    """无配置+工作区文件自动推导跨2单元 → 仅警示不拦（零配置不强迫）。"""
+    _passing_runner(project)
+    _br_setup(project, ["apps/web/x.ts", "apps/ops-web/y.ts"], cfg=None,
+              ws=["apps/*", "packages/*"], manifest_body=_S_BR)
+    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    assert code == 0, err
+    assert any(e.get("note") == "blast_radius_hint"
+               for e in read_history(project))
+    assert "横跨" in err and "blast_radius" in err
+
+
+def test_blast_deletion_warns(project):
+    """高影响路径 staged 删除 → blast_radius_deletion 留痕警示（不拦）。"""
+    import subprocess as sp
+    _passing_runner(project)
+    (project / ".regress" / "config.json").write_text(_BR_CFG, encoding="utf-8")
+    (project / "packages" / "contracts").mkdir(parents=True, exist_ok=True)
+    (project / "packages" / "contracts" / "old.ts").write_text(
+        "old\n", encoding="utf-8")
+    sp.run(["git", "add", "-A"], cwd=str(project), check=True)
+    sp.run(["git", "commit", "-q", "-m", "contracts-init"],
+           cwd=str(project), check=True)
+    sp.run(["git", "rm", "-q", "packages/contracts/old.ts"],
+           cwd=str(project), check=True)
+    _stage(project, "apps/web/x.ts", "z = 1\n")
+    _write_manifest(project, _m_br(["apps/web", "packages/contracts"],
+                                   extra_files=("packages/contracts/old.ts",))
+                    + _ACC_OK)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    assert code == 0, err
+    assert any(e.get("note") == "blast_radius_deletion"
+               for e in read_history(project))
+    assert "只扩不缩" in err
+
+
+def test_blast_inert_without_config_or_ws(project):
+    """未配置且无工作区文件 → 完全惰性（行为与现版逐位一致）。"""
+    _passing_runner(project)
+    _br_setup(project, ["apps/web/x.ts"], cfg=None, manifest_body=_S_BR)
+    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    assert code == 0, err
+    assert not any(str(e.get("note") or e.get("reason") or "").startswith(
+        "blast_") for e in read_history(project))
+
+
+def test_blast_bypass_escapes(project):
+    """bypass 窗口先短路——影响面检查可逃（人裁阀语义回归钉）。"""
+    (project / ".regress" / "config.json").write_text(
+        '{"strict": true, "bypass_until": "2099-01-01T00:00:00", '
+        '"blast_radius": {"high_impact": ["packages/contracts/**"], '
+        '"units": ["apps/*", "packages/*"]}}', encoding="utf-8")
+    (project / ".regress" / "manifests" / "R1.md").unlink()
+    _stage(project, "apps/web/x.ts", "z = 1\n")
+    _stage(project, "apps/ops-web/y.ts", "z = 1\n")
+    code, err, _ = run_guard("git commit -m 改动", project)
+    assert code == 0, err  # bypass 放行+警示
+    assert any(e.get("event") == "bypass_used" for e in read_history(project))
+    assert not any(e.get("reason") == "blast_radius_no_manifest"
+                   for e in read_history(project))
+
+
+def test_blast_bad_config_inert(project):
+    """配置节类型异常（非对象）→ 惰性跳过+stderr 注记。"""
+    _passing_runner(project)
+    _br_setup(project, ["apps/web/x.ts", "apps/ops-web/y.ts"],
+              cfg='{"strict": true, "blast_radius": "oops"}',
+              manifest_body=_S_BR)
+    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    assert code == 0, err
+    assert "须为对象" in err
+    assert not any(str(e.get("note") or "").startswith("blast_")
+                   for e in read_history(project))
+
+
+def test_br_pure_helpers(tmp_path):
+    """FP2 锁：glob 语义/单元展开/嵌套 monorepo 前缀/阶梯判定纯函数。"""
+    import importlib.util as ilu
+    spec = ilu.spec_from_file_location("pcg_br", GUARD)
+    g = ilu.module_from_spec(spec)
+    spec.loader.exec_module(g)
+    assert g._br_path_matches("a/b/c.ts", "a/**")
+    assert not g._br_path_matches("x/b/c.ts", "a/**")
+    assert g._br_units(["apps/*", "pkgs/core/**"],
+                       ["apps/web/x.ts", "pkgs/core/y.ts", "other/z.ts"]) == \
+        ["apps/web", "pkgs/core"]
+    # 嵌套 monorepo（dap 标本形态）：工作区文件在 staged 首段目录下
+    ws_dir = tmp_path / "dap"
+    ws_dir.mkdir()
+    (ws_dir / "pnpm-workspace.yaml").write_text(
+        "packages:\n  - apps/*\n", encoding="utf-8")
+    assert g._br_workspace_patterns(str(tmp_path), ["dap/apps/web/x.ts"]) == \
+        ["dap/apps/*"]
+    # 阶梯判定：无配置+无工作区命中=None；配置类型异常=None
+    assert g._blast_radius_evaluate({}, str(tmp_path), ["a.ts"]) is None
+    assert g._blast_radius_evaluate({"blast_radius": "x"}, str(tmp_path), []) is None

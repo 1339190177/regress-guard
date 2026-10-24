@@ -422,6 +422,55 @@ ui-ux-pro-max。
 | 钩子入口 env 白名单（v1.69） | launcher.js 构造洁净子进程环境：白名单只透传系统基础（PATH/HOME/LANG/TZ/TMPDIR）+代理+宿主契约五变量（SESSION/PROJECT_DIR/ZCODE_HOME/PLUGIN_ROOT）——`RG_*`/`WECOM_*`/`GIT_*` 注入在入口层失效（宿主 env 的信任/git 读数干扰整族封死；直接 CLI 调用不受影响，其信任面由 v1.68 表制管） |
 | wecom 凭据字段门+基域钉住（v1.70） | 项目级 `wecom.corpid/secret/api_base_allowlist` 覆盖须项目受信，否则回退机器级+提示（克隆仓库携假凭据把通知发往自己企微的洞；`agentid/touser/事件开关`不受限=绑机器凭据的合法覆盖）；`WECOM_API_BASE` 仅许本机桩（测试）或机器配置 allowlist，恶域钉回官方域——凭据 POST 外泄面 |
 
+## 影响面层（v1.101.0 批148：跨端变更从口头约定变机器位）
+
+标本：tongtu-anquan-ai-workspace——AGENTS 写明「破坏性变更三端同窗口」「契约只扩不缩」
+但全是人读条款；快节奏下跨三 App+共享包的提交视作普通变更零风险信号。本层把影响面
+评审钉进门禁。**通用产品口径**：零硬编码路径，阶梯默认（显式配置=强制，自动推导=仅
+警示，都无=惰性）。
+
+**config 语法**（项目 `.regress/config.json`）：
+
+```json
+"blast_radius": {
+  "high_impact": ["packages/contracts/**", "packages/database/**"],
+  "units": ["apps/*", "packages/*"]
+}
+```
+
+两键皆可选但至少一项非空才激活强制；glob 语义与清单 `boundary.include` 同源
+（`dir/**`=目录自身+任意深度，`apps/*`=首段展开）。`units` 显式给出时优先于
+工作区文件自动推导。
+
+**阶梯默认**：
+
+| 场景 | 行为 |
+|------|------|
+| 显式配置 + staged 触碰高影响路径 或 横跨≥2单元 | **强制四查**（下表 reason 拦） |
+| 无配置 + 检出 monorepo 工作区文件（pnpm-workspace.yaml/lerna.json 等）且跨≥2单元 | 仅警示（commit_warned note=blast_radius_hint + stderr 指路配置）——零配置不强迫 |
+| 都没有 | 完全惰性（既有行为逐位一致） |
+
+强制四查（任一不过即拦，顺序如此）：
+
+| reason | 含义 | 解法 |
+|--------|------|------|
+| blast_radius_no_manifest | 触发影响面但无活跃清单 | /regress:plan 建 M 档清单 |
+| blast_radius_tier_floor | 清单 tier=S 低于影响面地板 M | 升档或拆分提交 |
+| blast_radius_scope_missing | 清单缺 impact_scope 声明 | frontmatter 补 `impact_scope: [单元...]` |
+| blast_radius_scope_mismatch | 声明未覆盖检出单元 | 补声明或拆分提交（声明面 ⊇ 触碰面） |
+
+附带机制：高影响路径出现 staged **删除** → commit_warned note=blast_radius_deletion
+（「只扩不缩」契约的提示位，记不拦）；四查全过 → note=blast_radius_passed（units 入
+history，trace 可见）。
+
+**与既有面的交互**：bypass 窗口=可逃（人裁阀+审计+reflection 还债提醒，同规则 A/B
+语义——tongtu 标本 6 连 bypass 证明激进拦截催生逃生常态化，强制面只对显式 opt-in
+开放）；配置节类型异常 → 惰性跳过+stderr 注记；工作区解析失败=降级无触发（安全侧
+漏检，不是误拦）。**自动推导边界**：pnpm-workspace.yaml 手撕 packages 段、lerna.json
+读 packages 键；turbo/nx 无列表键产出空=无触发；嵌套 monorepo（工作区文件在子目录）
+靠 staged 首段目录探测（dap 标本形态）。**决策标注**：自动推导选仅警示=顾问不可用
+降级自行决策（2026-10-24，化石在批148 清单），升格为拦须两轮野外数据人裁。
+
 ## 机器事实卡（v1.32：跨项目地层，三层结构）
 
 机器级经验（服务器拓扑/通道/环境坑/跨项目工具坑）不属于任何项目——沉在单项目地层里

@@ -21,6 +21,9 @@ workflow: **the commit**.
   (0-second gates).
 - **Boundary guard**: edits/writes to files not declared in the active change
   manifest are blocked before they happen — the plan's file list *is* the boundary.
+- **Blast-radius gate**: commits touching configured high-impact paths (contracts,
+  shared packages) or spanning ≥2 monorepo units demand an M-tier manifest plus an
+  explicit `impact_scope` declaration; unconfigured monorepos get a warn-only hint.
 - **Assumption ledger**: when reality falsifies a plan's assumption, the
   was→reality→evidence record is mandatory.
 - **Six-layer trust surface**: project-level notification channels require a
@@ -118,7 +121,7 @@ MIT. Third-party: none at runtime (stdlib only).
 
 **实况（由 gen_reference.py 生成，勿手改本区）**
 
-- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：743 个
+- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：762 个
 
 | 命令 | 说明 |
 |---|---|

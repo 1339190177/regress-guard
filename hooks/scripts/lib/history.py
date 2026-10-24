@@ -567,27 +567,47 @@ def cache_stats(regress_dir):
 def outofband_summary(regress_dir):
     """批145：带外提交 vs 门禁提交聚合（材料包 B 可见性）。
 
-    commit_observed=init 装的 post-commit observer 记的带外提交（IDE/终端
-    直提，门禁不在场）；commit_passed/blocked=门禁在场判定。只聚合不判断。
+    批147 修正：commit_observed 由 post-commit observer 对**所有来源**提交
+    记录，须按 source 分桶——git-hook 或缺 source（老钩子）=带外（IDE/终端
+    直提）；zcode-gated=门禁在场的过门禁提交（防双计，不进任何口径）；
+    zcode-bypass=bypass 逃生（钩子侧溯源，带 subject）。bypass_used=门禁自己
+    记的 bypass 审计（无钩子项目的权威计数）。同一笔 bypass 提交两个来源都
+    会记——取 max 去重。escaped=带外+bypass（一切逃过评审的提交）。只聚合
+    不判断。
     """
-    out_of_band, passed, blocked = [], 0, 0
+    out_of_band, bypass_trace = [], []
+    passed = blocked = bypass_events = 0
     for e in load_history(regress_dir):
         ev = e.get("event")
         if ev == "commit_observed":
-            out_of_band.append(e)
+            src = str(e.get("source") or "")
+            if src == "zcode-gated":
+                continue
+            if src == "zcode-bypass":
+                bypass_trace.append(e)
+            else:
+                out_of_band.append(e)
         elif ev == "commit_passed":
             passed += 1
         elif ev == "commit_blocked":
             blocked += 1
+        elif ev == "bypass_used":
+            bypass_events += 1
     recent = [f"{str(e.get('timestamp', ''))[:16]} {str(e.get('subject', ''))[:60]}"
               for e in out_of_band[-5:]]
+    recent_bypass = [f"{str(e.get('timestamp', ''))[:16]} {str(e.get('subject', ''))[:60]}"
+                     for e in bypass_trace[-5:]]
     n_ob = len(out_of_band)
+    n_by = max(bypass_events, len(bypass_trace))
     gated = passed + blocked
-    total = n_ob + gated
+    total = n_ob + gated + n_by
+    escaped = n_ob + n_by
     return {"outofband": n_ob, "passed": passed, "blocked": blocked,
-            "gated": gated, "total_commits": total,
+            "bypass": n_by, "gated": gated, "escaped": escaped,
+            "total_commits": total,
             "rate": (n_ob / total) if total else 0.0,
-            "recent": recent}
+            "escape_rate": (escaped / total) if total else 0.0,
+            "recent": recent, "recent_bypass": recent_bypass}
 
 
 if __name__ == "__main__":
@@ -664,17 +684,26 @@ if __name__ == "__main__":
                 print(f"  {f['status']:>13}  {f['slug']}（出厂 {d}，火 {f['fires']} 次）")
     elif cmd == "outofband":
         # 批145（材料包 B 可见性）：带外提交聚合——init 装的 post-commit
-        # observer 记 commit_observed（IDE/终端直提），门禁记 passed/blocked。
-        # 只聚合显示不判断（带外是常态非异常，人按需查/哨兵轮选用）。
+        # observer 记 commit_observed（按 source 分桶），门禁记 passed/blocked/
+        # bypass_used。批147：bypass 逃生并入逃生率（tongtu 标本——6 连发
+        # bypass 下旧口径显示"带外 0"假健康）。只聚合显示不判断（带外是
+        # 常态非异常，人按需查/哨兵轮选用）。
         rows = outofband_summary(regress_dir)
         if rows["total_commits"] == 0:
             print("（无提交记录——带外聚合空）")
         else:
             print(f"带外提交：{rows['outofband']} 次（IDE/终端直提未过门禁）"
+                  f"｜bypass 逃生 {rows['bypass']} 次（人裁阀+审计）"
                   f"｜过门禁 {rows['gated']}（通过 {rows['passed']}"
                   f"/拦下 {rows['blocked']}）"
-                  f"｜带外率 {rows['rate']:.0%}（全量窗口）")
+                  f"｜逃生率 {rows['escape_rate']:.0%}"
+                  f"（带外+bypass {rows['escaped']}/{rows['total_commits']}"
+                  f"，全量窗口）")
             if rows["recent"]:
                 print("  最近带外（溯源 subject）：")
                 for s in rows["recent"]:
+                    print(f"    · {s}")
+            if rows["recent_bypass"]:
+                print("  最近 bypass（溯源 subject）：")
+                for s in rows["recent_bypass"]:
                     print(f"    · {s}")

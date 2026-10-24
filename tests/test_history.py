@@ -514,6 +514,8 @@ def test_outofband_summary_counts_and_rate(tmp_path):
     assert s["gated"] == 2 and s["total_commits"] == 5
     assert abs(s["rate"] - 0.6) < 1e-9
     assert any("带外三" in r for r in s["recent"])
+    # 批147 兼容锚：无 source 老事件仍计带外；bypass 维度零值不漂移
+    assert s["bypass"] == 0 and s["escaped"] == 3 and s["escape_rate"] == s["rate"]
 
 
 def test_outofband_empty(tmp_path):
@@ -524,3 +526,87 @@ def test_outofband_empty(tmp_path):
     h = ilu.module_from_spec(spec); spec.loader.exec_module(h)
     s = h.outofband_summary(str(tmp_path / ".regress"))
     assert s["total_commits"] == 0 and s["rate"] == 0.0
+
+
+# ─── 批147：source 分桶 + bypass 维度 ────────────────
+
+def _load_history_module(tag):
+    import importlib.util as ilu
+    H = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), "..", "hooks", "scripts", "lib", "history.py"))
+    spec = ilu.spec_from_file_location(tag, H)
+    h = ilu.module_from_spec(spec); spec.loader.exec_module(h)
+    return h
+
+
+def _write_events(tmp_path, evs):
+    import json as _json
+    hp = tmp_path / ".regress" / "history.jsonl"
+    hp.parent.mkdir(parents=True)
+    hp.write_text("\n".join(_json.dumps(e, ensure_ascii=False) for e in evs) + "\n",
+                  encoding="utf-8")
+    return str(tmp_path / ".regress")
+
+
+def test_outofband_source_bucketing(tmp_path):
+    """zcode-gated 不进任何口径；zcode-bypass 进 bypass 溯源（tongtu 标本）。"""
+    h = _load_history_module("hist147a")
+    rg = _write_events(tmp_path, [
+        {"event": "commit_observed", "timestamp": "2026-10-24T10:00:00",
+         "subject": "feat: 终端直提", "source": "git-hook"},
+        {"event": "commit_observed", "timestamp": "2026-10-24T11:00:00",
+         "subject": "feat: 过门禁提交", "source": "zcode-gated"},
+        {"event": "commit_observed", "timestamp": "2026-10-24T11:38:00",
+         "subject": "feat: bypass 连发一", "source": "zcode-bypass"},
+        {"event": "commit_observed", "timestamp": "2026-10-24T12:00:00",
+         "subject": "fix: 终端直提二", "source": "git-hook"},
+        {"event": "commit_passed", "timestamp": "2026-10-24T11:00:01"},
+        {"event": "commit_blocked", "timestamp": "2026-10-24T11:30:00"},
+    ])
+    s = h.outofband_summary(rg)
+    assert s["outofband"] == 2 and s["bypass"] == 1
+    assert s["passed"] == 1 and s["blocked"] == 1 and s["gated"] == 2
+    assert s["escaped"] == 3 and s["total_commits"] == 5
+    assert abs(s["escape_rate"] - 0.6) < 1e-9
+    joined = " | ".join(s["recent"])
+    assert "过门禁提交" not in joined          # gated 防双计
+    assert "bypass 连发一" not in joined        # bypass 不混进带外 recent
+    assert any("bypass 连发一" in r for r in s["recent_bypass"])
+
+
+def test_outofband_bypass_dedup_no_hook(tmp_path):
+    """无钩子项目：bypass_used 是权威口径；与钩子痕迹并存取 max 去重。"""
+    h = _load_history_module("hist147b")
+    rg = _write_events(tmp_path, [
+        {"event": "bypass_used", "timestamp": "2026-10-24T11:38:26",
+         "expires": "2026-10-24T11:58:21", "user": "tester"},
+        {"event": "bypass_used", "timestamp": "2026-10-24T12:16:54",
+         "expires": "2026-10-24T12:36:49", "user": "tester"},
+        {"event": "commit_observed", "timestamp": "2026-10-24T12:16:55",
+         "subject": "feat: 走 bypass 的提交", "source": "zcode-bypass"},
+        {"event": "commit_passed", "timestamp": "2026-10-24T13:00:00"},
+    ])
+    s = h.outofband_summary(rg)
+    assert s["bypass"] == 2  # max(2 事件, 1 钩子痕迹)——同笔提交不双计
+    assert s["outofband"] == 0 and s["gated"] == 1
+    assert s["escaped"] == 2 and s["total_commits"] == 3
+    assert any("走 bypass 的提交" in r for r in s["recent_bypass"])
+
+
+def test_outofband_cli_shows_bypass(tmp_path):
+    """CLI 输出含 bypass 逃生与逃生率行（批147 消费面）。"""
+    import subprocess
+    h = _load_history_module("hist147c")
+    rg = _write_events(tmp_path, [
+        {"event": "commit_observed", "timestamp": "2026-10-24T11:38:00",
+         "subject": "feat: bypass 逃逸样本", "source": "zcode-bypass"},
+        {"event": "commit_passed", "timestamp": "2026-10-24T12:00:00"},
+        {"event": "commit_blocked", "timestamp": "2026-10-24T12:30:00"},
+    ])
+    out = subprocess.run(
+        [sys.executable, os.path.abspath(h.__file__), rg, "outofband"],
+        capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0
+    assert "bypass 逃生 1 次" in out.stdout
+    assert "逃生率 33%" in out.stdout
+    assert "bypass 逃逸样本" in out.stdout

@@ -122,12 +122,17 @@ ZCode 门卫只能看到 ZCode 发起的提交；IDE/终端直接 commit 时不�
 拓扑（.regress 在外仓、代码在内仓）时代码提交走内仓，钩子观测不到
 （评审病例：commit_observed 0 条+.expect-commit 残留）。单仓项目机制完整。
 
-项目是 git 仓库且 `.git/hooks/post-commit` 不存在时才装（husky 等已有钩子则跳过并提示）：
+项目是 git 仓库且 `.git/hooks/post-commit` 不存在时新装（husky 等外来钩子则跳过并提示）；
+**自升级（批147）**：已有钩子若是本插件旧版观测钩子（体含 `commit_observed` 事件名但缺 `"source"` 字段——gated 提交会被 outofband 聚合误计带外）则覆写为 v2。外来钩子不含该事件名，不会误碰：
 
 ```bash
-if git rev-parse --git-dir >/dev/null 2>&1 && [ ! -f .git/hooks/post-commit ]; then
+if git rev-parse --git-dir >/dev/null 2>&1; then
+  if [ ! -f .git/hooks/post-commit ] \
+     || { grep -q 'commit_observed' .git/hooks/post-commit 2>/dev/null \
+          && ! grep -q '"source"' .git/hooks/post-commit 2>/dev/null; }; then
 cat > .git/hooks/post-commit << 'RGHOOK'
 #!/bin/sh
+# regress-guard post-commit observer v2 (source-aware)
 D="$(git rev-parse --show-toplevel 2>/dev/null)"
 RG=""
 while [ -n "$D" ] && [ "$D" != "/" ]; do
@@ -150,6 +155,7 @@ printf '{"timestamp":"%s","event":"commit_observed","manifest_id":"","commit_sha
 exit 0
 RGHOOK
 chmod +x .git/hooks/post-commit
+  fi
 fi
 ```
 

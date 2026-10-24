@@ -22,6 +22,7 @@ import sys
 import os
 import re
 import json
+import fnmatch
 import getpass
 import subprocess
 import traceback
@@ -438,6 +439,159 @@ def _git_head_sha():
         return ""
 
 
+# ─── 批148：blast-radius 影响面门禁（tongtu 标本）──────────────
+
+BR_WORKSPACE_FILES = ("pnpm-workspace.yaml", "pnpm-workspace.yml",
+                      "lerna.json", "turbo.json", "nx.json")
+
+
+def _br_path_matches(path, pattern):
+    """单 glob 匹配（boundary_guard.path_matches 同语义镜像：fnmatch +
+    目录前缀 + dir/** 深度通配；清单 boundary.include 同语法）。"""
+    p = path.replace(os.sep, "/").lstrip("/")
+    pat = pattern.strip().strip("/")
+    if not pat:
+        return False
+    if fnmatch.fnmatch(p, pat) or fnmatch.fnmatch(p, pat + "/*"):
+        return True
+    if pat.endswith("/**") and (p == pat[:-3] or p.startswith(pat[:-3] + "/")):
+        return True
+    return False
+
+
+def _br_parse_workspace(path):
+    """容错读工作区文件的包模式列表（失败/空=返回 []——降级无触发，安全侧）。
+
+    pnpm-workspace.yaml 手撕 packages: 段（不依赖 PyYAML）；lerna.json 读
+    packages 键；turbo/nx 通常无列表键（产出空=无触发——自动推导边界）。
+    """
+    try:
+        text = open(path, encoding="utf-8").read()
+    except (OSError, UnicodeDecodeError):
+        return []
+    pats, in_pkgs = [], False
+    if path.endswith((".yaml", ".yml")):
+        for line in text.splitlines():
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            if s.startswith("packages:"):
+                in_pkgs = True
+                continue
+            if in_pkgs:
+                if s.startswith("- "):
+                    pats.append(s[2:].strip().strip("'\""))
+                else:
+                    break  # 段结束（下一个键）
+    else:
+        try:
+            d = json.loads(text)
+        except ValueError:
+            return []
+        v = d.get("packages") if isinstance(d, dict) else None
+        if isinstance(v, list):
+            pats = [str(x).strip() for x in v]
+    return [p.strip("/") for p in pats if p and p.strip("/") not in (".", "..")]
+
+
+def _br_workspace_patterns(project_dir, staged):
+    """检出 monorepo 工作区文件 → 仓相对包模式。
+
+    搜索面两级：project_dir + staged 首段目录（dap 标本：workspace 文件在
+    子目录 monorepo 根下，staged 路径以该目录为首段）。检出即用首个非空
+    解析结果（模式前缀拼回仓相对）。无文件/解析空=返回 []。
+    """
+    roots = {project_dir}
+    for f in staged:
+        head = f.replace(os.sep, "/").split("/")[0]
+        if head and head not in (".", ".."):
+            roots.add(os.path.join(project_dir, head))
+    for root in sorted(roots):
+        for name in BR_WORKSPACE_FILES:
+            p = os.path.join(root, name)
+            if not os.path.isfile(p):
+                continue
+            pats = _br_parse_workspace(p)
+            if not pats:
+                continue
+            prefix = os.path.relpath(root, project_dir).replace(os.sep, "/")
+            if prefix == ".":
+                return pats
+            return [f"{prefix}/{q}" for q in pats]
+    return []
+
+
+def _br_units(pats, staged):
+    """模式×staged → 被触碰的具体单元目录集合（apps/* + apps/web/x → apps/web）。
+
+    通配模式取首通配段展开；无通配模式剥 /** 尾作整目录单元；模式无 staged
+    命中不产出（单元=真被触碰的，不是声明的全部）。
+    """
+    units = set()
+    files = {f.replace(os.sep, "/").lstrip("/") for f in staged}
+    for pat in pats:
+        pat = pat.strip().strip("/")
+        if not pat:
+            continue
+        if pat.endswith("/**"):
+            base = pat[:-3]  # 深度通配=整目录即单元（pkgs/core/** → pkgs/core）
+            for f in files:
+                if f == base or f.startswith(base + "/"):
+                    units.add(base)
+        elif "*" in pat:
+            head = pat.split("*")[0].rstrip("/")
+            for f in files:
+                if head and f.startswith(head + "/"):
+                    seg = f[len(head) + 1:].split("/")[0]
+                    if seg:
+                        units.add(head + "/" + seg)
+        else:
+            base = pat
+            for f in files:
+                if f == base or f.startswith(base + "/"):
+                    units.add(base)
+    return sorted(units)
+
+
+def _blast_radius_evaluate(config, project_dir, staged):
+    """返回 None（惰性）/ {mode:hint} / {mode:enforce}（批148 阶梯默认）。
+
+    显式 blast_radius{high_impact,units}（任一非空）→ enforce，触发条件=
+    高影响命中 或 跨≥2单元；无配置但工作区自动推导跨≥2单元 → hint（仅
+    警示，通用产品零配置不强迫）；其余 None。units 显式配置优先于自动推导。
+    """
+    if not isinstance(config, dict):
+        return None
+    br = config.get("blast_radius")
+    if br is None:
+        units = _br_units(_br_workspace_patterns(project_dir, staged), staged)
+        if len(units) >= 2:
+            return {"mode": "hint", "units": units}
+        return None
+    if not isinstance(br, dict):
+        return None
+    hi = [str(p).strip() for p in (br.get("high_impact") or [])
+          if str(p).strip()]
+    up = [str(p).strip() for p in (br.get("units") or []) if str(p).strip()]
+    if not hi and not up:
+        return None
+    pats = up or _br_workspace_patterns(project_dir, staged)
+    units = set(_br_units(pats, staged))
+    hits = {}
+    files = {f.replace(os.sep, "/").lstrip("/") for f in staged}
+    for pat in hi:
+        base = pat.split("*")[0].rstrip("/")
+        base = base[:-3] if base.endswith("/**") else base
+        for f in files:
+            if _br_path_matches(f, pat):
+                hits[f] = base or pat
+    if not hits and len(units) < 2:
+        return None  # 高影响未触碰且单单元=未触发
+    units |= set(hits.values())
+    return {"mode": "enforce", "units": sorted(units),
+            "high_impact": hi}
+
+
 def main():
     # ─── 1. 是否 git commit？──────────────────────────
     raw_input = sys.stdin.read() if not sys.stdin.isatty() else ""
@@ -815,6 +969,94 @@ def main():
                     "运营实证双坑：边界守卫会把 <路径> 形态当重定向目标误判；"
                     "发布链路的文案约定同样禁尖括号。改用「路径」或（路径）形态。"
                 )
+
+    # ─── 批148：blast-radius 影响面门禁（tongtu 标本）────────
+    # 跨端/高影响提交零风险信号的机器位（v1.66 影响面一次性扫描的升格）。
+    # 插入位=归因之后/无清单早退之前——两条路径（有清单/无清单）都过本步。
+    # bypass 窗口已在第 3 步短路放行——本步可逃=人裁阀+审计语义（同规则 A/B）。
+    if isinstance(config, dict) and config.get("blast_radius") is not None \
+            and not isinstance(config.get("blast_radius"), dict):
+        print("REGRESS-GUARD (note): blast_radius 配置节须为对象——本步惰性跳过",
+              file=sys.stderr)
+    else:
+        _br = _blast_radius_evaluate(config, project_dir, _staged_list())
+        if _br and _br["mode"] == "hint":
+            record(regress_dir, "commit_warned", manifest_id,
+                   note="blast_radius_hint", units=_br["units"])
+            print("REGRESS-GUARD (warning): 本次提交横跨 "
+                  + "、".join(_br["units"])
+                  + "——跨单元变更建议过影响面评审；config.json 配 "
+                  "blast_radius 可开强制拦（docs/WORKFLOW.md 影响面层）",
+                  file=sys.stderr)
+        elif _br and _br["mode"] == "enforce":
+            _br_u = _br["units"]
+            if not manifest or not manifest_id:
+                record(regress_dir, "commit_blocked", "",
+                       reason="blast_radius_no_manifest", units=_br_u)
+                emit_block(
+                    "提交被拦：影响面横跨 " + "、".join(_br_u)
+                    + " 但无活跃清单。\n\n"
+                    "高影响/跨单元变更须 M 档清单承载（/regress:plan）——"
+                    "影响面评审从口头约定变机器位。"
+                )
+            _br_fm = parse_frontmatter(manifest) or {}
+            _br_tier = str(_br_fm.get("tier") or "").strip().upper()
+            if _br_tier not in ("M", "L"):
+                record(regress_dir, "commit_blocked", manifest_id,
+                       reason="blast_radius_tier_floor", tier=_br_tier,
+                       units=_br_u)
+                emit_block(
+                    "提交被拦：影响面横跨 " + "、".join(_br_u)
+                    + "，归因清单 tier=" + (_br_tier or "?")
+                    + " 低于影响面地板（M）。\n\n"
+                    "升档 /regress:plan 或把提交拆成单单元——跨单元变更按 "
+                    "M 档全套检查面对待（广度矩阵+验收入环+深查）。"
+                )
+            _br_sc_raw = _br_fm.get("impact_scope") or []
+            _br_scope = {str(u).strip() for u in
+                         (_br_sc_raw if isinstance(_br_sc_raw, list)
+                          else str(_br_sc_raw).split(",")) if str(u).strip()}
+            if not _br_scope:
+                record(regress_dir, "commit_blocked", manifest_id,
+                       reason="blast_radius_scope_missing", units=_br_u)
+                emit_block(
+                    "提交被拦：清单缺 impact_scope 声明。\n\n"
+                    "frontmatter 加 impact_scope: [" + ", ".join(_br_u)
+                    + "]（受影响单元清单）——跨端同窗口靠显式声明对账，"
+                    "不是靠记忆。"
+                )
+            _br_missing = [u for u in _br_u if u not in _br_scope]
+            if _br_missing:
+                record(regress_dir, "commit_blocked", manifest_id,
+                       reason="blast_radius_scope_mismatch",
+                       missing=_br_missing, units=_br_u)
+                emit_block(
+                    "提交被拦：impact_scope 未覆盖检出单元："
+                    + "、".join(_br_missing) + "。\n\n"
+                    "补声明（frontmatter impact_scope）或拆分提交——"
+                    "声明面必须覆盖全部实际触碰单元。"
+                )
+            # 高影响路径删除提示（「只扩不缩」类契约的提示位——记不拦）
+            try:
+                _br_del = [l.strip().replace(os.sep, "/") for l in subprocess.run(
+                    ["git", "-C", project_dir, "diff", "--staged",
+                     "--diff-filter=D", "--name-only"],
+                    capture_output=True, text=True, timeout=10
+                ).stdout.splitlines() if l.strip()]
+                _br_del = [f for f in _br_del
+                           if any(_br_path_matches(f, p)
+                                  for p in _br["high_impact"])]
+                if _br_del:
+                    record(regress_dir, "commit_warned", manifest_id,
+                           note="blast_radius_deletion", files=_br_del[:5])
+                    print("REGRESS-GUARD (warning): 高影响路径有 staged 删除："
+                          + "、".join(_br_del[:3])
+                          + "——契约类路径只扩不缩，删除请三思（已留痕不拦）",
+                          file=sys.stderr)
+            except Exception:
+                pass  # 删除检测是增强：失败不影响门禁主判定
+            record(regress_dir, "note", manifest_id,
+                   note="blast_radius_passed", units=_br_u)
 
     if not manifest:
         if others:
