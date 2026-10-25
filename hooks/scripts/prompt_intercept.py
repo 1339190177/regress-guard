@@ -372,7 +372,8 @@ def _rule_recall_line(project_dir, prompt_text):
                            hits=top.get("hits"))
                 except Exception:
                     pass  # 量测位永不破坏钩子（101 FP2）
-                return [f"📚 相似规律：{sig}（hits {top['hits']}——开工前看一眼历史教训）"]
+                return [f"📚 相似规律：{'🔬 ' if top.get('lifecycle') == 'shadow' else ''}"
+                        f"{sig}（hits {top['hits']}——开工前看一眼历史教训）"]
     except Exception:
         pass
     return []

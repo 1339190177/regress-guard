@@ -109,7 +109,8 @@ def _recall_hint(reason_key, msg):
         except Exception:
             pass
         lines = ["\n📚 相关历史规律（骨架库召回——提示不是行动，采纳前对照本次现场）："]
-        lines += [f"  {i}. 「{r['sig'][:70]}」 命中×{r['hits']}（最近 {r['last_hit']}）"
+        lines += [f"  {i}. {'🔬 ' if r.get('lifecycle') == 'shadow' else ''}"
+                  f"「{r['sig'][:70]}」 命中×{r['hits']}（最近 {r['last_hit']}）"
                   for i, r in enumerate(res, 1)]
         return "\n".join(lines)
     except Exception:

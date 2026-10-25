@@ -610,3 +610,92 @@ def test_outofband_cli_shows_bypass(tmp_path):
     assert "bypass 逃生 1 次" in out.stdout
     assert "逃生率 33%" in out.stdout
     assert "bypass 逃逸样本" in out.stdout
+
+
+# ─── 批149：SLO 记分牌 ────────────────
+
+def _slo_write_history(tmp_path, evs):
+    import json as _json
+    hp = tmp_path / ".regress" / "history.jsonl"
+    hp.parent.mkdir(parents=True)
+    hp.write_text("\n".join(_json.dumps(e, ensure_ascii=False) for e in evs) + "\n",
+                  encoding="utf-8")
+    return str(tmp_path / ".regress")
+
+
+def test_slo_summary_five_metrics(tmp_path, monkeypatch):
+    """五指标各可算：逃逸/误报/积压/复发间隔/召回（EARS 第1条）。"""
+    import importlib.util as ilu
+    H = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), "..", "hooks", "scripts", "lib", "history.py"))
+    spec = ilu.spec_from_file_location("hist_slo1", H)
+    h = ilu.module_from_spec(spec); spec.loader.exec_module(h)
+    rg = _slo_write_history(tmp_path, [
+        {"event": "commit_observed", "timestamp": "2026-10-20T10:00:00",
+         "subject": "直提", "source": "git-hook"},
+        {"event": "bypass_used", "timestamp": "2026-10-21T10:00:00"},
+        {"event": "commit_blocked", "timestamp": "2026-10-01T10:00:00",
+         "reason": "untracked_files"},
+        {"event": "commit_blocked", "timestamp": "2026-10-04T10:00:00",
+         "reason": "untracked_files"},
+        {"event": "commit_blocked", "timestamp": "2026-10-10T10:00:00",
+         "reason": "untracked_files"},
+        {"event": "commit_passed", "timestamp": "2026-10-11T10:00:00",
+         "manifest_id": "R9"},
+        {"event": "rule_recall", "timestamp": "2026-10-11T09:00:00",
+         "manifest_id": "R9", "sigs": ["x"]},
+    ])
+    pl = tmp_path / "pend.jsonl"
+    pl.write_text(
+        '{"id": 1, "ts": "2026-09-01T10:00:00", "project": "p", "event": "blocked", '
+        '"title": "t", "ref": "", "fp": "a"}\n'
+        '{"id": 2, "ts": "2026-09-02T10:00:00", "project": "p", "event": "blocked", '
+        '"title": "t2", "ref": "", "fp": "b"}\n'
+        '{"resolve_id": 1, "ts": "2026-09-03T10:00:00", "outcome": "useful"}\n'
+        '{"resolve_id": 2, "ts": "2026-09-03T10:00:00", "outcome": "fp"}\n',
+        encoding="utf-8")
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(pl))
+    s = h.slo_summary(rg)
+    assert s["escape"] == {"rate": 2 / 6, "escaped": 2, "total": 6}
+    assert s["pending"]["resolved"]["useful"] == 1
+    assert abs(s["pending"]["fp_rate"] - 0.5) < 1e-9
+    assert s["pending"]["pending"] == 0
+    rec = s["recurrence"]["untracked_files"]
+    assert rec["blocks"] == 3 and rec["median_gap_days"] == 4.5
+    assert s["recall"]["rows"] == 1
+
+
+def test_slo_empty_all_missing(tmp_path, monkeypatch):
+    """两源皆空 → 全部 缺/零值且退出 0（EARS 第2条）。"""
+    import importlib.util as ilu
+    H = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), "..", "hooks", "scripts", "lib", "history.py"))
+    spec = ilu.spec_from_file_location("hist_slo2", H)
+    h = ilu.module_from_spec(spec); spec.loader.exec_module(h)
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "none.jsonl"))
+    (tmp_path / ".regress").mkdir()
+    s = h.slo_summary(str(tmp_path / ".regress"))
+    assert s["escape"] is None and s["pending"] is None
+    assert s["recurrence"] is None and s["recall"] is None
+
+
+def test_slo_cli_recurring_gap_line(tmp_path, monkeypatch):
+    """同 reason ≥2 次 → CLI 输出中位复发间隔行（EARS 第3条）。"""
+    import subprocess
+    rg = _slo_write_history(tmp_path, [
+        {"event": "commit_blocked", "timestamp": "2026-10-01T10:00:00",
+         "reason": "compound_stage_commit"},
+        {"event": "commit_blocked", "timestamp": "2026-10-08T10:00:00",
+         "reason": "compound_stage_commit"},
+    ])
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "none.jsonl"))
+    out = subprocess.run(
+        [sys.executable,
+         os.path.abspath(os.path.join(
+             os.path.dirname(__file__), "..", "hooks", "scripts", "lib",
+             "history.py")), rg, "slo"],
+        capture_output=True, text=True, timeout=30,
+        env={**os.environ, "RG_PENDING_LEDGER": str(tmp_path / "none.jsonl")})
+    assert out.returncode == 0
+    assert "compound_stage_commit ×2｜中位间隔 7 天" in out.stdout
+    assert "逃逸率：0%（带外+bypass 0/2）" in out.stdout

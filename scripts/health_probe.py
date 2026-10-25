@@ -33,6 +33,7 @@ PROBES = [
     ("rules_ledger.health", [sys.executable, f"{_LIB}/rules_ledger.py", ".", "health"]),
     ("history.features", [sys.executable, f"{_LIB}/history.py", ".regress", "features"]),
     ("history.cache", [sys.executable, f"{_LIB}/history.py", ".regress", "cache"]),
+    ("history.slo", [sys.executable, f"{_LIB}/history.py", ".regress", "slo"]),
     # empty_ok 语义（132）：只给"空输出=健康"的探针——仓洁净 status 空=✓。
     # 数据探针默认零输出=❌（防真静默被掩盖）——新增探针勿随手加 empty_ok。
     ("repo.clean", ["git", "-C",

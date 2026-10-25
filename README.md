@@ -26,6 +26,10 @@ workflow: **the commit**.
   explicit `impact_scope` declaration; unconfigured monorepos get a warn-only hint.
 - **Assumption ledger**: when reality falsifies a plan's assumption, the
   was→reality→evidence record is mandatory.
+- **Rule lifecycle (canary for knowledge)**: learned rules enter as *shadow*
+  (still recalled, 🔬-marked), accumulate fires, and reach *curated* only by
+  human promotion from an evidence card — or get retired (kept on file) when
+  they starve past TTL.
 - **Six-layer trust surface**: project-level notification channels require a
   human-granted trust table + content pinning; HOME/env-injection redirection is
   neutralized at the launcher allowlist. Cloned-repo injection surfaces are closed.
@@ -121,7 +125,7 @@ MIT. Third-party: none at runtime (stdlib only).
 
 **实况（由 gen_reference.py 生成，勿手改本区）**
 
-- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：762 个
+- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：773 个
 
 | 命令 | 说明 |
 |---|---|

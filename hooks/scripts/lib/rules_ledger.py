@@ -7,12 +7,20 @@
 
 用法：
   rules_ledger.py . record --sig "<失败签名>" --occurrences 5   # learn 沉淀/再检出时
-  rules_ledger.py . health                                       # 衰变候选 + 固化候选
+  rules_ledger.py . health                                       # 衰变候选 + 固化候选 + shadow 队列
   rules_ledger.py . match --query "<拦截原因/报错关键词>"         # 召回：失败现场读路径（v1.53）
   rules_ledger.py . match --query "..." --json --top 3           # 机器读
+  rules_ledger.py . case                                         # 批150：shadow 晋升证据卡（度量自动）
+  rules_ledger.py . sweep                                        # 批150：饿死退役（幂等留档）
+  rules_ledger.py . promote --sig "<签名>"                       # 批150：人裁晋升/复活（curated）
 
 数据：.regress/rules-ledger.json（随 git 入库）。命中定义：learn 再检出同一签名
 （真实"被咨询"无法自动探测，再检出是务实代理——诚实边界，记录在案）。
+
+生命周期（批150 curation）：shadow（新录默认——照常召回/计 fires，差别只在
+策展簿记）→ curated（人裁 promote 盖章）| retired（sweep 饿死或人工退役，留档
+不删、退出版本召回、promote 可复活）。curated 永不自动退役。饿死线=超 TTL
+（config rules_ledger.shadow_ttl_days，默认 60 天）且 hits<2——低频项目调大。
 """
 import argparse
 import hashlib
@@ -28,6 +36,7 @@ from journal import _find_project_dir  # noqa: E402  项目定位单一来源
 
 DEFAULT_DECAY_DAYS = 180
 PROMOTE_HITS = 3
+DEFAULT_SHADOW_TTL_DAYS = 60
 
 
 def ledger_path(project_dir):
@@ -64,18 +73,27 @@ def record(project_dir, sig, occurrences=0):
     today = date.today().isoformat()
     entry = data.get(key)
     if entry is None:
+        # 批150：新录默认 shadow——知识先影子服役攒证据，晋升是人裁（材料包 A
+        # 病理根治：度量自动、人只守晋升）
         data[key] = {"sig": sig, "captured_at": today, "last_hit": today,
-                     "hits": 1, "occurrences": occurrences}
-        action = "新沉淀"
+                     "hits": 1, "occurrences": occurrences,
+                     "lifecycle": "shadow", "shadow_since": today}
+        action = "新沉淀（shadow）"
     else:
         entry["sig"] = sig
         entry["hits"] = int(entry.get("hits", 1)) + 1
         entry["last_hit"] = today
         entry["occurrences"] = max(int(entry.get("occurrences", 0)), occurrences)
         action = f"命中（第 {entry['hits']} 次）"
+        if entry.get("lifecycle") == "retired":
+            # 再检出=生命证据：饿死误杀的复活通道（回 shadow 重新攒证据）
+            entry["lifecycle"] = "shadow"
+            entry["shadow_since"] = today
+            entry.pop("retire_reason", None)
+            action += "（retired 复活→shadow）"
     _save(project_dir, data)
     print(f"📒 {action}: 「{sig[:60]}」 occurrences={data[key]['occurrences']}")
-    if action == "新沉淀":
+    if action.startswith("新沉淀"):
         try:
             near = [r for r in match(project_dir, sig, top=2, min_shared=NEAR_DUP_MIN)
                     if r["sig"] != sig]
@@ -93,6 +111,20 @@ def _days_since(iso):
         return (date.today() - date.fromisoformat(iso)).days
     except (ValueError, TypeError):
         return 0
+
+
+def _shadow_ttl_days(project_dir):
+    """批150：shadow 饿死线（config 可调，坏值回默认——低频项目调大）。"""
+    try:
+        with open(os.path.join(project_dir, ".regress", "config.json"),
+                  encoding="utf-8") as f:
+            cfg = json.load(f)
+        v = (cfg.get("rules_ledger") or {}).get("shadow_ttl_days")
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+            return int(v)
+    except Exception:
+        pass
+    return DEFAULT_SHADOW_TTL_DAYS
 
 
 def supersede(project_dir, old_sig, new_sig):
@@ -158,7 +190,8 @@ def match(project_dir, query, top=3, min_shared=MATCH_MIN_SHARED):
         return []
     data = load(project_dir)
     entries = [e for k, e in data.items()
-               if not str(k).startswith("_") and isinstance(e, dict) and e.get("sig")]
+               if not str(k).startswith("_") and isinstance(e, dict)
+               and e.get("sig") and e.get("lifecycle") != "retired"]
     if not entries:
         return []
     sup_map = data.get("_superseded") if isinstance(data.get("_superseded"), dict) else {}
@@ -177,7 +210,8 @@ def match(project_dir, query, top=3, min_shared=MATCH_MIN_SHARED):
         shared = len(q & (bgs - stop))
         if shared >= min_shared:
             out.append({"sig": e["sig"], "hits": int(e.get("hits", 1)),
-                        "last_hit": e.get("last_hit", ""), "score": shared})
+                        "last_hit": e.get("last_hit", ""), "score": shared,
+                        "lifecycle": e.get("lifecycle") or "curated"})
     out.sort(key=lambda h: str(h["last_hit"]), reverse=True)   # 稳定预排：新鲜度断路
     out.sort(key=lambda h: (-h["score"], -h["hits"]))          # 主排序保持断路序
     return out[:top]
@@ -194,6 +228,11 @@ def health(project_dir, decay_days=DEFAULT_DECAY_DAYS, promote_hits=PROMOTE_HITS
                       and e.get("sig")), key=lambda e: -int(e.get("hits", 0)))
     sup_map = data.get("_superseded") if isinstance(data.get("_superseded"), dict) else {}
     sup_sigs = {str(v.get("old_sig", "")) for v in sup_map.values()}
+    ttl = _shadow_ttl_days(project_dir)
+    shadow_q = [e for e in entries if e.get("lifecycle") == "shadow"]
+    starved = [e for e in shadow_q
+               if _days_since(e.get("captured_at", "")) > ttl
+               and int(e.get("hits", 0)) < 2]
     stale = [e for e in entries
              if _days_since(e.get("last_hit", "")) > decay_days
              and e["sig"] not in sup_sigs]  # 被取代规律过气=预期，非降级候选
@@ -201,20 +240,127 @@ def health(project_dir, decay_days=DEFAULT_DECAY_DAYS, promote_hits=PROMOTE_HITS
     promotable = [e for e in entries
                   if id(e) not in stale_keys and int(e.get("hits", 0)) >= promote_hits]
     print(f"规律总数 {len(entries)}｜命中≥{promote_hits}（固化候选）{len(promotable)}｜"
-          f">{decay_days}天零命中（降级候选）{len(stale)}")
+          f">{decay_days}天零命中（降级候选）{len(stale)}｜"
+          f"shadow 队列 {len(shadow_q)}（饿死候选 {len(starved)}，TTL {ttl} 天）")
     for e in promotable:
         print(f"  🦴 固化候选 hits={e['hits']} 「{e['sig'][:50]}」"
               f"（建议经人批准用 skill-creator 固化）")
     for e in stale:
         print(f"  🍂 降级候选 last_hit={e.get('last_hit')} 「{e['sig'][:50]}」"
               f"（提示人工修剪——本工具永不自动删）")
+    if shadow_q:
+        print(f"  🔬 shadow 队列（批150 晋升管线——case 看证据卡，sweep 清饿死）：")
+        for e in shadow_q[:5]:
+            mark = " 🥀饿死候选" if e in starved else ""
+            print(f"    🔬 hits={e.get('hits')} 服役{_days_since(e.get('captured_at', ''))}天"
+                  f" 「{e['sig'][:46]}」{mark}")
     if sup_map:
         for v in list(sup_map.values())[:5]:
             print(f"  🔗 已取代 {v.get('ts')} 「{str(v.get('old_sig', ''))[:40]}」"
                   f"→ 新版（过气=预期，不算降级候选）")
     if not entries:
         print("  （空账本——learn 沉淀规律时自动记账）")
-    return {"total": len(entries), "promotable": promotable, "stale": stale}
+    return {"total": len(entries), "promotable": promotable, "stale": stale,
+            "shadow": shadow_q, "starved": starved}
+
+
+def case(project_dir, top=5):
+    """批150：shadow 条目晋升证据卡——度量自动，人只守晋升（材料包 A 病理根治）。
+
+    证据=账本 fires（hits/occurrences/服役天数）+history 召回开火联查
+    （rule_recall 事件 sigs 计数）。建议三态：hits≥PROMOTE_HITS=晋升（与
+    health 固化候选同源阈值）；超 TTL 且 hits<2=退役；否则 hold。
+    """
+    ttl = _shadow_ttl_days(project_dir)
+    data = load(project_dir)
+    shadow = sorted((e for k, e in data.items()
+                     if not str(k).startswith("_") and isinstance(e, dict)
+                     and e.get("sig") and e.get("lifecycle") == "shadow"),
+                    key=lambda e: -int(e.get("hits", 0)))
+    fires = {}
+    try:
+        with open(os.path.join(project_dir, ".regress", "history.jsonl"),
+                  encoding="utf-8") as f:
+            for line in f:
+                try:
+                    ev = json.loads(line)
+                except ValueError:
+                    continue
+                if ev.get("event") == "rule_recall":
+                    for s in ev.get("sigs") or []:
+                        fires[str(s)] = fires.get(str(s), 0) + 1
+    except OSError:
+        pass  # 无 history=零开火，证据卡照出
+    cards = []
+    for e in shadow[:top]:
+        age = _days_since(e.get("captured_at", ""))
+        f_n = fires.get(e["sig"], 0)
+        hits = int(e.get("hits", 0))
+        verdict = ("晋升" if hits >= PROMOTE_HITS
+                   else "退役" if (age > ttl and hits < 2) else "hold")
+        cards.append({"sig": e["sig"], "hits": hits,
+                      "occurrences": int(e.get("occurrences", 0)),
+                      "age_days": age, "fires": f_n, "verdict": verdict})
+        print(f"🔬 「{e['sig'][:60]}」 hits={hits} occ={e.get('occurrences', 0)}"
+              f"｜服役 {age} 天（TTL {ttl}）｜召回开火 {f_n} 次｜建议：{verdict}")
+    if not shadow:
+        print("（无 shadow 条目——新规律 record 后进入影子服役攒证据）")
+    return cards
+
+
+def sweep(project_dir):
+    """批150：饿死退役——超 TTL 且 hits<2 的 shadow 条目（幂等，留档不删）。
+
+    retired 退出 match 召回但条目保留；promote 可复活（误杀防线）。
+    curated 永不自动退役（人裁过的知识只有人能退）。
+    """
+    ttl = _shadow_ttl_days(project_dir)
+    data = load(project_dir)
+    today = date.today().isoformat()
+    retired = 0
+    for k, e in data.items():
+        if str(k).startswith("_") or not isinstance(e, dict):
+            continue
+        if e.get("lifecycle") != "shadow":
+            continue
+        if _days_since(e.get("captured_at", "")) > ttl \
+                and int(e.get("hits", 0)) < 2:
+            e["lifecycle"] = "retired"
+            e["retired_at"] = today
+            e["retire_reason"] = "starved"
+            retired += 1
+            print(f"🍂 已退役：「{str(e.get('sig'))[:60]}」"
+                  f"（超 TTL {ttl} 天且 hits<2——留档，promote 可复活）")
+    if retired:
+        _save(project_dir, data)
+    else:
+        print(f"（零饿死条目——shadow 队列健康或未超 TTL {ttl} 天）")
+    return retired
+
+
+def promote(project_dir, sig):
+    """批150：人裁晋升盖章（shadow|retired → curated）。evidence 自动捕获。"""
+    data = load(project_dir)
+    key = hashlib.sha1(sig.encode("utf-8")).hexdigest()[:12]
+    e = data.get(key)
+    if not (isinstance(e, dict) and e.get("sig")):
+        cands = [x for x in data.values() if isinstance(x, dict)
+                 and str(x.get("sig", "")).startswith(sig)]
+        if len(cands) == 1:
+            e = cands[0]
+        else:
+            print(f"promote: 未找到条目「{sig[:40]}」（前缀歧义或不存在）",
+                  file=sys.stderr)
+            return False
+    today = date.today().isoformat()
+    age = _days_since(e.get("captured_at", ""))
+    e["lifecycle"] = "curated"
+    e["promoted_at"] = today
+    e["evidence"] = (f"hits={e.get('hits')} occ={e.get('occurrences')}"
+                     f" 服役{age}天 @{today}")
+    _save(project_dir, data)
+    print(f"🏅 已晋升 curated：「{str(e['sig'])[:60]}」（{e['evidence']}）")
+    return True
 
 
 def main(argv=None):
@@ -233,9 +379,14 @@ def main(argv=None):
                    help="从清单派生查询（结构化：文件+脆弱点+卡名；与 --query 互斥）")
     m.add_argument("--top", type=int, default=3, help="召回条数上限")
     m.add_argument("--json", action="store_true", help="机器读（B2 门禁消费）")
-    h = sub.add_parser("health", help="规律健康：降级候选 + 固化候选")
+    h = sub.add_parser("health", help="规律健康：降级候选 + 固化候选 + shadow 队列")
     h.add_argument("--decay-days", type=int, default=DEFAULT_DECAY_DAYS)
     h.add_argument("--promote-hits", type=int, default=PROMOTE_HITS)
+    c = sub.add_parser("case", help="批150：shadow 晋升证据卡（度量自动，人只守晋升）")
+    c.add_argument("--top", type=int, default=5)
+    w = sub.add_parser("sweep", help="批150：饿死退役（超 TTL 且 hits<2，幂等留档）")
+    pm = sub.add_parser("promote", help="批150：人裁晋升/复活（shadow|retired→curated）")
+    pm.add_argument("--sig", required=True, help="失败签名（完整或唯一前缀）")
     args = ap.parse_args(argv)
     project_dir = _find_project_dir(args.project_dir)
     if not project_dir:
@@ -245,6 +396,13 @@ def main(argv=None):
         record(project_dir, args.sig, args.occurrences)
     elif args.cmd == "supersede":
         supersede(project_dir, args.old, args.new)
+    elif args.cmd == "case":
+        case(project_dir, args.top)
+    elif args.cmd == "sweep":
+        sweep(project_dir)
+    elif args.cmd == "promote":
+        if not promote(project_dir, args.sig):
+            return 2
     elif args.cmd == "match":
         query = args.query or query_from_manifest(args.from_manifest)
         if args.from_manifest and not args.json:
@@ -257,7 +415,8 @@ def main(argv=None):
         else:
             print(f"📚 相关规律 TOP-{len(res)}（骨架库召回——提示不是行动，采纳前先对照本次现场）：")
             for i, r in enumerate(res, 1):
-                print(f"  {i}. 「{r['sig'][:60]}」 命中×{r['hits']}（最近 {r['last_hit']}）")
+                mark = "🔬 " if r.get("lifecycle") == "shadow" else ""
+                print(f"  {i}. {mark}「{r['sig'][:60]}」 命中×{r['hits']}（最近 {r['last_hit']}）")
     else:
         import io as _io, contextlib as _cb
         with _cb.redirect_stdout(_io.StringIO()) as buf:

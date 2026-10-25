@@ -610,6 +610,71 @@ def outofband_summary(regress_dir):
             "recent": recent, "recent_bypass": recent_bypass}
 
 
+def slo_summary(regress_dir):
+    """批149：SLO 记分牌（L9 骨架·步一）——五指标一屏。
+
+    评测驱动运维的在线监控轨：逃逸率（outofband 同源）/误报率+裁决积压
+    （pending.stats——机器级全项目混合）/拦截复发间隔（同 reason 相邻事件
+    中位天数，间隔拉长=规则生效代理）/规则召回（recall_effectiveness 聚合）。
+    都是代理非金标准；缺数据显示 None 不炸。
+    """
+    out = {}
+    try:
+        ob = outofband_summary(regress_dir)
+        out["escape"] = ({"rate": ob["escape_rate"], "escaped": ob["escaped"],
+                          "total": ob["total_commits"]}
+                         if ob["total_commits"] else None)
+    except Exception:
+        out["escape"] = None
+    try:
+        from pending import stats as _pstats
+        ps = _pstats()
+        out["pending"] = ps if (ps.get("total") or 0) > 0 else None
+    except Exception:
+        out["pending"] = None
+    from collections import defaultdict
+    by_reason = defaultdict(list)
+    for e in load_history(regress_dir):
+        if e.get("event") == "commit_blocked":
+            r, t = e.get("reason"), str(e.get("timestamp") or "")
+            if r and len(t) >= 19:
+                by_reason[r].append(t[:19])
+    rec = {}
+    for r, lst in by_reason.items():
+        lst.sort()
+        if len(lst) < 2:
+            continue
+        gaps = []
+        for a, b in zip(lst, lst[1:]):
+            try:
+                d = (datetime.fromisoformat(b) -
+                     datetime.fromisoformat(a)).total_seconds() / 86400.0
+                gaps.append(d)
+            except ValueError:
+                continue
+        if gaps:
+            gaps.sort()
+            n = len(gaps)
+            med = (gaps[n // 2] if n % 2
+                   else (gaps[n // 2 - 1] + gaps[n // 2]) / 2.0)
+            rec[r] = {"blocks": len(lst), "median_gap_days": round(med, 1),
+                      "last": lst[-1]}
+    out["recurrence"] = rec or None
+    try:
+        rows = recall_effectiveness(regress_dir)
+        if rows:
+            c = {}
+            for row in rows:
+                c[row["outcome"]] = c.get(row["outcome"], 0) + 1
+            c["rows"] = len(rows)
+            out["recall"] = c
+        else:
+            out["recall"] = None
+    except Exception:
+        out["recall"] = None
+    return out
+
+
 if __name__ == "__main__":
     import sys
     regress_dir = sys.argv[1] if len(sys.argv) > 1 else ".regress"
@@ -707,3 +772,42 @@ if __name__ == "__main__":
                 print("  最近 bypass（溯源 subject）：")
                 for s in rows["recent_bypass"]:
                     print(f"    · {s}")
+    elif cmd == "slo":
+        # 批149（L9 骨架·步一）：SLO 记分牌——进化的目标函数。代理指标
+        # 非金标准（复发间隔/召回占比与交付质量的因果链未验证）；
+        # 误报率与积压是机器级（全项目混合），其余按本项目。
+        s = slo_summary(regress_dir)
+        esc = s.get("escape")
+        print(f"逃逸率：{esc['rate']:.0%}（带外+bypass {esc['escaped']}"
+              f"/{esc['total']}）" if esc else "逃逸率：缺（无提交事件）")
+        pd_ = s.get("pending")
+        if pd_:
+            res = pd_.get("resolved") or {}
+            decided = sum(res.values())
+            rate = pd_.get("fp_rate")
+            print(f"误报率：{rate:.0%}（机器级：useful {res.get('useful', 0)}"
+                  f"/fp {res.get('fp', 0)}/ignored {res.get('ignored', 0)}）"
+                  if decided else "误报率：缺（零裁决）")
+            print(f"裁决积压：{pd_.get('pending')} 笔待决"
+                  f"（最老 {pd_.get('oldest_pending') or '?'}）")
+        else:
+            print("误报率：缺（零裁决）｜裁决积压：0")
+        rec = s.get("recurrence")
+        if rec:
+            print(f"拦截复发（{len(rec)} 种原因 ≥2 次，间隔拉长=规则生效代理）：")
+            for r, v in sorted(rec.items(),
+                               key=lambda kv: -kv[1]["blocks"])[:5]:
+                print(f"  {r} ×{v['blocks']}｜中位间隔 {v['median_gap_days']:g} 天"
+                      f"｜最近 {v['last'][:16]}")
+        else:
+            print("拦截复发：缺（无 ≥2 次同因拦截）")
+        rc = s.get("recall")
+        if rc:
+            n = rc.get("rows", 0)
+            cl = rc.get("resolved_clean", 0)
+            print(f"规则召回：{n} 次｜干净解决 {cl}"
+                  f"｜带干预 {rc.get('resolved_shadow', 0)}"
+                  f"｜未决 {rc.get('pending', 0)}"
+                  f"｜干净占比 {cl / n:.0%}")
+        else:
+            print("规则召回：缺（零召回记录）")

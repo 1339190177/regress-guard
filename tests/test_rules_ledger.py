@@ -254,3 +254,208 @@ def test_query_from_manifest_bad_path(tmp_path):
     empty = tmp_path / "empty.md"
     empty.write_text("没有frontmatter", encoding="utf-8")
     assert isinstance(rl.query_from_manifest(str(empty)), str)
+
+
+# ─── 批150：curation 生命周期（shadow→curated|retired） ────────────────
+
+def _mk_ledger(proj, entries):
+    import json as _json
+    rg = proj / ".regress"
+    rg.mkdir(parents=True, exist_ok=True)
+    (rg / "rules-ledger.json").write_text(
+        _json.dumps(entries, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def test_record_default_shadow(tmp_path):
+    """新录默认 shadow+shadow_since；再检出 retire 复活回 shadow（EARS 1）。"""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    _mk_ledger(proj, {})
+    import importlib.util as ilu
+    H = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
+                     "lib", "rules_ledger.py")
+    spec = ilu.spec_from_file_location("rl150a", H)
+    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    e = g.record(str(proj), "签名甲 失败规律", 2)
+    assert e["lifecycle"] == "shadow" and "shadow_since" in e
+    # 存量无字段=curated 兼容
+    _mk_ledger(proj, {"deadbeef0001": {"sig": "旧规律", "captured_at": "2026-01-01",
+                                       "last_hit": "2026-01-01", "hits": 5,
+                                       "occurrences": 3}})
+    assert (g.load(str(proj))["deadbeef0001"].get("lifecycle") is None)
+    # retired 再检出=复活
+    key = g.hashlib.sha1("复活目标".encode()).hexdigest()[:12]
+    d = g.load(str(proj))
+    d[key] = {"sig": "复活目标", "captured_at": "2026-01-01",
+              "last_hit": "2026-01-01", "hits": 1, "occurrences": 0,
+              "lifecycle": "retired"}
+    g._save(str(proj), d)
+    e2 = g.record(str(proj), "复活目标")
+    assert e2["lifecycle"] == "shadow"
+
+
+def test_sweep_starved_idempotent(tmp_path):
+    """超 TTL 且 hits<2 → 退役留档；重跑零变更；curated 永不动（EARS 2/7）。"""
+    from datetime import date as _d
+    old = (_d.today().replace(year=_d.today().year - 1)).isoformat()
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    _mk_ledger(proj, {
+        "aaa": {"sig": "饿死候选 老规律", "captured_at": old,
+                "last_hit": old, "hits": 1, "occurrences": 9,
+                "lifecycle": "shadow"},
+        "bbb": {"sig": "活规律", "captured_at": old, "last_hit": old,
+                "hits": 2, "occurrences": 0, "lifecycle": "shadow"},
+        "ccc": {"sig": "老 curated", "captured_at": old, "last_hit": old,
+                "hits": 1, "occurrences": 0, "lifecycle": "curated"},
+    })
+    import importlib.util as ilu
+    H = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
+                     "lib", "rules_ledger.py")
+    spec = ilu.spec_from_file_location("rl150b", H)
+    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    assert g.sweep(str(proj)) == 1
+    d = g.load(str(proj))
+    assert d["aaa"]["lifecycle"] == "retired" and d["aaa"]["retire_reason"] == "starved"
+    assert d["bbb"]["lifecycle"] == "shadow" and d["ccc"]["lifecycle"] == "curated"
+    assert "aaa" in d  # 留档不删
+    assert g.sweep(str(proj)) == 0  # 幂等
+
+
+def test_promote_stamp_and_revive(tmp_path):
+    """promote 盖章 curated+promoted_at+evidence；retired 可复活（EARS 3）。"""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    _mk_ledger(proj, {
+        "aaa": {"sig": "影子规律", "captured_at": "2026-09-01",
+                "last_hit": "2026-10-01", "hits": 4, "occurrences": 2,
+                "lifecycle": "shadow"},
+    })
+    import importlib.util as ilu
+    H = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
+                     "lib", "rules_ledger.py")
+    spec = ilu.spec_from_file_location("rl150c", H)
+    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    assert g.promote(str(proj), "影子规律")
+    e = g.load(str(proj))["aaa"]
+    assert e["lifecycle"] == "curated" and e.get("promoted_at") \
+        and "hits=4" in e.get("evidence", "")
+    # retired 复活
+    d = g.load(str(proj))
+    d["aaa"]["lifecycle"] = "retired"
+    g._save(str(proj), d)
+    assert g.promote(str(proj), "影子规律")
+    assert g.load(str(proj))["aaa"]["lifecycle"] == "curated"
+    assert not g.promote(str(proj), "不存在的签名")
+
+
+def test_retired_not_recalled(tmp_path):
+    """retired 退出 match；返回带 lifecycle 字段（EARS 4/6 前置）。"""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    _mk_ledger(proj, {
+        "aaa": {"sig": "复合命令提交被拦的规律", "captured_at": "2026-10-01",
+                "last_hit": "2026-10-20", "hits": 5, "occurrences": 0,
+                "lifecycle": "retired"},
+        "bbb": {"sig": "复合命令暂存被拦的另一条", "captured_at": "2026-10-01",
+                "last_hit": "2026-10-20", "hits": 4, "occurrences": 0,
+                "lifecycle": "shadow"},
+    })
+    import importlib.util as ilu
+    H = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
+                     "lib", "rules_ledger.py")
+    spec = ilu.spec_from_file_location("rl150d", H)
+    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    res = g.match(str(proj), "复合命令 提交 暂存 被拦 规律", top=3)
+    sigs = [r["sig"] for r in res]
+    assert "复合命令提交被拦的规律" not in sigs  # retired 零召回
+    assert any("另一条" in s for s in sigs)
+    assert all("lifecycle" in r for r in res)
+
+
+def test_case_three_verdicts(tmp_path):
+    """case 建议三态：hits≥3 晋升/超 TTL 且 hits<2 退役/hold（EARS 5）。"""
+    from datetime import date as _d
+    old = (_d.today() - __import__("datetime").timedelta(days=90)).isoformat()
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / ".regress").mkdir(parents=True, exist_ok=True)
+    import json as _json
+    (proj / ".regress" / "history.jsonl").write_text(
+        _json.dumps({"event": "rule_recall", "sigs": ["成熟影子规律 甲"]}) + "\n",
+        encoding="utf-8")
+    _mk_ledger(proj, {
+        "a1": {"sig": "成熟影子规律 甲", "captured_at": "2026-09-01",
+               "last_hit": "2026-10-01", "hits": 3, "occurrences": 1,
+               "lifecycle": "shadow"},
+        "a2": {"sig": "年迈饿死影子规律 乙", "captured_at": old,
+               "last_hit": old, "hits": 1, "occurrences": 0,
+               "lifecycle": "shadow"},
+        "a3": {"sig": "年轻影子规律 丙", "captured_at": "2026-10-20",
+               "last_hit": "2026-10-20", "hits": 1, "occurrences": 0,
+               "lifecycle": "shadow"},
+    })
+    import importlib.util as ilu
+    H = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
+                     "lib", "rules_ledger.py")
+    spec = ilu.spec_from_file_location("rl150e", H)
+    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    cards = g.case(str(proj), top=5)
+    def verdict_of(prefix):
+        return [c["verdict"] for c in cards
+                if c["sig"].startswith(prefix)][0]
+    assert verdict_of("成熟影子规律") == "晋升"
+    assert verdict_of("年迈饿死影子") == "退役"
+    assert verdict_of("年轻影子规律") == "hold"
+    assert [c for c in cards if "甲" in c["sig"]][0]["fires"] == 1  # 联查在位
+
+
+def test_shadow_prefix_cli(tmp_path):
+    """match 人读输出影子条目带 🔬 前缀（EARS 6 消费面）。"""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    _mk_ledger(proj, {
+        "bbb": {"sig": "前缀验证影子规律", "captured_at": "2026-10-01",
+                "last_hit": "2026-10-20", "hits": 4, "occurrences": 0,
+                "lifecycle": "shadow"},
+        "ccc": {"sig": "前缀验证成熟规律", "captured_at": "2026-10-01",
+                "last_hit": "2026-10-20", "hits": 9, "occurrences": 0,
+                "lifecycle": "curated"},
+    })
+    r = _run(proj, "match", "--query", "前缀验证规律", "--top", "2").stdout
+    assert "🔬 「前缀验证影子规律」" in r
+    assert "🔬" not in r.split("前缀验证成熟规律")[1].split("\n")[0]
+
+
+def test_health_shadow_section(tmp_path):
+    """health 输出 shadow 队列行+饿死候选计数；CLI case/sweep/promote 可达。"""
+    from datetime import date as _d
+    old = (_d.today() - __import__("datetime").timedelta(days=90)).isoformat()
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    _mk_ledger(proj, {
+        "a1": {"sig": "影子队列规律", "captured_at": old, "last_hit": old,
+               "hits": 1, "occurrences": 0, "lifecycle": "shadow"},
+    })
+    r = _run(proj, "health").stdout
+    assert "shadow 队列 1（饿死候选 1" in r
+    r2 = _run(proj, "case").stdout
+    assert "建议：退役" in r2
+    assert _run(proj, "sweep").stdout.count("已退役") == 1
+    assert "curated" in _run(proj, "promote", "--sig", "影子队列规律").stdout
+
+
+def test_ttl_config_knob(tmp_path):
+    """FP2：config rules_ledger.shadow_ttl_days 调 TTL（低频项目兜底）。"""
+    import importlib.util as ilu
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / ".regress").mkdir(parents=True)
+    (proj / ".regress" / "config.json").write_text(
+        '{"rules_ledger": {"shadow_ttl_days": 200}}', encoding="utf-8")
+    H = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
+                     "lib", "rules_ledger.py")
+    spec = ilu.spec_from_file_location("rl150f", H)
+    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    assert g._shadow_ttl_days(str(proj)) == 200
+    assert g._shadow_ttl_days(str(tmp_path / "nonexistent")) == 60
