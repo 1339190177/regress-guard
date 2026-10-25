@@ -286,15 +286,22 @@ def case(project_dir, top=5):
                     ev = json.loads(line)
                 except ValueError:
                     continue
+                # 两处开火源都计（批151 验收修）：门禁现场（event=rule_recall，
+                # sigs 列表）+开工前（note=rule_recall_fired，sig 单值）；
+                # 事件侧签名截断到 60 字符——联查键同截断对齐防失配
                 if ev.get("event") == "rule_recall":
                     for s in ev.get("sigs") or []:
-                        fires[str(s)] = fires.get(str(s), 0) + 1
+                        fires[str(s)[:60]] = fires.get(str(s)[:60], 0) + 1
+                elif ev.get("note") == "rule_recall_fired":
+                    s = str(ev.get("sig") or "")[:60]
+                    if s:
+                        fires[s] = fires.get(s, 0) + 1
     except OSError:
         pass  # 无 history=零开火，证据卡照出
     cards = []
     for e in shadow[:top]:
         age = _days_since(e.get("captured_at", ""))
-        f_n = fires.get(e["sig"], 0)
+        f_n = fires.get(str(e["sig"])[:60], 0)
         hits = int(e.get("hits", 0))
         verdict = ("晋升" if hits >= PROMOTE_HITS
                    else "退役" if (age > ttl and hits < 2) else "hold")

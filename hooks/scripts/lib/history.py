@@ -779,7 +779,7 @@ if __name__ == "__main__":
         s = slo_summary(regress_dir)
         esc = s.get("escape")
         print(f"逃逸率：{esc['rate']:.0%}（带外+bypass {esc['escaped']}"
-              f"/{esc['total']}）" if esc else "逃逸率：缺（无提交事件）")
+              f"/{esc['total']}，全量窗口）" if esc else "逃逸率：缺（无提交事件）")
         pd_ = s.get("pending")
         if pd_:
             res = pd_.get("resolved") or {}
@@ -788,7 +788,7 @@ if __name__ == "__main__":
             print(f"误报率：{rate:.0%}（机器级：useful {res.get('useful', 0)}"
                   f"/fp {res.get('fp', 0)}/ignored {res.get('ignored', 0)}）"
                   if decided else "误报率：缺（零裁决）")
-            print(f"裁决积压：{pd_.get('pending')} 笔待决"
+            print(f"裁决积压（机器级）：{pd_.get('pending')} 笔待决"
                   f"（最老 {pd_.get('oldest_pending') or '?'}）")
         else:
             print("误报率：缺（零裁决）｜裁决积压：0")

@@ -1663,3 +1663,30 @@ def test_br_pure_helpers(tmp_path):
     # 阶梯判定：无配置+无工作区命中=None；配置类型异常=None
     assert g._blast_radius_evaluate({}, str(tmp_path), ["a.ts"]) is None
     assert g._blast_radius_evaluate({"blast_radius": "x"}, str(tmp_path), []) is None
+
+
+# ─── 批151：验收打磨（门禁召回段影子前缀直接测试） ────────────────
+
+def test_recall_hint_shadow_prefix(project):
+    """影子条目在门禁召回段带 🔬 前缀（EARS 批150 第6条第二面的直接锁）。"""
+    import importlib.util as ilu
+    spec = ilu.spec_from_file_location("pcg151", GUARD)
+    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    import json as _json
+    key = g.__dict__.get("hashlib") or __import__("hashlib")
+    sig = "test_failed 复合命令测试失败影子规律"
+    k = key.sha1(sig.encode()).hexdigest()[:12]
+    (project / ".regress" / "rules-ledger.json").write_text(_json.dumps({
+        k: {"sig": sig, "captured_at": "2026-10-01", "last_hit": "2026-10-20",
+            "hits": 4, "occurrences": 0, "lifecycle": "shadow"}}),
+        encoding="utf-8")
+    g._NOTIFY_STATE["project_dir"] = str(project)
+    hint = g._recall_hint("test_failed", "复合命令测试失败现场 " + "细节" * 30)
+    assert "🔬" in hint and sig[:60] in hint, "影子前缀未注入召回段"
+    # curated 条目不带前缀（负采样）
+    (project / ".regress" / "rules-ledger.json").write_text(_json.dumps({
+        k: {"sig": sig, "captured_at": "2026-10-01", "last_hit": "2026-10-20",
+            "hits": 4, "occurrences": 0, "lifecycle": "curated"}}),
+        encoding="utf-8")
+    hint2 = g._recall_hint("test_failed", "复合命令测试失败现场 " + "细节" * 30)
+    assert sig[:60] in hint2 and "🔬" not in hint2

@@ -698,4 +698,5 @@ def test_slo_cli_recurring_gap_line(tmp_path, monkeypatch):
         env={**os.environ, "RG_PENDING_LEDGER": str(tmp_path / "none.jsonl")})
     assert out.returncode == 0
     assert "compound_stage_commit ×2｜中位间隔 7 天" in out.stdout
-    assert "逃逸率：0%（带外+bypass 0/2）" in out.stdout
+    assert "逃逸率：0%（带外+bypass 0/2，全量窗口）" in out.stdout
+    assert "机器级" in out.stdout or "零裁决" in out.stdout  # 批151：口径注记在场

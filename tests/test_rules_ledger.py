@@ -459,3 +459,41 @@ def test_ttl_config_knob(tmp_path):
     g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
     assert g._shadow_ttl_days(str(proj)) == 200
     assert g._shadow_ttl_days(str(tmp_path / "nonexistent")) == 60
+
+
+# ─── 批151：验收打磨（fires 联查双漏计） ────────────────
+
+def _mk_case_env(tmp_path, sig, events):
+    import json as _json
+    proj = tmp_path / "proj"
+    (proj / ".regress").mkdir(parents=True, exist_ok=True)
+    import importlib.util as ilu
+    H = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
+                     "lib", "rules_ledger.py")
+    spec = ilu.spec_from_file_location("rl151a", H)
+    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    key = g.hashlib.sha1(sig.encode()).hexdigest()[:12]
+    _mk_ledger(proj, {key: {"sig": sig, "captured_at": "2026-10-01",
+                            "last_hit": "2026-10-20", "hits": 3,
+                            "occurrences": 1, "lifecycle": "shadow"}})
+    (proj / ".regress" / "history.jsonl").write_text(
+        "\n".join(_json.dumps(e, ensure_ascii=False) for e in events) + "\n",
+        encoding="utf-8")
+    return g, str(proj)
+
+
+def test_fires_long_sig_truncation_join(tmp_path):
+    """验收缺陷一：超 60 字符签名的事件侧截断键须仍联查上（0→1）。"""
+    long_sig = "超长签名" + "细节" * 40
+    g, proj = _mk_case_env(tmp_path, long_sig, [
+        {"event": "rule_recall", "sigs": [long_sig[:60]]}])
+    cards = g.case(proj, top=1)
+    assert cards[0]["fires"] == 1
+
+
+def test_fires_counts_prompt_side_events(tmp_path):
+    """验收缺陷二：开工前开火（note rule_recall_fired）计入证据卡（0→1）。"""
+    g, proj = _mk_case_env(tmp_path, "规律甲", [
+        {"event": "note", "note": "rule_recall_fired", "sig": "规律甲"}])
+    cards = g.case(proj, top=1)
+    assert cards[0]["fires"] == 1
