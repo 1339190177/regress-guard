@@ -192,6 +192,52 @@ def get_fragile_points(manifest_path):
     return [fp for fp in (data.get("fragile_points") or []) if isinstance(fp, dict)]
 
 
+def ears_extract(manifest_path):
+    """提取验收标准节的判据行（批152 判据批准位：只提取不判勾）。
+
+    返回 (present, rows)：present=「## 验收标准」节在场；rows=合并后的
+    判据逻辑行列表（两行式「判据+缩进（验：…）」拼回一行——与门禁
+    _acceptance_state 同族规则，供批准推送凸显给人；勾选判定是门禁
+    私有事，此处原样给出）。解析永不抛错（读不到=absent）。
+    """
+    try:
+        text = open(manifest_path, encoding="utf-8").read()
+    except Exception:
+        return False, []
+    m = re.search(r"^## 验收标准.*?(?=^## |\Z)", text, re.M | re.S)
+    if not m:
+        return False, []
+    logical, rows = [], []
+    for line in m.group(0).splitlines():
+        s = line.strip()
+        if s.startswith("|"):
+            if logical:
+                rows.append(" ".join(logical))
+                logical = []
+            rows.append(s)
+        elif s.startswith("- "):
+            if logical:
+                rows.append(" ".join(logical))
+            logical = [s]
+        elif logical and s and not s.startswith(">") and not s.startswith("#"):
+            logical.append(s)
+        elif logical:
+            rows.append(" ".join(logical))
+            logical = []
+    if logical:
+        rows.append(" ".join(logical))
+    out = []
+    for s in rows:
+        if s.startswith("|"):
+            cells = [c.strip() for c in s.strip("|").split("|")]
+            if len(cells) < 2 or cells[0] in ("#", "—") or set(cells[0]) <= {"-", "#", ":", " "}:
+                continue
+            out.append(s)
+        elif "When" in s or "（验" in s or "则" in s:
+            out.append(s.strip("- "))
+    return True, out
+
+
 # ─── 手写 fallback 解析器 ─────────────────────────────
 
 def _parse_fallback(yaml_text):

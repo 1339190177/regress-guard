@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import journal
 from journal import journal_append, load_journal
 from manifest_fields import frontmatter, field, block_value  # v1.20 单一来源
+from manifest_parser import ears_extract  # 批152 判据批准位
 
 # 行首（无缩进）的 status 行——脆弱点的缩进 status 不受影响
 _STATUS_LINE = re.compile(r"^status:\s*\S+.*$", re.M)
@@ -186,6 +187,26 @@ def _already_journaled(kind, mid, manifest_dir):
     return False
 
 
+def _ears_display(manifest_path, tier):
+    """批152 判据批准位：M/L 的 EARS 判据段（判据前置——随计划整体批准
+    从未被单独过目的四对策残差兑现）。返回 (段文本, 判据行数)；S 档返回
+    ("", None) 不参与。零判据时给 ⚠️ 裸奔警示（前置压力自然传导）。
+    """
+    tier = (tier or "").strip().upper()
+    if tier not in ("M", "L"):
+        return "", None
+    present, rows = ears_extract(manifest_path)
+    if not present or not rows:
+        return ("📋 验收判据（单独过目——否决即回滚）：\n"
+                "  ⚠️ 该计划无验收判据——批准前建议要求补齐"
+                "（spec-first：判据先于实现）"), 0
+    lines = [f"  · {r[:80]}" for r in rows[:5]]
+    if len(rows) > 5:
+        lines.append(f"  · … 共 {len(rows)} 条（前 5 条）")
+    return ("📋 验收判据（单独过目——否决即回滚）：\n"
+            + "\n".join(lines)), len(rows)
+
+
 def main():
     ap = argparse.ArgumentParser(description="清单状态转写器（批准/取消/受阻/解阻）")
     ap.add_argument("manifest", help="清单路径 (.regress/manifests/*.md)")
@@ -281,6 +302,17 @@ def main():
             f.write(new_content)
         journal_append("provisional_start", start_dir=mdir, manifest_id=mid,
                        advisor=args.advisor[:400])
+        # 批152：临行推送带 EARS 判据段（M/L）——异步否决窗复用，人未否决=默认前进
+        ears_block, ears_n = _ears_display(path, field(fm, "tier"))
+        if ears_block:
+            print(ears_block)
+        try:
+            from notify import notify as _notify
+            _notify(os.path.dirname(os.path.dirname(mdir)), "chat",
+                    f"🚀 临行 {mid}（否决窗内）",
+                    ((args.note or "预授权任务临行") + "\n" + ears_block).strip())
+        except Exception:
+            pass
         print(f"🚀 已临行：{mid} → in-progress（否决窗内，直到 done）")
         print(f"   预审：{args.advisor}")
         print("   · 执行授权来自人类的预授权，不来自顾问（顾问无批准权）")
@@ -339,10 +371,23 @@ def main():
     dirty = _dirty_files(mdir)  # 批准时刻的工作区原点（思想二·基线冻结）
 
     already = _already_journaled("plan_approved", mid, mdir)
+    ears_block, ears_n = _ears_display(path, field(fm, "tier"))
     if not already:
         journal_append("plan_approved", start_dir=mdir, manifest_id=mid,
                        approved_at=at, note=note, drift=drift or "none",
-                       dirty_count=len(dirty), dirty_files=dirty, **dfields)
+                       dirty_count=len(dirty), dirty_files=dirty,
+                       ears_n=ears_n if ears_n is not None else "",
+                       **dfields)
+    # 批152：批准回执带 EARS 判据段（M/L）——判据前置的轻量机器位
+    if ears_block:
+        print(ears_block)
+    try:
+        from notify import notify as _notify2
+        _notify2(os.path.dirname(os.path.dirname(mdir)), "chat",
+                 f"📋 已批准 {mid}",
+                 ((note or "") + "\n" + ears_block).strip()[:600])
+    except Exception:
+        pass
     print(f"✅ 已批准：{mid} → in-progress（approved.at={at}）")
     n = _resolve_pending(mid)
     if n:

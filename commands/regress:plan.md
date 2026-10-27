@@ -19,6 +19,7 @@ allowed-tools: Read, Write, Edit, Bash, Grep
 
 - **S 档**（≤3 文件·纯内部·无环境变更）→ 本该走 quick；用户执意 full 时
   只强制：F 列表+边界+**至少 1 条脆弱点**+验收一行——4.7/4.9/4.10 留骨架跳过
+  （批153 起验收一行有门禁 warn 位：S 档盖章零判据行会收到 hint 留痕，不拦）
 - **M 档**（用户可见功能）→ 全流程必走 4.9 广度矩阵 + DoD 状态完备性
 - **L 档**（跨模块/结构/新依赖）→ M 全量 + 4.10 架构影响 + ADR 判定
 
@@ -294,6 +295,8 @@ python3 "<插件路径>/hooks/scripts/lib/journal.py" . add plan_advisor_review 
 
 通知：`notify.py . plan_approval --title "📋 待批准 <id>" --body "<一句>" --ref <清单id>`
 （--ref 进待决台账，批准时自动回流）。然后明确请求批准，三选一：
+（批152 起批准/临行转写时 plan_approve 自动补发带 **EARS 判据段** 的
+plan_approval 回执推送——M/L 判据单独凸显给人，此处手动推送仍可先行）
 
 - **「批准 / 开始 / ok」** → 运行权威转写器（一次完成全部落产物动作）：
   ```bash

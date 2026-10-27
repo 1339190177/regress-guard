@@ -403,3 +403,87 @@ def test_drift_repo_field_selects_repo(tmp_path):
     fm = pa.frontmatter(mf.read_text(encoding="utf-8"))
     drift, fields = pa._drift_info(fm, str(mdir))
     assert "1 个新提交" in drift and fields.get("commits_behind") == 1
+
+
+# ─── 批152：判据批准位（EARS 进批准推送/回执） ────────────────
+
+_EARS_MANIFEST = MANIFEST + """
+## 验收标准（EARS-lite）
+
+- When 服务收到请求，则 返回 200（验：curl -sf localhost:8000/health）
+  ✅
+- When 配置缺失，则 启动即报错退出
+  （验：python3 -c "import cfg"）✅
+"""
+
+
+def _write_m(proj, body):
+    (proj / ".regress" / "manifests" / "R1.md").write_text(body, encoding="utf-8")
+
+
+def test_ears_extract_merges_two_line_rows(tmp_path):
+    """两行式判据+缩进（验：…）续行拼回一行；表格/表头不进判据。"""
+    import importlib.util as ilu
+    spec = ilu.spec_from_file_location("mp_ears", os.path.join(
+        os.path.dirname(__file__), "..", "hooks", "scripts", "lib",
+        "manifest_parser.py"))
+    mp = ilu.module_from_spec(spec); spec.loader.exec_module(mp)
+    p = tmp_path / "m.md"
+    p.write_text("---\nid: R1\n---\n\n## 验收标准\n\n"
+                 "- When A，则 B（验：cmd1）\n  ✅\n"
+                 "- When C，则 D\n  （验：cmd2）✅\n"
+                 "| # | 判据 | 状态 |\n|---|---|---|\n"
+                 "| J1 | When E | pass |\n",
+                 encoding="utf-8")
+    present, rows = mp.ears_extract(str(p))
+    assert present
+    texts = " | ".join(rows)
+    assert "When A，则 B（验：cmd1）" in texts      # 续行 ✅ 已拼回
+    assert "When C，则 D" in texts and "（验：cmd2）" in texts  # 两行式合并（join 空格容忍）
+    assert "When E" in texts                        # 表格判据行进
+    assert all("## " not in r for r in rows)
+
+
+def test_ears_extract_absent(tmp_path):
+    import importlib.util as ilu
+    spec = ilu.spec_from_file_location("mp_ears2", os.path.join(
+        os.path.dirname(__file__), "..", "hooks", "scripts", "lib",
+        "manifest_parser.py"))
+    mp = ilu.module_from_spec(spec); spec.loader.exec_module(mp)
+    p = tmp_path / "m2.md"
+    p.write_text("---\nid: R1\n---\n\n正文无验收节\n", encoding="utf-8")
+    present, rows = mp.ears_extract(str(p))
+    assert not present and rows == []
+
+
+def test_approve_ml_shows_ears_block(tmp_path):
+    """M 档批准：stdout 含 EARS 凸显段+journal ears_n 落档（判据前置机器位）。"""
+    proj = make_proj(tmp_path)
+    _write_m(proj, _EARS_MANIFEST.replace("status: planning",
+                                          "status: planning\ntier: M"))
+    r = run_approve(proj, "--note", "对话批准", journal="on")
+    assert r.returncode == 0, r.stderr
+    assert "验收判据（单独过目" in r.stdout
+    assert "When 服务收到请求" in r.stdout
+    evs = [e for e in journal_events(proj) if e.get("kind") == "plan_approved"]
+    assert evs and evs[0].get("ears_n") == 2
+
+
+def test_approve_ml_no_criteria_warns(tmp_path):
+    """M 档批准但无验收节：⚠️ 无判据警示（计划在推送里裸奔）。"""
+    proj = make_proj(tmp_path)
+    _write_m(proj, MANIFEST.format(base_head="").replace(
+        "status: planning", "status: planning\ntier: M"))
+    r = run_approve(proj, "--note", "对话批准")
+    assert r.returncode == 0, r.stderr
+    assert "无验收判据" in r.stdout and "补齐" in r.stdout
+
+
+def test_approve_s_tier_no_ears_block(tmp_path):
+    """S 档批准：不追加 EARS 段（S 归 hint 管道，非批准位）。"""
+    proj = make_proj(tmp_path)
+    _write_m(proj, _EARS_MANIFEST.replace("status: planning",
+                                          "status: planning\ntier: S"))
+    r = run_approve(proj, "--note", "对话批准")
+    assert r.returncode == 0, r.stderr
+    assert "验收判据（单独过目" not in r.stdout

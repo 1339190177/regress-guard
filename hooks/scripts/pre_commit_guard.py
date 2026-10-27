@@ -34,7 +34,7 @@ LIB_DIR = os.path.join(SCRIPT_DIR, "lib")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
-from manifest_parser import find_active_manifest, get_all_changed_files, get_manifest_status, update_frontmatter, get_fragile_points, parse_frontmatter  # noqa: E402
+from manifest_parser import find_active_manifest, get_all_changed_files, get_manifest_status, update_frontmatter, get_fragile_points, parse_frontmatter, ears_extract  # noqa: E402
 from git_diff_analyzer import get_staged_files, filter_files, find_untracked_changes  # noqa: E402
 from test_runner import run_tests  # noqa: E402
 from history import record as _history_record  # noqa: E402
@@ -177,6 +177,8 @@ def _acceptance_state(manifest_path):
     与表格行。无（验： 的 EARS 行 = 不完整判据（v1.40 三件齐才算一条）= 未勾；
     {{占位}} 行 = 没写 = 未勾；✅ 标记放逻辑行最尾（验命令之后）。
     解析永不抛错（读不到=不在此处拦）。
+    提取另有 lib/manifest_parser.ears_extract（批152 判据批准位推送侧共用，
+    同族合并规则）——勾选判定是门禁私有事，不共用。
     """
     try:
         text = open(manifest_path, encoding="utf-8").read()
@@ -1558,7 +1560,10 @@ def main():
         # ─── 6.5 验收入环（v1.55：M/L done 盖章前验收行全勾）─────────
         # 验收=需求侧 done 定义——没有它 done 就是自我宣布。验命令本批不
         # 复跑（顾问：全量测试已跑，复跑多重复；自证谎报等字段数据再上执行器）。
-        # S 档/quick 豁免（轻量合法不破）。
+        # S 档/quick 豁免（轻量合法不破）——批153：S 档豁免≠零可见性，
+        # 零判据行 → commit_warned hint（plan 既有「验收一行」约定的可见性
+        # 机器位；不拦，与批148 阶梯默认同形态。quick 已有 locked 脆弱点
+        # +verify 轨道，不叠加）。
         if _tier in ("M", "L") and str((_mp_scan or {}).get("mode") or "") != "quick":
             present, total, open_rows = _acceptance_state(manifest)
             if not present or total == 0:
@@ -1610,6 +1615,21 @@ def main():
                         "每问一行实答（非 待补/N/A/无/略）——照抄三问原文作答即可过在场性，"
                         "质量自己把握。S 档/quick 豁免。"
                     , "deepcheck_missing")
+        elif _tier == "S" and str((_mp_scan or {}).get("mode") or "") != "quick":
+            # 批153：S 档验收一行 hint——豁免≠零可见性（plan「验收一行」约定
+            # 的机器位）。零判据行只 warn 留痕不拦（与批148 阶梯默认同形态；
+            # quick 已有 locked 脆弱点+verify 轨道不叠加）。
+            try:
+                _present, _rows = ears_extract(manifest)
+                if not _rows:
+                    record(regress_dir, "commit_warned", manifest_id,
+                           note="s_tier_no_acceptance_hint")
+                    print("REGRESS-GUARD (warning): S 档清单无验收判据行"
+                          "（plan 约定「验收一行」）——补 "
+                          "「- When…则…（验：命令）」单行即消"
+                          "（hint 不拦，观察位统计）", file=sys.stderr)
+            except Exception:
+                pass  # hint 是增强：失败静默，不影响门禁主判定
         passed = f"{result['passed']}/{result['total']}"
         # v1.95.0（123）：skipped 可见性——分母已含 skipped（test_runner 对齐
         # jest 语义），这里补留痕+注记；M/L 盖章拦截在 done 戳前。

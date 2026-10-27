@@ -1690,3 +1690,43 @@ def test_recall_hint_shadow_prefix(project):
         encoding="utf-8")
     hint2 = g._recall_hint("test_failed", "复合命令测试失败现场 " + "细节" * 30)
     assert sig[:60] in hint2 and "🔬" not in hint2
+
+
+# ─── 批153：S 档验收一行 hint（可见性机器位，不拦） ────────────────
+
+def test_s_tier_acc_hint_warns(project):
+    """S 档盖章零判据行 → commit_warned hint 留痕，exit 0（豁免≠零可见性）。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL.replace("tier: M", "tier: S"))
+    _stage(project, "src/app.js", "x = 21\n")
+    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    assert code == 0, err
+    assert any(e.get("note") == "s_tier_no_acceptance_hint"
+               for e in read_history(project))
+    assert "验收判据行" in err
+
+
+def test_s_tier_acc_one_line_no_warn(project):
+    """S 档含单行判据（（验：命令））→ 无 hint。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL.replace("tier: M", "tier: S")
+                    + "\n## 验收标准\n\n- When 提交过门禁，则 放行"
+                    "（验：pytest -q）✅\n")
+    _stage(project, "src/app.js", "x = 22\n")
+    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    assert code == 0, err
+    assert not any(e.get("note") == "s_tier_no_acceptance_hint"
+                   for e in read_history(project))
+
+
+def test_quick_acc_exempt_no_warn(project):
+    """quick 模式零判据 → 无 hint（已有 locked 脆弱点轨道，不叠加）。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL.replace("tier: M", "tier: S")
+                    .replace("status: in-progress",
+                             "status: in-progress\nmode: quick"))
+    _stage(project, "src/app.js", "x = 23\n")
+    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    assert code == 0, err
+    assert not any(e.get("note") == "s_tier_no_acceptance_hint"
+                   for e in read_history(project))
