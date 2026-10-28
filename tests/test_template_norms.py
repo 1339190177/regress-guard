@@ -91,3 +91,10 @@ def test_template_has_impact_scope_field():
              encoding="utf-8").read()
     assert "impact_scope" in t, "模板 impact_scope 字段丢失"
     assert "覆盖门禁检出单元" in t, "impact_scope 注释的覆盖语义丢失"
+
+
+def test_workflow_write_discipline():
+    """批154：.regress 写入防丢纪律在场（四次实证教训的纪律位锁定）。"""
+    t = open(os.path.join(ROOT, "docs", "WORKFLOW.md"), encoding="utf-8").read()
+    assert "写入防丢纪律" in t, "WORKFLOW 缺防丢纪律节"
+    assert "独立读回验证" in t
