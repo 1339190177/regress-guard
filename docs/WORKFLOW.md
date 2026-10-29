@@ -482,7 +482,14 @@ commit_passed 事件带 `parallel` 字段（auto/workers:N/unavailable）。
 发货门=串行+并行双跑全绿（一次性，脆弱点 parallel_xdist_isolation 锁定）；
 ②xdist 下失败明细行（stdout FAILED 行）格式未钉——失败时 failures 列表
 可能退化为 (unknown)（不影响 pass 判定与 junitxml 计数）；③收益实测为本
-仓双跑计时数（社区典型压缩 50-80% 是推断，不是承诺）。
+仓双跑计时数（社区典型压缩 50-80% 是推断，不是承诺）；④
+test_read_before_edit.py 曾是裸 `-n auto` 下的互踩重灾区（25 用例共用
+会话键 test-unit 打同一状态文件，每轮失败用例不同、串行全绿，2026-10-29
+实证）——批159（v1.107.1）起按用例独立会话键隔离+teardown 整删状态
+文件，该文件裸并行不再红；loadfile 护栏照旧保留（其余序敏感文件仍
+依赖）；guard 的同会话并发鲁棒性转由
+test_concurrent_same_session_no_lost_update 显式锁定（不再靠并行档的
+意外串味获得覆盖）。
 
 ## 待决积压老化报告（v1.106.0 批157：stale 降级人裁的前置观察位）
 

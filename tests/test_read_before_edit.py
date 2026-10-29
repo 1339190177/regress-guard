@@ -5,6 +5,8 @@ import json
 import subprocess
 import tempfile
 
+import pytest
+
 LIB = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts")
 sys.path.insert(0, LIB)
 
@@ -28,10 +30,47 @@ def _state_file_for(session_id):
             os.environ["CLAUDE_SESSION_ID"] = old
 
 
-def run_guard(mode, tool_name, file_path, session_id="test-unit", project_dir=None):
+# ─── 批159（v1.107.1）：按用例会话隔离 ─────────────────────────
+# 病例：并行档（-n auto）下本文件 25 用例几乎全走默认会话键 test-unit，
+# 多个 xdist worker 同时读写同一状态文件——A 种的 Read 让 B 的"盲改应拦"
+# 放行翻车、B 的 cleanup 弹掉会话让 A 的"读过应放行"被拦，每轮失败用例
+# 不同（2026-10-29 实证：一轮 5 败、一轮 1 败，串行全绿）。根治 = 每用例
+# 独立会话键（按用例名：xdist 下同一用例全局只跑一次，跨 worker 零碰撞；
+# 确定性命名保留可复现性）。guard 的单周期状态锁（v1.92.1）保得住单次
+# 读改写不丢更新，保不住跨周期的场景串味——后者是测试共享状态设计问题。
+_SESSION = {"id": None}
+
+
+def _active_sid():
+    """当前用例的会话键（夹具未跑时的兜底=test-unit，仅防御）。"""
+    return _SESSION["id"] or "test-unit"
+
+
+def _purge_state_file(session_id):
+    """整删该会话的状态文件+锁文件（每用例独文件后无共享键可弹，
+    也不往 /tmp 积垃圾）。"""
+    for p in (_state_file_for(session_id),
+              _state_file_for(session_id) + ".lock"):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+
+
+@pytest.fixture(autouse=True)
+def _isolated_session(request):
+    """每用例独立会话（setup/teardown 各清一次自己的状态文件）。"""
+    _SESSION["id"] = f"rbe-{request.node.name}"
+    _purge_state_file(_SESSION["id"])
+    yield
+    _purge_state_file(_SESSION["id"])
+    _SESSION["id"] = None
+
+
+def run_guard(mode, tool_name, file_path, session_id=None, project_dir=None):
     """运行 guard 脚本，返回 (exit_code, stderr)。"""
     env = dict(os.environ)
-    env["CLAUDE_SESSION_ID"] = session_id
+    env["CLAUDE_SESSION_ID"] = session_id or _active_sid()
     if project_dir:
         env["CLAUDE_PROJECT_DIR"] = project_dir
     inp = json.dumps({"tool_name": tool_name, "tool_input": {"file_path": file_path}})
@@ -42,11 +81,11 @@ def run_guard(mode, tool_name, file_path, session_id="test-unit", project_dir=No
     return proc.returncode, proc.stderr
 
 
-def run_full(mode, tool_name, tool_input, session_id="test-unit",
+def run_full(mode, tool_name, tool_input, session_id=None,
              project_dir=None):
     """完整 tool_input 版（Bash 命令/Edit 新旧串/Write content）。"""
     env = dict(os.environ)
-    env["CLAUDE_SESSION_ID"] = session_id
+    env["CLAUDE_SESSION_ID"] = session_id or _active_sid()
     if project_dir:
         env["CLAUDE_PROJECT_DIR"] = project_dir
     inp = json.dumps({"tool_name": tool_name, "tool_input": tool_input})
@@ -57,17 +96,10 @@ def run_full(mode, tool_name, tool_input, session_id="test-unit",
     return proc.returncode, proc.stderr
 
 
-def cleanup(session_id="test-unit"):
-    """清理测试状态（按目标会话的文件清，不再是旧全局文件）。"""
-    state_file = _state_file_for(session_id)
-    try:
-        with open(state_file, encoding="utf-8") as f:
-            state = json.load(f)
-        state.pop(session_id, None)
-        with open(state_file, "w", encoding="utf-8") as f:
-            json.dump(state, f)
-    except (IOError, json.JSONDecodeError):
-        pass
+def cleanup(session_id=None):
+    """清空测试状态（批159 起每用例独立会话文件——整删即净；
+    显式传 sid 的用例同理，各自独文件）。"""
+    _purge_state_file(session_id or _active_sid())
 
 
 def test_blind_edit_blocked():
@@ -309,8 +341,8 @@ def test_post_edit_stamps_actual_fingerprint(tmp_path):
     run_full("post", "Edit", {"file_path": fp, "old_string": "1",
                               "new_string": "2"})
     # state 里应已是写后实况指纹（而非 Read 时的旧值）
-    state = json.load(open(_state_file_for("test-unit"), encoding="utf-8"))
-    sess = state.get("test-unit", {})
+    state = json.load(open(_state_file_for(_active_sid()), encoding="utf-8"))
+    sess = state.get(_active_sid(), {})
     stamped = (sess.get("read_fps") or {}).get(fp)
     assert stamped not in (None, read_before_edit_guard.SELF_EDITED), \
         "post(Edit) 未补写后实况指纹"
@@ -413,3 +445,35 @@ def test_append_only_write_nonprefix_blocked(tmp_path):
         "content": "# 协议\n正文甲（改写）\n"}, session_id="test-append3")
     assert code == 2 and "append-only" in err
     cleanup("test-append3")
+
+
+# ─── 批159：同会话并发无丢更新（v1.92.1 状态锁的行为锁定） ───
+
+def test_concurrent_same_session_no_lost_update():
+    """8 个 guard 进程同会话并发补 Read（不同文件）→ 锁内读改写零丢更新。
+
+    批159 审查位：按用例隔离后，guard 的并发鲁棒性不能再靠并行档的
+    意外串味获得覆盖——转为显式断言。现状（持锁）确定性绿：read_files
+    8 个一个不丢、read_count=8；若锁回归成裸 load-modify-save，并发
+    交错会随机丢 key（该场景下本测试高概率红，可接受——它是锁的哨兵）。
+    """
+    sid = _active_sid()
+    files = [f"src/conc-{i}.js" for i in range(8)]
+    env = dict(os.environ)
+    env["CLAUDE_SESSION_ID"] = sid
+    procs = [subprocess.Popen(
+        ["python3", GUARD, "post"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True, env=env) for _ in files]
+    for p, fp in zip(procs, files):
+        _, err = p.communicate(
+        input=json.dumps({"tool_name": "Read",
+                          "tool_input": {"file_path": fp}}), timeout=10)
+        assert p.returncode == 0, f"guard 并发 post 异常退出：{err}"
+    state = json.load(open(_state_file_for(sid), encoding="utf-8"))
+    sess = state.get(sid, {})
+    got = sess.get("read_files", [])
+    missing = [fp for fp in files if fp not in got]
+    assert not missing, f"同会话并发丢更新（状态锁失效？）：缺 {missing}"
+    assert sess.get("read_count") == 8, \
+        f"read_count 应为 8，实际 {sess.get('read_count')}"
