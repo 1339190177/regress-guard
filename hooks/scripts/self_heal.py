@@ -60,7 +60,8 @@ REQUIRED_LIB_FILES = [
     "journal.py", "plan_approve.py", "manifest_fields.py", "rules_ledger.py",
     "notify.py", "wecom_notify.py", "facts.py",
     "pending.py", "session_relay.py", "sentinel.py", "scan_check.py",
-    "secret_scan.py", "test_cache.py", "veto_search.py", "advisor_token.py"
+    "secret_scan.py", "test_cache.py", "veto_search.py", "advisor_token.py",
+    "agent_hooks_adapter.py"
 ]
 REQUIRED_COMMANDS = [
     "regress:init", "regress:plan", "regress:track", "regress:verify",

@@ -492,6 +492,16 @@ commit_passed 事件带 `parallel` 字段（auto/workers:N/unavailable）。
 怎么降由人裁**（已裁事件全部有用的数据说明队列有真值，不能静默清仓）；
 TTL 方向性结论：行业主流是「过期=作废/降级」而非「过期=通过」。
 
+## 多宿主适配层（v1.107.0 批158：AGENT-HOOKS-0.1 interceptor）
+
+`hooks/scripts/lib/agent_hooks_adapter.py` 把提交门禁暴露为 AGENT-HOOKS-0.1
+interceptor（零 SDK 依赖，鸭子类型 intercept(context)->Verdict）——面向
+ZCode 之外的七个框架宿主（LangGraph/CrewAI/Claude Agent SDK 等）。能力
+子集=仅 pre_tool_call 提交门禁；三档路径（反转白名单：不确定一律放慢让
+门禁自判）；fail-closed 双层（拦截器自身 deny + 宿主 §6.3 兜底）；evidence
+不存原始命令（隐私律）。ZCode 宿主勿装（与原生钩子链双重门禁）。能力声明
+与安装片段：docs/AGENT-HOOKS.md。
+
 ## 影响面层（v1.101.0 批148：跨端变更从口头约定变机器位）
 
 标本：tongtu-anquan-ai-workspace——AGENTS 写明「破坏性变更三端同窗口」「契约只扩不缩」
