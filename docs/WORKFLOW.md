@@ -454,6 +454,44 @@ pyproject/setup.cfg/package.json）即全量**——不混合子集与全量（�
 incremental 开启的项目配 CI 全量位）。触发率观察位：事件增量占比 <20% 且
 scope 隔离稳两轮后，才议混合策略（顾问替代方案门槛）。
 
+## 周期校准位（v1.106.0 批157：同名映射盲区的统计兜底）
+
+同名映射的已知盲区：改共享模块时，依赖它的非同名测试不跑（批156 自 declared）。
+根治位是覆盖率映射（testmon，观察位未满前不引入），本位先补统计兜底——
+**Microsoft TIA 生产铁律「周期性全量」同款**：config
+`test_runner.full_every_n_commits: N`（int ≥2 生效，缺省/0/1=关），
+每第 N 次增量机会放弃子集跑全量（stderr「校准位」一行 + 事件
+note=full_calibration）。
+
+**计数语义**：机会数=commit_passed 里 `incremental=true ∪ note=
+full_calibration` 的 **base_head 去重**计数（amend/同树重试的重复事件
+不去重会让校准被无限推迟——顾问抓漏修复）。被拦提交不写事件 → 重试仍是
+校准。归档轮转计数变小 → 校准偏早触发=保守向可接受。校准跑全量 → 行尾
+计数对账走常规路径（不豁免）。仅在 incremental 开启时生效。
+
+## 并行测试档（v1.106.0 批157：16 核闲置跑 118s 串行的对症药）
+
+**opt-in**：config `test_runner.parallel` —— `true` = `-n auto`；正整数 =
+指定 worker 数（容器 cgroup 下 cpu_count 虚高的显式覆写位）。pytest 分支
+专用（jest/vitest 观察需求再议）；pytest-xdist 未装 → 串行回退 + stderr
+安装提示（优化位不拦提交）。生效时命令追加 `-n <N> --dist loadfile`
+（顾问护栏：文件不拆 worker——序敏感面最小化+worker 内缓存局部性），
+commit_passed 事件带 `parallel` 字段（auto/workers:N/unavailable）。
+
+**已知边界**：①xdist 改变执行模型，本套件有 order-dependency 前科——
+发货门=串行+并行双跑全绿（一次性，脆弱点 parallel_xdist_isolation 锁定）；
+②xdist 下失败明细行（stdout FAILED 行）格式未钉——失败时 failures 列表
+可能退化为 (unknown)（不影响 pass 判定与 junitxml 计数）；③收益实测为本
+仓双跑计时数（社区典型压缩 50-80% 是推断，不是承诺）。
+
+## 待决积压老化报告（v1.106.0 批157：stale 降级人裁的前置观察位）
+
+`python3 lib/notify.py backlog`（只读，不代裁）：未决笔数/最老天数/五档
+年龄桶（0-3/3-7/7-14/14-30/>30 天）/按类型/按项目/超 30 天候选清单。
+行业 stale-action 模式（打标降级→自动结案留痕）的决策材料——**降不降级、
+怎么降由人裁**（已裁事件全部有用的数据说明队列有真值，不能静默清仓）；
+TTL 方向性结论：行业主流是「过期=作废/降级」而非「过期=通过」。
+
 ## 影响面层（v1.101.0 批148：跨端变更从口头约定变机器位）
 
 标本：tongtu-anquan-ai-workspace——AGENTS 写明「破坏性变更三端同窗口」「契约只扩不缩」

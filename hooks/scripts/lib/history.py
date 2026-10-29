@@ -515,6 +515,26 @@ def feature_fire_health(regress_dir, registry_path=None):
     return {"features": rows}
 
 
+def incremental_opportunities(regress_dir):
+    """批157 校准位计数：commit_passed 里 incremental=true ∪
+    note=full_calibration 的去重机会数。
+
+    去重键=base_head（父提交 sha，顾问抓漏修复：amend/同树重试会写重复
+    事件，不去重则校准被无限推迟——非保守向是漏洞）。被拦提交不写
+    commit_passed → 机会数不前进 → 重试仍是校准（语义自洽）。归档轮转
+    计数变小 → 校准偏早触发=保守向可接受。base_head 空（首提交/无 HEAD）
+    并作一桶。字段名漂移会让计数归零 → 校准每次都触发 → 恒全量=
+    安全失效形态（fail-safe），单测钉字段名防漂移。"""
+    events = load_history(regress_dir)
+    keys = set()
+    for e in events:
+        if e.get("event") != "commit_passed":
+            continue
+        if e.get("incremental") is True or e.get("note") == "full_calibration":
+            keys.add(str(e.get("base_head") or ""))
+    return len(keys)
+
+
 def cache_stats(regress_dir):
     """缓存命中遥测（v1.85.3，077）：commit_passed 的 cached 字段聚合。
 

@@ -199,12 +199,43 @@ def _timeout_for(project_dir):
         return 120
 
 
+def _parallel_for(project_dir):
+    """并行测试档（批157，opt-in 默认关）：config test_runner.parallel ——
+    true = -n auto；正整数 = 指定 worker 数（容器 cgroup 下 cpu_count 虚高时
+    的显式覆写位，顾问护栏）。pytest-xdist 未装 → 串行回退（并行是优化位
+    非安全位，缺依赖不拦提交，门禁侧提示安装）。
+
+    顾问护栏：--dist loadfile——测试文件不拆 worker（序敏感面最小化 +
+    worker 内缓存局部性）。返回 (flags, state)：state ∈ "auto"/
+    "workers:N"/"unavailable"/None；flags 仅 pytest 分支适用。"""
+    try:
+        with open(os.path.join(project_dir, ".regress", "config.json"),
+                  encoding="utf-8") as f:
+            v = (json.load(f).get("test_runner") or {}).get("parallel")
+    except Exception:
+        return [], None
+    n = None
+    if v is True:
+        n = "auto"
+    elif isinstance(v, int) and v >= 1:
+        n = str(v)
+    if n is None:
+        return [], None  # 未配置/非法值=现行为
+    import importlib.util
+    if importlib.util.find_spec("xdist") is None:
+        return [], "unavailable"
+    return (["-n", n, "--dist", "loadfile"],
+            "auto" if n == "auto" else f"workers:{n}")
+
+
 def run_tests(project_dir, timeout=None, extra_args=None):
     """运行测试，返回结果 dict。
 
     extra_args（批156 增量档）：pytest 分支追加位置参数（测试文件子集）——
     None=全量（现行为）。增量模式的映射决策在门禁侧（_map_incremental），
     此处只透传。
+    parallel（批157）：config test_runner.parallel 时 pytest 追加
+    -n/--dist（_parallel_for），结果带 parallel 状态字段。
 
     Returns:
         {
@@ -231,6 +262,10 @@ def run_tests(project_dir, timeout=None, extra_args=None):
         }
     if extra_args and runner == "pytest":
         cmd = cmd + list(extra_args)
+    # 批157 并行档：pytest 分支专用（jest/vitest 并行观察需求再议，与增量档同律）
+    _par_flags, _par_state = _parallel_for(project_dir)
+    if runner == "pytest" and _par_flags:
+        cmd = cmd + _par_flags
 
     try:
         # 125：运行前清残档——上次运行留下的结果文件被当本次结果是静默错读
@@ -268,12 +303,12 @@ def run_tests(project_dir, timeout=None, extra_args=None):
 
     # 解析结果
     if runner == "jest":
-        return _parse_jest(output, exit_code, project_dir)
+        result = _parse_jest(output, exit_code, project_dir)
     elif runner == "pytest":
-        return _parse_pytest(output, exit_code, project_dir)
+        result = _parse_pytest(output, exit_code, project_dir)
     else:
         # mvn/gradle/go：靠 exit code 判断，不精细解析
-        return {
+        result = {
             "runner": runner,
             "status": "pass" if exit_code == 0 else "fail",
             "total": 0, "passed": 0, "failed": 0,
@@ -281,6 +316,11 @@ def run_tests(project_dir, timeout=None, extra_args=None):
             "failures": [] if exit_code == 0 else [{"test": "(unknown)", "message": output[-300:]}],
             "raw_snippet": output[-200:] if exit_code != 0 else ""
         }
+    if _par_state:
+        # 批157：并行状态透传（"auto"/"workers:N"/"unavailable"）——
+        # unavailable 也带（诚实面：请求了但没跑成并行，事件可查）
+        result["parallel"] = _par_state
+    return result
 
 
 def _read_jest_coverage(project_dir):

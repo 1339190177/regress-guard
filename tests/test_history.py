@@ -700,3 +700,31 @@ def test_slo_cli_recurring_gap_line(tmp_path, monkeypatch):
     assert "compound_stage_commit ×2｜中位间隔 7 天" in out.stdout
     assert "逃逸率：0%（带外+bypass 0/2，全量窗口）" in out.stdout
     assert "机器级" in out.stdout or "零裁决" in out.stdout  # 批151：口径注记在场
+
+
+# ─── 批157 校准位计数 ──────────────────────────────────
+
+def test_incremental_opportunities_dedup(regress_dir):
+    """机会数=incremental ∪ full_calibration 的 base_head 去重计数（顾问
+    抓漏：amend/同树重试重复事件不去重会无限推迟校准）；普通全量/缓存
+    命中不计；base_head 空并作一桶；字段名钉死防漂移（漂移=恒全量
+    fail-safe，也该被看见）。"""
+    from history import incremental_opportunities
+    # 同 base_head 两条 incremental（amend 形态）→ 1 次机会
+    record(regress_dir, "commit_passed", "R1", incremental=True,
+           base_head="aaa", subset=2)
+    record(regress_dir, "commit_passed", "R1", incremental=True,
+           base_head="aaa", subset=2)
+    # 普通全量通过（无增量无校准）→ 不计
+    record(regress_dir, "commit_passed", "R2", incremental=False,
+           base_head="bbb")
+    # 校准全量 → 计 1
+    record(regress_dir, "commit_passed", "R3", incremental=False,
+           base_head="ccc", note="full_calibration")
+    # 缓存命中通过（cached，无增量无校准）→ 不计
+    record(regress_dir, "commit_passed", "R4", cached=True,
+           base_head="ddd")
+    # base_head 空两条 → 并作一桶计 1
+    record(regress_dir, "commit_passed", "R5", incremental=True)
+    record(regress_dir, "commit_passed", "R5", incremental=True)
+    assert incremental_opportunities(regress_dir) == 3

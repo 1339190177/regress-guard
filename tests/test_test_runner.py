@@ -451,3 +451,83 @@ def test_map_incremental_test_file_itself(tmp_path):
     proj = _mk_proj_inc(tmp_path)
     sub, _ = map_incremental(proj, ["tests/test_app.py"], {})
     assert sub == ["tests/test_app.py"]
+
+
+# ─── 批157 并行测试档 ─────────────────────────────────
+
+def _xdist_ok():
+    import importlib.util
+    return importlib.util.find_spec("xdist") is not None
+
+
+def _mk_cfg(tmp_path, **tr):
+    (tmp_path / ".regress").mkdir(exist_ok=True)
+    (tmp_path / ".regress" / "config.json").write_text(
+        json.dumps({"test_runner": tr}), encoding="utf-8")
+    return tmp_path
+
+
+def test_parallel_for_config_variants(tmp_path):
+    """true=auto；正整数=workers:N；假值/字符串=现行为（[], None）。"""
+    from test_runner import _parallel_for
+    p = _mk_cfg(tmp_path, parallel=True)
+    flags, state = _parallel_for(str(p))
+    if _xdist_ok():
+        assert flags == ["-n", "auto", "--dist", "loadfile"]
+        assert state == "auto"
+    else:
+        assert flags == [] and state == "unavailable"
+    p2 = _mk_cfg(tmp_path, parallel=4)
+    flags2, state2 = _parallel_for(str(p2))
+    if _xdist_ok():
+        assert flags2 == ["-n", "4", "--dist", "loadfile"]
+        assert state2 == "workers:4"
+    p3 = _mk_cfg(tmp_path, parallel=False)
+    assert _parallel_for(str(p3)) == ([], None)
+    p4 = _mk_cfg(tmp_path, parallel="yes")
+    assert _parallel_for(str(p4)) == ([], None)
+
+
+def test_parallel_for_unavailable_fallback(tmp_path, monkeypatch):
+    """请求并行但 xdist 缺装 → ([], "unavailable")（优化位不拦，回退串行）。"""
+    import importlib.util
+    p = _mk_cfg(tmp_path, parallel=True)
+    real = importlib.util.find_spec
+
+    def _fake(name, *a, **k):
+        return None if name == "xdist" else real(name, *a, **k)
+    monkeypatch.setattr(importlib.util, "find_spec", _fake)
+    from test_runner import _parallel_for
+    assert _parallel_for(str(p)) == ([], "unavailable")
+
+
+def test_parallel_no_config_default_unchanged(tmp_path):
+    """未配置 parallel → run_tests 结果无 parallel 键（逐位现行为）。"""
+    _mk_cfg(tmp_path)
+    for f in ("tests/test_a.py",):
+        p = tmp_path / f
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+    (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    r = run_tests(str(tmp_path))
+    assert r["status"] == "pass"
+    assert "parallel" not in r
+
+
+def test_parallel_e2e_junitxml_counts(tmp_path):
+    """xdist+ junitxml 真跑：3 文件×2 例 → total==6 计数精确（顾问护栏①：
+    controller 合并 worker 结果的版本差异，用真跑计数钉死）。"""
+    if not _xdist_ok():
+        import pytest
+        pytest.skip("pytest-xdist 未安装")
+    _mk_cfg(tmp_path, parallel=True)
+    (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    for i in range(3):
+        p = tmp_path / f"tests/test_p{i}.py"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("def test_a():\n    assert True\n\n\n"
+                     "def test_b():\n    assert True\n", encoding="utf-8")
+    r = run_tests(str(tmp_path))
+    assert r["status"] == "pass", r.get("raw_snippet", "")
+    assert r["parallel"] == "auto"
+    assert r["total"] == 6 and r["passed"] == 6

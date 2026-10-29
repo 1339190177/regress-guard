@@ -459,10 +459,37 @@ def _stats():
         pass
 
 
+def _backlog():
+    """批157 待决积压老化报告（只读，不代裁）——stale 降级人裁的决策材料。"""
+    from pending import aging
+    a = aging()
+    print("═══ 待决积压老化报告（只读，不代裁）═══")
+    print(f"未决 {a['pending']} 笔｜最老 {a['oldest_days']} 天")
+    print("年龄桶：" + "｜".join(f"{k}={v}" for k, v in a["buckets"].items()))
+    if a["by_event"]:
+        top = sorted(a["by_event"].items(), key=lambda kv: -kv[1])[:5]
+        print("按类型：" + "，".join(f"{k}×{v}" for k, v in top))
+    if a["by_project"]:
+        top = sorted(a["by_project"].items(), key=lambda kv: -kv[1])[:5]
+        print("按项目：" + "，".join(f"{k}×{v}" for k, v in top))
+    if a["stale"]:
+        print(f"超 30 天候选（{len(a['stale'])} 笔，批量裁决/stale 降级材料包对象）：")
+        for s in a["stale"][:10]:
+            print(f"  #{s['id']} {s['days']}天 [{s['event']}] "
+                  f"{s['project'][:24]} {s['title'][:40]}")
+        if len(a["stale"]) > 10:
+            print(f"  …（其余 {len(a['stale']) - 10} 笔略）")
+    else:
+        print("无超 30 天候选")
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "stats":
         _stats()
+        return 0
+    if argv and argv[0] == "backlog":
+        _backlog()
         return 0
     if argv and argv[0] == "trust":
         # v1.67 trust 转只读（顾问高置信 B）：授信=人的决定，CLI 不留写路径——

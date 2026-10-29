@@ -167,6 +167,39 @@ def stats():
             "merged": count_merged(), "open": open_p}
 
 
+def aging(now=None):
+    """批157 积压老化分布（只读）——stale 降级人裁的决策材料，不代裁。
+
+    五档年龄桶（0-3/3-7/7-14/14-30/>30 天）+ by_event/by_project +
+    超 30 天候选清单（id/天数/类型/项目/标题）。行业 stale-action 模式
+    的前置观察位：先看分布，降不降级、怎么降由人裁。now 可注入测试。"""
+    now = now or datetime.datetime.now()
+    adds, resolves = _load()
+    open_p = [e for k, e in sorted(adds.items()) if k not in resolves]
+    buckets = {"0-3d": 0, "3-7d": 0, "7-14d": 0, "14-30d": 0, ">30d": 0}
+    by_event, by_project, stale, oldest = {}, {}, [], 0.0
+    for e in open_p:
+        try:
+            age = (now - datetime.datetime.fromisoformat(e["ts"])
+                   ).total_seconds() / 86400
+        except (KeyError, ValueError):
+            continue
+        oldest = max(oldest, age)
+        k = ("0-3d" if age <= 3 else "3-7d" if age <= 7 else
+             "7-14d" if age <= 14 else "14-30d" if age <= 30 else ">30d")
+        buckets[k] += 1
+        by_event[e.get("event", "?")] = by_event.get(e.get("event", "?"), 0) + 1
+        by_project[e.get("project", "?")] = by_project.get(e.get("project", "?"), 0) + 1
+        if age > 30:
+            stale.append({"id": e.get("id"), "days": round(age, 1),
+                          "event": e.get("event", ""),
+                          "project": e.get("project", ""),
+                          "title": e.get("title", "")})
+    return {"pending": len(open_p), "oldest_days": round(oldest, 1),
+            "buckets": buckets, "by_event": by_event, "by_project": by_project,
+            "stale": sorted(stale, key=lambda s: -s["days"])}
+
+
 def _fmt_row(e, mark):
     return f"  #{e['id']} {mark} {e['ts'][:16]} [{e['event']}] {e['title'][:50]}"
 

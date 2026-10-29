@@ -306,3 +306,57 @@ def test_resolved_outcome_single_bucket(tmp_path, monkeypatch):
     s = pd.stats()
     assert s["auto_resolved"] == 1 and s["pending"] == 0
     assert s["fp_rate"] is None  # human 裁决为零 → 分母空（口径不变）
+
+
+# ─── 批157 积压老化报告（只读）──────────────────────────
+
+def _aging_ledger(tmp_path, monkeypatch, now):
+    """预置账本：A=40天未决、B=10天未决、C=2天未决、D=40天已决（不进分布）。"""
+    import datetime as dt
+    path = tmp_path / "p-aging.jsonl"
+    def _line(rec):
+        return json.dumps(rec, ensure_ascii=False) + "\n"
+    with open(path, "a", encoding="utf-8") as f:
+        for i, days, proj in ((1, 40, "demo"), (2, 10, "other"),
+                              (3, 2, "demo"), (4, 40, "demo")):
+            ts = (now - dt.timedelta(days=days)).isoformat(timespec="seconds")
+            f.write(_line({"id": i, "ts": ts, "project": proj,
+                           "event": "blocked", "title": f"待决{i}",
+                           "ref": "", "fp": ""}))
+        f.write(_line({"resolve_id": 4,
+                       "ts": now.isoformat(timespec="seconds"),
+                       "outcome": "useful"}))
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(path))
+    return path
+
+
+def test_aging_buckets_and_stale(tmp_path, monkeypatch):
+    import datetime as dt
+    pending = _load(PENDING, "pending_aging_mod")
+    now = dt.datetime(2026, 10, 29, 12, 0, 0)
+    _aging_ledger(tmp_path, monkeypatch, now)
+    a = pending.aging(now=now)
+    assert a["pending"] == 3
+    assert a["oldest_days"] == 40.0
+    assert a["buckets"] == {"0-3d": 1, "3-7d": 0, "7-14d": 1,
+                            "14-30d": 0, ">30d": 1}
+    assert a["by_event"] == {"blocked": 3}
+    assert a["by_project"] == {"demo": 2, "other": 1}
+    assert len(a["stale"]) == 1 and a["stale"][0]["id"] == 1
+    assert a["stale"][0]["days"] == 40.0
+
+
+def test_backlog_verb_prints_and_reads_only(tmp_path, monkeypatch, capsys):
+    """backlog verb：打印分布+候选；台账内容字节不变（只读不代裁）。"""
+    import datetime as dt
+    pending = _load(PENDING, "pending_backlog_mod")
+    notify = _load(NOTIFY, "notify_backlog_mod")
+    now = dt.datetime(2026, 10, 29, 12, 0, 0)
+    path = _aging_ledger(tmp_path, monkeypatch, now)
+    before = path.read_text(encoding="utf-8")
+    rc = notify.main(["backlog"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "只读，不代裁" in out and "未决 3 笔" in out
+    assert ">30d=1" in out and "#1" in out and "[blocked] demo" in out
+    assert path.read_text(encoding="utf-8") == before

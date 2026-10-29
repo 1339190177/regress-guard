@@ -1474,6 +1474,7 @@ def main():
     # v1.85 测试结果缓存（074）：同树重试三跑全量是最大浪费；顾问裁=优化位非安全
     # 边界。命中只替代 6 节全量，6.5 验收入环照跑——验收读的是清单不是树。
     _cache_hit = None
+    _calib = False  # 批157：命中/未命中两路共读（commit_passed 的 note 字段）
     try:
         from test_cache import lookup as _tc_lookup
         _cache_hit = _tc_lookup(project_dir, regress_dir)
@@ -1501,10 +1502,37 @@ def main():
             except Exception:
                 _subset, _why = None, "mapper-error"
             if _subset:
-                _extra_args = _subset
-                print(f"REGRESS-GUARD: 增量模式：映射 {_why} → 子集 "
-                      f"{len(_subset)} 个测试文件——增量=快反馈位非验证"
-                      "完备位，全量兜底=CI/哨兵轮", file=sys.stderr)
+                # ─── 批157 周期校准位：full_every_n_commits=N（int≥2 生效）
+                # 第 N 次增量机会放弃子集跑全量（Microsoft TIA 周期全量铁律）
+                # ——同名映射改共享模块时非同名测试不跑的盲区，靠周期全量
+                # 统计兜底。机会数=history 读时聚合（base_head 去重，顾问
+                # 抓漏：amend/同树重试重复事件会让校准被无限推迟）。
+                _fen = 0
+                try:
+                    _fen_v = ((config.get("test_runner") or {})
+                              .get("full_every_n_commits") or 0)
+                    _fen = int(_fen_v)
+                except (TypeError, ValueError):
+                    _fen = 0
+                if _fen < 2:
+                    _fen = 0  # 未配置/1=无效（1 等价关增量，直接别配）
+                if _fen:
+                    try:
+                        from history import incremental_opportunities as _io
+                        _opp = _io(regress_dir)
+                    except Exception:
+                        _opp = 0
+                    if (_opp + 1) % _fen == 0:
+                        _calib = True
+                        print(f"REGRESS-GUARD: 校准位：第 {_opp + 1} 次增量机会"
+                              f" → 本次跑全量（full_every_n_commits={_fen}）"
+                              "——周期全量兜同名映射盲区，计数对账不豁免",
+                              file=sys.stderr)
+                if not _calib:
+                    _extra_args = _subset
+                    print(f"REGRESS-GUARD: 增量模式：映射 {_why} → 子集 "
+                          f"{len(_subset)} 个测试文件——增量=快反馈位非验证"
+                          "完备位，全量兜底=CI/哨兵轮", file=sys.stderr)
         try:
             result = run_tests(project_dir, extra_args=_extra_args)
         except Exception as e:
@@ -1517,6 +1545,15 @@ def main():
         if _extra_args and result.get("status") == "pass":
             result["incremental"] = True
             result["subset"] = len(_extra_args)
+        # 批157 并行可见性（缓存未跑分支内，cached 不在此处出现）：
+        # 生效一行；请求但 xdist 缺装 → 回退提示（优化位不拦提交）
+        _par = result.get("parallel")
+        if _par == "unavailable":
+            print("REGRESS-GUARD: ⚠️ 并行档已请求但 pytest-xdist 未安装"
+                  " → 串行回退（pip install pytest-xdist 可启用）", file=sys.stderr)
+        elif _par:
+            print(f"REGRESS-GUARD: 并行模式：pytest-xdist 生效（{_par}）",
+                  file=sys.stderr)
     status = result.get("status", "fail")
     runner = result.get("runner", "unknown")
 
@@ -1764,7 +1801,9 @@ def main():
                cached=bool(result.get("cached")),
                cache_key=(str(_cache_hit.get("key")) if _cache_hit else None),
                incremental=bool(result.get("incremental")),
-               subset=result.get("subset"))
+               subset=result.get("subset"),
+               parallel=result.get("parallel"),
+               note=("full_calibration" if _calib else None))
         # 缓存落账（074）：真跑通过才写（命中路径不重写——条目已在）；增强位，失败静默
         # 批156：incremental 子集结果落账带 scope（观察数据）——lookup 侧
         # 过滤不回放（子集计数永不冒充全量）

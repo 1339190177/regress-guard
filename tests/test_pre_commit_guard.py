@@ -1835,3 +1835,69 @@ def test_incremental_off_default_unchanged(project):
     assert "增量模式" not in err
     cp = [e for e in read_history(project) if e.get("event") == "commit_passed"]
     assert cp and not cp[0].get("incremental")
+
+
+# ─── 批157：周期校准位端到端 ──────────────────────────
+
+_CALIB_CFG = ('{"strict": true, "test_runner": {"incremental": true, '
+              '"full_every_n_commits": 2}, "test_cache": {"enabled": false}}')
+
+
+def _rewind_r1(project):
+    """双提交夹具：第一次提交会把清单盖 done → 回写 in-progress 使第二次
+    提交仍走完整门禁（无活跃清单时门禁跳过测试=runner=none 路径）。"""
+    decl = ('  - {id: F1, file: "src/app.py"}\n'
+            '  - {id: F2, file: "tests/test_app.py"}')
+    _write_manifest(project,
+                    "---\nid: R1\nstatus: in-progress\ntier: S\n"
+                    "rollback: git revert 即回滚\nself_review:\n"
+                    "  计划外: 无\n  调试残留: 无\n"
+                    f"planned_changes:\n{decl}\nactual_changes: []\n---\n"
+                    "\n## 验收标准\n\n- When 提交，则 放行（验：pytest -q）✅\n")
+
+
+def test_full_calibration_every_n(project):
+    """N=2 双提交：第 1 次增量子集；第 2 次机会放弃子集跑全量——
+    note=full_calibration、无 incremental 标记、计数对账不豁免
+    （无 count_note_incremental）。"""
+    _incr_setup(project)
+    (project / ".regress" / "config.json").write_text(_CALIB_CFG,
+                                                      encoding="utf-8")
+    # 第 1 次提交：增量子集（机会数 0 → 0+1 mod 2 = 1 ≠ 0）
+    code, err, _ = run_guard("git commit -m 改动一（R1）；1/1", project)
+    assert code == 0, err
+    assert "增量模式" in err and "校准位" not in err
+    # 第 2 次提交：机会数 1 → 1+1 mod 2 = 0 → 校准全量
+    _rewind_r1(project)
+    _stage(project, "src/app.py", "x = 3\n")
+    code, err, _ = run_guard("git commit -m 改动二（R1）；1/1", project)
+    assert code == 0, err
+    assert "校准位" in err and "增量模式" not in err
+    cps = [e for e in read_history(project) if e.get("event") == "commit_passed"]
+    assert len(cps) == 2
+    assert cps[0].get("incremental") is True and cps[0].get("subset") == 1
+    assert cps[1].get("incremental") is not True
+    assert cps[1].get("note") == "full_calibration"
+    assert cps[1].get("parallel") is None  # 未配并行=字段缺位(None)透传
+    evs = read_history(project)
+    # 豁免 note 只该出现在第 1 笔（增量）；第 2 笔全量对账走常规路径
+    assert sum(1 for e in evs
+               if e.get("note") == "count_note_incremental") == 1
+
+
+def test_full_calibration_invalid_n_ignored(project):
+    """N=1 无效（等价关增量，须显式别配）→ 恒子集现行为。"""
+    _incr_setup(project)
+    (project / ".regress" / "config.json").write_text(
+        _CALIB_CFG.replace('"full_every_n_commits": 2',
+                           '"full_every_n_commits": 1'), encoding="utf-8")
+    code, err, _ = run_guard("git commit -m 改动一（R1）；1/1", project)
+    assert code == 0, err
+    assert "增量模式" in err and "校准位" not in err
+    _rewind_r1(project)
+    _stage(project, "src/app.py", "x = 3\n")
+    code, err, _ = run_guard("git commit -m 改动二（R1）；1/1", project)
+    assert code == 0, err
+    assert "增量模式" in err and "校准位" not in err
+    cps = [e for e in read_history(project) if e.get("event") == "commit_passed"]
+    assert all(c.get("incremental") is True for c in cps)
