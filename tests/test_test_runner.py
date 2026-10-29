@@ -404,3 +404,50 @@ def test_junit_collection_error_end_to_end(tmp_path):
     assert r["status"] == "fail"
     assert (r["failed"] or 0) >= 1  # collection error 入 errors→failed 侧
     assert r["parse"] == "junitxml" or r["parse"] == "regex"
+
+
+# ─── 批156：增量映射器（all-or-nothing） ────────────────
+
+def _mk_proj_inc(tmp_path, test_files=("tests/test_app.py",)):
+    for f in test_files:
+        p = tmp_path / f
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_map_incremental_same_name(tmp_path):
+    from test_runner import map_incremental
+    proj = _mk_proj_inc(tmp_path)
+    sub, why = map_incremental(proj, ["src/app.py"], {})
+    assert sub == ["tests/test_app.py"] and why == "mapped-1"
+
+
+def test_map_incremental_alias_table(tmp_path):
+    from test_runner import map_incremental
+    proj = _mk_proj_inc(tmp_path, ("tests/test_rbe.py",))
+    cfg = {"test_runner": {"test_map": {
+        "hooks/scripts/read_before_edit_guard.py": "tests/test_rbe.py"}}}
+    sub, _ = map_incremental(proj, ["hooks/scripts/read_before_edit_guard.py"], cfg)
+    assert sub == ["tests/test_rbe.py"]
+
+
+def test_map_incremental_unmapped_falls_full(tmp_path):
+    from test_runner import map_incremental
+    proj = _mk_proj_inc(tmp_path)
+    sub, why = map_incremental(proj, ["src/app.py", "src/orphan.py"], {})
+    assert sub is None and why.startswith("unmapped:src/orphan.py")
+
+
+def test_map_incremental_shared_fixture_forces_full(tmp_path):
+    from test_runner import map_incremental
+    proj = _mk_proj_inc(tmp_path)
+    sub, why = map_incremental(proj, ["src/app.py", "conftest.py"], {})
+    assert sub is None and why.startswith("shared-fixture:conftest")
+
+
+def test_map_incremental_test_file_itself(tmp_path):
+    from test_runner import map_incremental
+    proj = _mk_proj_inc(tmp_path)
+    sub, _ = map_incremental(proj, ["tests/test_app.py"], {})
+    assert sub == ["tests/test_app.py"]

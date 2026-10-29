@@ -1486,8 +1486,27 @@ def main():
               f"{str(_cache_hit.get('key'))[:8]}, {str(_cache_hit.get('age_min'))} 分钟前"
               f"的通过结果）——跳过全量重跑；RG_TEST_CACHE=off 可关", file=sys.stderr)
     else:
+        # ─── 批156 增量档（opt-in）：config test_runner.incremental ——
+        # all-or-nothing 同名映射（任一无映射/共享夹具=全量现行为）；
+        # 子集结果带 incremental 标记：不进缓存回放面（scope 隔离）+
+        # 行尾计数对账豁免（子集数不假装全量数）+ 事件带 subset。
+        _extra_args = None
+        _incr_on = bool(((config.get("test_runner") or {})
+                         .get("incremental")) is True) \
+            if isinstance(config, dict) else False
+        if _incr_on:
+            try:
+                from test_runner import map_incremental as _mi
+                _subset, _why = _mi(project_dir, _staged_list(), config)
+            except Exception:
+                _subset, _why = None, "mapper-error"
+            if _subset:
+                _extra_args = _subset
+                print(f"REGRESS-GUARD: 增量模式：映射 {_why} → 子集 "
+                      f"{len(_subset)} 个测试文件——增量=快反馈位非验证"
+                      "完备位，全量兜底=CI/哨兵轮", file=sys.stderr)
         try:
-            result = run_tests(project_dir)
+            result = run_tests(project_dir, extra_args=_extra_args)
         except Exception as e:
             record(regress_dir, "error", manifest_id, error=f"test_runner crashed: {e}")
             emit_block(
@@ -1495,6 +1514,9 @@ def main():
                 "fail-safe 原则：阻断 commit。请检查测试运行器配置。\n"
                 f"Traceback:\n{traceback.format_exc()[-500:]}"
             )
+        if _extra_args and result.get("status") == "pass":
+            result["incremental"] = True
+            result["subset"] = len(_extra_args)
     status = result.get("status", "fail")
     runner = result.get("runner", "unknown")
 
@@ -1650,9 +1672,16 @@ def main():
         # 行尾计数对账（v1.87.1，092 晚查）：「；N/N」结尾=套件计数宣称（家规
         # 形态）——077 的「536/536」正是此形态，当场会被拦。非行尾 N/N（如
         # 「清单健康 59/59」作用域计数）只告警留痕（090 不误伤）。
+        # 批156：incremental 子集计数与全量宣称天然不符——硬对账豁免+留痕
+        # （诚实面=事件可查，不假装子集数是全量数）。
         _msg_late = _message_from_cmd(raw_input)
         _marker = re.search(r"[；;]\s*(\d+)\s*/\s*(\d+)\s*$", _msg_late.strip())
-        if _marker:
+        if _marker and result.get("incremental"):
+            record(regress_dir, "note", manifest_id,
+                   note="count_note_incremental",
+                   claimed=_marker.group(0),
+                   subset=f"{result.get('passed')}/{result.get('total')}")
+        elif _marker:
             _cp, _ct = int(_marker.group(1)), int(_marker.group(2))
             if not (_cp == result.get("passed") and _ct == result.get("total")):
                 record(regress_dir, "commit_blocked", manifest_id,
@@ -1733,12 +1762,18 @@ def main():
                runner=runner, passed=result.get("passed"), total=result.get("total"),
                base_head=_git_head_sha(), coverage_pct=result.get("coverage_pct"),
                cached=bool(result.get("cached")),
-               cache_key=(str(_cache_hit.get("key")) if _cache_hit else None))
+               cache_key=(str(_cache_hit.get("key")) if _cache_hit else None),
+               incremental=bool(result.get("incremental")),
+               subset=result.get("subset"))
         # 缓存落账（074）：真跑通过才写（命中路径不重写——条目已在）；增强位，失败静默
+        # 批156：incremental 子集结果落账带 scope（观察数据）——lookup 侧
+        # 过滤不回放（子集计数永不冒充全量）
         if not result.get("cached"):
             try:
                 from test_cache import record as _tc_record
-                _tc_record(project_dir, regress_dir, result)
+                _tc_record(project_dir, regress_dir, result,
+                           scope="incremental" if result.get("incremental")
+                           else None)
             except Exception:
                 pass
         # v1.71 待决自动回流（run4 R3）：同清单过门禁=该清单的 blocked 告警自然

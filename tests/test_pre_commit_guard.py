@@ -1759,3 +1759,79 @@ def test_tier_invalid_assumed_m(project):
     assert code == 2
     assert any(e.get("note") == "tier_missing_assumed_m"
                for e in read_history(project))
+
+
+# ─── 批156：增量档端到端（opt-in 三态+对账豁免） ────────────────
+
+_INCR_CFG = ('{"strict": true, "test_runner": {"incremental": true}, '
+             '"test_cache": {"enabled": false}}')
+
+
+def _incr_setup(project, srcs=("src/app.py",), tests=("tests/test_app.py",)):
+    for f in list(srcs) + list(tests):
+        p = project / f
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("def test_ok():\n    assert True\n"
+                     if f.startswith("tests/") else "x = 1\n", encoding="utf-8")
+    (project / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    (project / ".regress" / "config.json").write_text(_INCR_CFG,
+                                                      encoding="utf-8")
+    decl = "\n".join(f'  - {{id: F{i + 1}, file: "{f}"}}'
+                      for i, f in enumerate(list(srcs) + list(tests)))
+    _write_manifest(project,
+                    "---\nid: R1\nstatus: in-progress\ntier: S\n"
+                    "rollback: git revert 即回滚\nself_review:\n"
+                    "  计划外: 无\n  调试残留: 无\n"
+                    f"planned_changes:\n{decl}\nactual_changes: []\n---\n"
+                    "\n## 验收标准\n\n- When 提交，则 放行（验：pytest -q）✅\n")
+    for f in srcs:
+        _stage(project, f, "x = 2\n")
+
+
+def test_incremental_subset_run_and_event(project):
+    """opt-in+全映射 → 子集跑（耗时骤降旁证=total 只计子集文件）+事件带
+    incremental/subset+对账豁免 note。"""
+    import time
+    _incr_setup(project)
+    t0 = time.time()
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    dt = time.time() - t0
+    assert code == 0, err
+    assert "增量模式" in err
+    evs = read_history(project)
+    cp = [e for e in evs if e.get("event") == "commit_passed"]
+    assert cp and cp[0].get("incremental") is True and cp[0].get("subset") == 1
+    assert any(e.get("note") == "count_note_incremental" for e in evs)
+    # 子集跑只收集 1 个测试文件——total 反映子集而非全套件
+    assert cp[0].get("total") == 1
+
+
+def test_incremental_unmapped_falls_full(project):
+    """opt-in 但 staged 含无映射文件 → 全量现行为（事件无 incremental）。"""
+    _passing_runner(project)  # 根级 test_smoke.py 无同名映射（src/app.py 有）
+    (project / ".regress" / "config.json").write_text(_INCR_CFG,
+                                                      encoding="utf-8")
+    _write_manifest(project,
+                    "---\nid: R1\nstatus: in-progress\ntier: S\n"
+                    "rollback: git revert 即回滚\nself_review:\n"
+                    "  计划外: 无\n  调试残留: 无\n"
+                    'planned_changes:\n  - {id: F1, file: "src/app.py"}\n'
+                    "actual_changes: []\n---\n"
+                    "\n## 验收标准\n\n- When 提交，则 放行（验：pytest -q）✅\n")
+    _stage(project, "src/app.py", "x = 3\n")   # tests/test_app.py 不存在
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    assert code == 0, err
+    cp = [e for e in read_history(project) if e.get("event") == "commit_passed"]
+    assert cp and not cp[0].get("incremental")
+
+
+def test_incremental_off_default_unchanged(project):
+    """config 未开 → 逐位现行为（全量跑，无增量 stderr/事件）。"""
+    _passing_runner(project)
+    _write_manifest(project, _M_FULL.replace("tier: M", "tier: S"))
+    _stage(project, "src/app.js", "x = 4\n")
+    code, err, _ = run_guard("git commit -m 改动（R1）", project)
+    assert code == 0, err
+    assert "增量模式" not in err
+    cp = [e for e in read_history(project) if e.get("event") == "commit_passed"]
+    assert cp and not cp[0].get("incremental")

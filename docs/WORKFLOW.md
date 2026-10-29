@@ -427,6 +427,33 @@ ui-ux-pro-max。
 | 钩子入口 env 白名单（v1.69） | launcher.js 构造洁净子进程环境：白名单只透传系统基础（PATH/HOME/LANG/TZ/TMPDIR）+代理+宿主契约五变量（SESSION/PROJECT_DIR/ZCODE_HOME/PLUGIN_ROOT）——`RG_*`/`WECOM_*`/`GIT_*` 注入在入口层失效（宿主 env 的信任/git 读数干扰整族封死；直接 CLI 调用不受影响，其信任面由 v1.68 表制管） |
 | wecom 凭据字段门+基域钉住（v1.70） | 项目级 `wecom.corpid/secret/api_base_allowlist` 覆盖须项目受信，否则回退机器级+提示（克隆仓库携假凭据把通知发往自己企微的洞；`agentid/touser/事件开关`不受限=绑机器凭据的合法覆盖）；`WECOM_API_BASE` 仅许本机桩（测试）或机器配置 allowlist，恶域钉回官方域——凭据 POST 外泄面 |
 
+## 增量测试档（v1.105.0 批156：快反馈位非验证完备位）
+
+门禁跑测试恒全量的快节奏代价（首次提交改一文件也跑全套）在此档缓解——
+**opt-in**：config `test_runner.incremental: true` + 可选 `test_map` 别名表：
+
+```json
+"test_runner": {
+  "incremental": true,
+  "test_map": {"hooks/scripts/read_before_edit_guard.py":
+               "tests/test_read_before_edit.py"}
+}
+```
+
+**策略=all-or-nothing 同名映射（顾问裁维持保守）**：每个 staged 文件映射
+`tests/test_<stem>.py` 或 test_map 别名；测试文件自身 staged 直接入集；
+**全部可映射才跑子集，任一无映射或命中共享夹具（conftest/pytest.ini/
+pyproject/setup.cfg/package.json）即全量**——不混合子集与全量（混合的漏测
+组合面不可推理；漏测是正确性问题，触发率是收益问题）。
+
+**三条诚实防线**：①增量子集结果缓存条目带 scope=incremental，lookup 永不
+回放（子集计数不冒充全量）；②行尾 N/N 硬对账豁免+note 留痕（事件可查）；
+③commit_passed 事件带 incremental/subset（SLO 可观察增量使用率）。
+
+**定性**：增量=快反馈位非验证完备位——全量兜底=项目 CI/哨兵轮（建议
+incremental 开启的项目配 CI 全量位）。触发率观察位：事件增量占比 <20% 且
+scope 隔离稳两轮后，才议混合策略（顾问替代方案门槛）。
+
 ## 影响面层（v1.101.0 批148：跨端变更从口头约定变机器位）
 
 标本：tongtu-anquan-ai-workspace——AGENTS 写明「破坏性变更三端同窗口」「契约只扩不缩」

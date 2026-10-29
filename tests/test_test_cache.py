@@ -177,3 +177,25 @@ def test_record_trims(tmp_path):
     lines = [l for l in (rg / "test-cache.jsonl").read_text(
         encoding="utf-8").splitlines() if l.strip()]
     assert len(lines) <= 50
+
+
+# ─── 批156：incremental scope 隔离（污染陷阱钉死） ────────────────
+
+def test_incremental_entry_recorded_but_not_replayed(tmp_path):
+    """增量子集结果落账带 scope=incremental，lookup 永不回放——子集计数
+    不冒充全量（勘察实证的缓存污染陷阱）。"""
+    proj = _git_repo(tmp_path)
+    rg = proj / ".regress"
+    rg.mkdir()
+    full = {"status": "pass", "runner": "pytest", "passed": 100, "total": 100}
+    assert test_cache.record(str(proj), str(rg), full) is True
+    hit = test_cache.lookup(str(proj), str(rg))
+    assert hit and hit["result"]["total"] == 100
+    # incremental 条目：同树（key 相同）后写，带 scope
+    incr = {"status": "pass", "runner": "pytest", "passed": 2, "total": 2,
+            "incremental": True}
+    assert test_cache.record(str(proj), str(rg), incr,
+                             scope="incremental") is True
+    hit2 = test_cache.lookup(str(proj), str(rg))
+    # 回放的是全量条目（100）而非最新 incremental（2）——隔离生效
+    assert hit2 and hit2["result"]["total"] == 100

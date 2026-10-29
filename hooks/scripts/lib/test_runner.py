@@ -199,8 +199,12 @@ def _timeout_for(project_dir):
         return 120
 
 
-def run_tests(project_dir, timeout=None):
+def run_tests(project_dir, timeout=None, extra_args=None):
     """运行测试，返回结果 dict。
+
+    extra_args（批156 增量档）：pytest 分支追加位置参数（测试文件子集）——
+    None=全量（现行为）。增量模式的映射决策在门禁侧（_map_incremental），
+    此处只透传。
 
     Returns:
         {
@@ -225,6 +229,8 @@ def run_tests(project_dir, timeout=None):
             "failures": [],
             "raw_snippet": "No test runner detected (no jest/pytest/maven/go.mod found)"
         }
+    if extra_args and runner == "pytest":
+        cmd = cmd + list(extra_args)
 
     try:
         # 125：运行前清残档——上次运行留下的结果文件被当本次结果是静默错读
@@ -433,6 +439,54 @@ def _parse_pytest(output, exit_code, project_dir=None):
         "failures": failures[:20] if failures else [{"test": "(unknown)", "message": output[-200:]}],
         "raw_snippet": output[-300:]
     }
+
+
+_SHARED_FIXTURES = ("conftest.py", "pytest.ini", "pyproject.toml",
+                    "setup.cfg", "package.json", "tests/conftest.py")
+
+
+def map_incremental(project_dir, staged, config=None):
+    """批156 增量映射（all-or-nothing，顾问裁维持保守策略）。
+
+    staged 每个文件映射测试：tests/test_<stem>.py 同名约定，config
+    test_runner.test_map 别名表覆盖（{"源文件": "测试文件" 或 ["多个"]}）；
+    测试文件自身 staged 直接入子集。返回 (subset 或 None, reason)——
+    None=全量信号：任一无映射/命中共享夹具。不混合子集与全量：混合的
+    漏测组合面不可推理（漏测是正确性问题，触发率是收益问题，不为
+    收益放松门禁）。project_dir=测试目录根（与 run_tests 同参）。
+    """
+    staged = [s.replace(os.sep, "/").lstrip("/") for s in (staged or [])]
+    if not staged:
+        return None, "empty-staged"
+    for f in staged:
+        base = f.rsplit("/", 1)[-1]
+        if base in _SHARED_FIXTURES:
+            return None, f"shared-fixture:{base}"
+    tm = ((config or {}).get("test_runner") or {}).get("test_map") or {}
+    subset = []
+    for f in staged:
+        base = f.rsplit("/", 1)[-1]
+        if base.startswith("test_") and base.endswith(".py"):
+            subset.append(f)          # 测试文件自身 staged 直接入集
+            continue
+        mapped = tm.get(f)
+        if mapped is None:
+            stem = base[:-3] if base.endswith(".py") else base
+            mapped = f"tests/test_{stem}.py"
+        if isinstance(mapped, str):
+            mapped = [mapped]
+        hit = [m for m in mapped
+               if os.path.isfile(os.path.join(project_dir, m))]
+        if not hit:
+            return None, f"unmapped:{f}"
+        subset.extend(hit)
+    # 去重保序
+    seen, out = set(), []
+    for m in subset:
+        if m not in seen:
+            seen.add(m)
+            out.append(m)
+    return out, f"mapped-{len(staged)}"
 
 
 if __name__ == "__main__":

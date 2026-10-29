@@ -103,7 +103,11 @@ def _detect_test_dir(project_dir):
 
 
 def lookup(project_dir, regress_dir):
-    """命中返回 {key, ts, age_min, result}；未命中/关闭/异常 → None。"""
+    """命中返回 {key, ts, age_min, result}；未命中/关闭/异常 → None。
+
+    批156：scope=incremental 的条目不回放——增量子集计数永不冒充全量
+    （record 侧落账留观察数据，lookup 侧过滤污染）。
+    """
     if not enabled(project_dir):
         return None
     key = tree_key(_detect_test_dir(project_dir))
@@ -123,6 +127,8 @@ def lookup(project_dir, regress_dir):
             continue
         if e.get("key") != key or e.get("status") != "pass":
             continue
+        if e.get("scope") == "incremental":
+            continue
         age_min = (time.time() - float(e.get("ts") or 0)) / 60
         if age_min > ttl:
             continue
@@ -131,8 +137,12 @@ def lookup(project_dir, regress_dir):
     return None
 
 
-def record(project_dir, regress_dir, result):
-    """pass 才落账；append jsonl + 裁剪到上限（丢最老）。"""
+def record(project_dir, regress_dir, result, scope=None):
+    """pass 才落账；append jsonl + 裁剪到上限（丢最老）。
+
+    scope（批156）：incremental 结果带 scope 标记落账（观察数据）但不被
+    lookup 回放；None/全量=现行为。
+    """
     if result.get("status") != "pass":
         return False
     key = tree_key(_detect_test_dir(project_dir))
@@ -145,6 +155,8 @@ def record(project_dir, regress_dir, result):
         "result": {k: v for k, v in result.items()
                    if k not in ("failures", "raw_snippet")},
     }
+    if scope:
+        entry["scope"] = scope
     path = os.path.join(regress_dir, _CACHE_FILE)
     try:
         os.makedirs(regress_dir, exist_ok=True)
