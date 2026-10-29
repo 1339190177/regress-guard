@@ -246,3 +246,90 @@ def test_allocate_sequence_same_as_before(tmp_path):
     m1, _ = pb.allocate_and_write(str(mdir), "a", lambda m, s: f"---\nid: {m}\n---\nx")
     m2, _ = pb.allocate_and_write(str(mdir), "b", lambda m, s: f"---\nid: {m}\n---\ny")
     assert m1 == "REGRESS-001" and m2 == "REGRESS-002"
+
+
+# ─── 批155：体量分档 + M 骨架（快节奏兼容：骨架前置=一次成本零来回） ────────
+
+_PLAN_M = """# 重批计划：直播三类型全链
+
+改动 `packages/contracts/live.ts`、`packages/database/023.sql`、
+`apps/web/src/monitor/page.tsx`、`apps/ops-web/src/live/page.tsx`、
+`deploy/scripts/verify-center-flow.mjs` 与 `docker-compose.yml`。
+"""
+
+_PLAN_S = """# 小批：修一个组件
+
+改 `apps/web/src/x.tsx` 与 `apps/web/src/y.tsx`。
+"""
+
+_PLAN_LOCK = """# 看似大实则小
+
+改 `src/a.ts`、`src/b.ts` 加上生成物 `dist/x.js` 与锁 `pnpm-lock.yaml`。
+"""
+
+
+def _gen(tmp_path, plan, mode="post"):
+    proj = _proj(tmp_path)
+    import pytest as _pytest
+    mp = _pytest.MonkeyPatch()
+    mp.setenv('ZCODE_PROJECT_DIR', str(proj))
+    mp.setenv('CLAUDE_PROJECT_DIR', str(proj))
+    mp.setenv('CLAUDE_SESSION_ID', 'sess_tier_t')
+    mp.setenv('REGRESS_JOURNAL', 'off')
+    try:
+        payload = {"tool_name": "ExitPlanMode", "tool_input": {"plan": plan}}
+        return _run(_load(), payload, mode), proj
+    finally:
+        mp.undo()
+
+
+def _first_manifest(proj):
+    import glob
+    fs = sorted(glob.glob(str(proj / ".regress" / "manifests" / "*.md")))
+    assert fs, "桥未生成清单"
+    return open(fs[-1], encoding="utf-8").read()
+
+
+def test_bridge_tier_by_bulk_m(tmp_path):
+    """≥4 真实文件 → tier M + scan/ui/验收/深查骨架在场。"""
+    _, proj = _gen(tmp_path, _PLAN_M)
+    body = _first_manifest(proj)
+    assert "tier: M" in body
+    assert "scan:" in body and "entry:" in body and "card:" in body
+    assert "understood_intent:" in body and "复述:" in body
+    assert "rollback:" in body
+    assert "## 验收标准" in body and "## 深查节" in body
+    assert "反问三·心虚探测" in body
+
+
+def test_bridge_tier_by_bulk_s(tmp_path):
+    """≤3 文件无环境类 → tier S 且无 M 骨架（现行为回归）。"""
+    _, proj = _gen(tmp_path, _PLAN_S)
+    body = _first_manifest(proj)
+    assert "tier: S" in body
+    assert "understood_intent:" not in body
+    assert "## 深查节" not in body
+
+
+def test_bridge_tier_lock_and_gen_filtered(tmp_path):
+    """锁/生成物不进判档计数（顾问口径①）——2 真实+2 生成物仍 S。"""
+    _, proj = _gen(tmp_path, _PLAN_LOCK)
+    body = _first_manifest(proj)
+    assert "tier: S" in body
+
+
+def test_bridge_tier_env_file_hits_m(tmp_path):
+    """环境类文件单命中即 M（非对称风险偏保守，顾问口径②）。"""
+    _, proj = _gen(tmp_path, "# 小改\n只动 `deploy/k8s.yaml`\n")
+    body = _first_manifest(proj)
+    assert "tier: M" in body
+
+
+def test_bridge_tongtu004_shape_dry(tmp_path):
+    """tongtu 004 形态（12 文件重批）dry 验证判 M——根治证据位（不动存量）。"""
+    files = [f"device-access-platform/apps/{n}/src/p{i}.ts" for i, n in
+             enumerate(["web", "ops-web", "tenant-web", "connector-worker"] * 3)]
+    plan = "# 全链重批\n" + "\n".join(f"改 `{f}`" for f in files)
+    _, proj = _gen(tmp_path, plan)
+    body = _first_manifest(proj)
+    assert "tier: M" in body and "## 验收标准" in body

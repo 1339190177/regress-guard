@@ -1113,6 +1113,12 @@ def main():
 
     _mp_scan = parse_frontmatter(manifest) or {}
     _tier = str(_mp_scan.get("tier") or "").strip().upper()
+    # 批155 fail-closed：tier 缺失/非法静默滑出验收网（既非 M/L 也非 S）
+    # =fail-open 洞——视为 M（最严侧）+留痕。存量清单均带合法 tier，无追溯冲击。
+    if _tier not in ("S", "M", "L"):
+        record(regress_dir, "note", manifest_id,
+               note="tier_missing_assumed_m", raw_tier=_tier[:8])
+        _tier = "M"
 
     # 规则A（仅 M/L——S 档轻量合法不背全貌仪式）：scan 三行 + understood_intent 三件
     if _tier in ("M", "L"):

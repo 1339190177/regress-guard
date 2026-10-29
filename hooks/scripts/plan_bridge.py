@@ -151,6 +151,29 @@ def plan_title(plan_text):
     return "原生计划（无标题）"
 
 
+# 批155 体量分档（顾问两口径：计数=去重后真实触碰文件，滤锁/生成物；
+# 环境类命中保守保留——非对称风险下偏保守：误判 M 代价=多填骨架，
+# 漏判 M 代价=重批零验收）
+_TIER_GEN = re.compile(
+    r"(?:^|/)(?:node_modules|dist|build|coverage|__pycache__|\.next|vendor)/"
+    r"|-(?:lock|checksum)\.(?:json|yaml|toml)$"
+    r"|\.lockb?$|pnpm-lock|yarn\.lock|package-lock\.json")
+_TIER_ENV = re.compile(
+    r"docker-compose|dockerfile|\.env$|\.env\.|/deploy/|\.ya?ml$|\.sql$"
+    r"|migrat|schema|package\.json$", re.I)
+
+
+def _tier_for_paths(paths):
+    """体量分档：滤生成物后 ≥4 文件，或环境类文件命中 → M；否则 S。
+
+    只升不降由调用方处理（修订路径）。L 档无机器信号仍靠 plan.md 流程。
+    """
+    real = [p for p in (paths or []) if not _TIER_GEN.search(p)]
+    if len(real) >= 4 or any(_TIER_ENV.search(p) for p in real):
+        return "M"
+    return "S"
+
+
 def looks_rejected(data):
     """拒绝载荷双保险之一：成功的 PostToolUse 也可能内含拒绝语义。"""
     tr = data.get("tool_response") or data.get("tool_result")
@@ -180,14 +203,45 @@ def _build_manifest(mid, title, sid, plan, paths, at):
         bnote = f"边界由计划文本尽力提取（{len(paths)} 文件，cap 12）"
     else:
         planned = "[]"
-        bnote = "计划文本未提取到路径——边界为空，一切靠 F3/track 扩界留痕兜底"
+        bnote = "计划文本未提取到路径——边界为空，一切靠 F3/track 回写（扩界留痕）兜底"
+    # 批155：体量分档（≥4 真实文件或环境类命中→M），M 档骨架前置——
+    # 实施期照骨架填、提交期天然合规（一次成本零来回，快节奏与根治的交汇）
+    tier = _tier_for_paths(paths)
+    card = (paths[0].rsplit("/", 1)[0] if "/" in (paths or [""])[0]
+            else "（paths 无目录信号，实施期具体化）")
+    if tier == "M":
+        fm_extra = f"""rollback: "git revert 即回滚"
+understood_intent:
+  复述: "{title}"
+  边界: "计划原文见正文（批准版为准）；不做事项以计划原文为准"
+  判据: "验收标准节 EARS 表"
+scan:
+  entry: "计划原文转录（原生计划模式人在环批准）"
+  test: "项目测试套件（门禁 6 节自跑）"
+  card: "{card}"
+"""
+        body_extra = f"""
+## 验收标准（EARS-lite·骨架——实施期逐行填+验证后行尾勾 ✅）
+
+- When <条件>，则 <可观察结果>（验：<命令>）
+（重批已按体量标 M——此节提交前须有真实判据行且全勾，缺节/未勾会被门禁拦）
+
+## 深查节（骨架——提交前每问一行实答）
+
+- 反问一·验证位错位：
+- 反问二·判据外推：
+- 反问三·心虚探测：
+"""
+    else:
+        fm_extra = ""
+        body_extra = ""
     body = f"""---
 id: {mid}
 requirement: "{title}"
 status: in-progress
 session: {sid}
-tier: S
-via: native-plan-bridge
+tier: {tier}
+{fm_extra}via: native-plan-bridge
 plan_hash: {sha}
 approved:
   at: "{at}"
@@ -204,7 +258,7 @@ test_results: {{}}
 > 以下为 ExitPlanMode 批准原文（证据律：验收判据以此为准，不改写）。
 
 {plan}
-
+{body_extra}
 ## 脆弱点
 
 ### FP1: 原生转译边界尽力提取（kind: machine）
@@ -276,6 +330,14 @@ def do_post(project_dir, data, sid):
         paths = extract_paths(plan)
         mid = _fm_get(fm, "id")
         content = _build_manifest(mid, title, sid, plan, paths, at)
+        # 批155：修订只升不降（旧 M 新计划变小→保持 M——档位是既成治理承诺，
+        # 降档须人裁 track 显式改；升档自动+留痕）
+        old_tier = (_fm_get(fm, "tier") or "S").upper()
+        new_tier = _fm_get(re.search(r"^---\n(.*?)\n---", content, re.S)
+                           .group(1), "tier") or "S"
+        if old_tier == "M" and new_tier == "S":
+            content = re.sub(r"^tier: S$", "tier: M  # 修订降档防护：原 M 保持（降档须人裁）",
+                             content, count=1, flags=re.M)
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)  # 计划修订：整档重写，approved 保留原批准时刻语义由重建承担
         if journal_append:

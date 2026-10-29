@@ -51,9 +51,9 @@ def project(tmp_path):
     (rg / "manifests").mkdir(parents=True)
     (rg / "config.json").write_text('{"strict": true}')
     (rg / "manifests" / "R1.md").write_text(
-        "---\nid: R1\nstatus: in-progress\nrollback: git revert 即回滚\n"
+        "---\nid: R1\nstatus: in-progress\ntier: S\nrollback: git revert 即回滚\n"
         "planned_changes: []\nactual_changes: []\n---\n"
-    )
+    )  # 批155 起 tier 缺失视为 M——夹具显式 S（fail-closed 规格传播）
     return p
 
 
@@ -254,7 +254,7 @@ def test_own_manifest_governs_despite_foreign(project):
     """我有清单 + 他有清单：按我的清单走（撞他文件才拦）——选择器不再拿别人清单。"""
     _stamp(project, "R1", FOREIGN_SID)  # R1 是他的
     (project / ".regress" / "manifests" / "R2.md").write_text(
-        "---\nid: R2\nstatus: in-progress\nsession: %s\n"
+        "---\nid: R2\nstatus: in-progress\nsession: %s\ntier: S\n"
         "rollback: git revert 即回滚\nplanned_changes: []\n"
         "actual_changes: []\n---\n" % MY_SID)
     code, err, _ = run_guard("git commit -m 改动（R1）", project,
@@ -447,7 +447,7 @@ def test_no_card_project_structural_warns(project):
 
 def test_rollback_missing_blocks_all_tiers(project):
     """rollback 全档必填（能力断言+引信）：清单无 rollback → 拦。"""
-    _write_manifest(project, "---\nid: R1\nstatus: in-progress\n"
+    _write_manifest(project, "---\nid: R1\nstatus: in-progress\ntier: S\n"
                              "planned_changes: []\nactual_changes: []\n---\n")
     code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2 and "缺 rollback" in err
@@ -1730,3 +1730,32 @@ def test_quick_acc_exempt_no_warn(project):
     assert code == 0, err
     assert not any(e.get("note") == "s_tier_no_acceptance_hint"
                    for e in read_history(project))
+
+
+# ─── 批155：tier fail-closed（缺失/非法视为 M，堵滑网） ────────────────
+
+def test_tier_missing_assumed_m_blocks_scan(project):
+    """无 tier 清单提交 → 按 M 处理（规则A 拦）——fail-open 洞钉死。"""
+    _passing_runner(project)
+    _write_manifest(project, "---\nid: R1\nstatus: in-progress\n"
+                            "rollback: git revert 即回滚\n"
+                            "planned_changes: []\nactual_changes: []\n---\n")
+    _stage(project, "src/app.js", "x = 31\n")
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    assert code == 2 and "scan" in err
+    evs = read_history(project)
+    assert any(e.get("note") == "tier_missing_assumed_m" for e in evs)
+    assert any(e.get("reason") == "scan_missing" for e in evs)
+
+
+def test_tier_invalid_assumed_m(project):
+    """非法 tier（X）→ 同样视为 M。"""
+    _passing_runner(project)
+    _write_manifest(project, "---\nid: R1\nstatus: in-progress\ntier: X\n"
+                            "rollback: git revert 即回滚\n"
+                            "planned_changes: []\nactual_changes: []\n---\n")
+    _stage(project, "src/app.js", "x = 32\n")
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    assert code == 2
+    assert any(e.get("note") == "tier_missing_assumed_m"
+               for e in read_history(project))
