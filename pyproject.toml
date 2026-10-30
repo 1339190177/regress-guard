@@ -38,3 +38,9 @@ ignore_missing_imports = true
 module = ["plan_bridge", "prompt_intercept", "execution_valve", "fail_watch",
           "risk_watch", "critic_pass", "advisor_token"]
 disable_error_code = ["truthy-function", "assignment", "misc", "var-annotated"]
+
+# 覆盖率（批164）：测量面=生产代码两目录；parallel 兼容本地 xdist loadfile。
+# 首版=基线观察位，不设 fail_under——数字先可见，变门槛是未来批的人裁。
+[tool.coverage.run]
+source = ["hooks/scripts", "scripts"]
+parallel = true

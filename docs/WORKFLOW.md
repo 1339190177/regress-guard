@@ -648,6 +648,18 @@ span 树可视化=观察位不做（OTel 思想借字段不借 SDK）。
   无远端对象——旧版只补本地考古 tag（v2.0.0@4b8fe40），远端 tag 从
   v2.1.0 起前向。
 
+- **平台支持矩阵（README 双语同步声明）**：Linux=CI 实证（3.10/3.12
+  matrix）；macOS=预期兼容未实证（Unix 专属面仅 fcntl/pwd）；Windows
+  不支持。
+- **覆盖率基线（2026-10-30 首测：总 59%，7830 语句）**：观察位非门槛。
+  读数须知：本套件大量用例走 **subprocess 执行**（进程隔离是 hermetic
+  绿的设计基础），进程内 coverage 看不见——pre_commit_guard 18%/
+  read_before_edit 10% 是**测量伪影**（显示值远小于真实实测面），勿按
+  此排补课。真值区：lib/ 模块（lease 89%/pending 91%/session_relay 93%/
+  manifest_fields 100%/test_cache 87%）；低覆盖工具面（check_docs 35%/
+  publish 46%）为可接受区。数字的用法=防回归趋势线+新增代码可见性，
+  不作绝对质量宣称。
+
 ## 机器事实卡（v1.32：跨项目地层，三层结构）
 
 机器级经验（服务器拓扑/通道/环境坑/跨项目工具坑）不属于任何项目——沉在单项目地层里

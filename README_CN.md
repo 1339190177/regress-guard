@@ -24,6 +24,11 @@
 ## 五分钟上手
 
 1. **环境**：ZCode 客户端（hooks/commands 机制）+ Python 3.10+
+   （支持矩阵·批164 声明：**Linux 为 CI 实证平台**（3.10/3.12 双版本
+   matrix，见 `.github/workflows/ci.yml`）；macOS 预期兼容——Unix 专属面
+   仅 stdlib 的 fcntl/pwd——但未 CI 实证；Windows 不支持（Unix 钩子链）。
+   运行时零三方依赖；发布物带 git tag（里程碑自 v2.0.0 起留痕，远端
+   tag 自 v2.1.0 前向））
 2. **安装**：`bash install.sh`（或对 AI 说 `/regress:install`）
 3. **接入项目**：任意项目里对 AI 说 `/regress:init`
 4. **日常**：说需求 → AI 出计划卡片 → 你「批准/修改/取消」→ 开工；

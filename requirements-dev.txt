@@ -7,3 +7,5 @@ filelock>=3
 # CI 新鲜环境缺它走 fallback 解析器，行为微差致 13 用例翻车（2026-10-30
 # 首跑实证）。运行时仍是可选依赖（HAS_YAML 探测），本行只为测试环境对齐。
 pyyaml>=6
+# pytest-cov（批164）：覆盖率基线观察位（CI 打印+WORKFLOW 记录，非门槛）
+pytest-cov>=5

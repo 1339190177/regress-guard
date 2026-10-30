@@ -57,7 +57,14 @@ Requirements: ZCode client + Python 3.10+ (the installer checks and refuses
 early with an upgrade path — no obscure heredoc crashes). Runtime has
 **zero third-party Python dependencies** (`filelock` is optional — absent →
 degrades to lock-free atomic write, v1.95.1). To run this repo's own test
-suite: `pip install -r requirements-dev.txt` (pytest / anyio / filelock).
+suite: `pip install -r requirements-dev.txt` (pytest / anyio / filelock /
+pyyaml / pytest-cov).
+
+**Supported environments** (declared, batch 164): Linux is the CI-verified
+platform (Python 3.10 & 3.12 matrix, `.github/workflows/ci.yml`). macOS is
+expected to work (only `fcntl`/`pwd` from stdlib are Unix-specific) but is
+not CI-verified. Windows is not supported (Unix hooks chain). Git tags
+(`v2.0.0`+ milestones, forward from `v2.1.0`) mark published releases.
 
 ### What your first interception looks like
 
