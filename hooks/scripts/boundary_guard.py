@@ -396,8 +396,9 @@ def main():
     # 批166（dsh 桥）：工具名规范化（内部分支按 CC 大小写匹配——dsh 小写
     # 名不规范化则全线漏判=假阴性放行）
     try:
-        from host_env import canonicalize_tool_names
+        from host_env import canonicalize_tool_names, materialize_tool_input
         canonicalize_tool_names(data)
+        materialize_tool_input(data)
     except ImportError:
         pass
 

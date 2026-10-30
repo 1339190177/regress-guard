@@ -155,11 +155,24 @@ def _dsh_version(dsh_bin="dsh"):
     return (r.stdout or r.stderr).strip()
 
 
-def _pkg_installed(home, profile, pkg):
+def _pkg_installed(home, profile, pkg, version=None):
     """实体在位判定：node_modules 里真有包（lock 字符串会被 peerDependency
-    声明行误中=批166 假绿活体——桥 peer 声明让 lock 检查恒真）。"""
-    return os.path.isfile(os.path.join(
-        home, "profiles", profile, "node_modules", pkg, "package.json"))
+    声明行误中=批166 假绿活体——桥 peer 声明让 lock 检查恒真）。
+    批168：给 version 则须版本精确配对——存在≠正确（web 桥 0.0.1 滞留而
+    检查恒过的活体：首装钉死 package.json 版本号，后续 add 同名新版本被
+    存在性检查短路）。"""
+    pj = os.path.join(home, "profiles", profile, "node_modules", pkg,
+                      "package.json")
+    if not os.path.isfile(pj):
+        return False
+    if version is None:
+        return True
+    try:
+        with open(pj, encoding="utf-8") as f:
+            import json as _json
+            return _json.load(f).get("version") == version
+    except (OSError, ValueError):
+        return False
 
 
 def ensure_bridge_pkg(profile, dsh_bin="dsh", home=None):
@@ -171,13 +184,20 @@ def ensure_bridge_pkg(profile, dsh_bin="dsh", home=None):
     allow-version 显式接受。故：钉桥@dsh版本 + 先 allow 后装 + peer 同装。
     在位判定走 lock（含两包名才免装）。失败返回 (False, stderr 摘要)。"""
     home = home or os.path.expanduser("~/.dsh")
-    if _pkg_installed(home, profile, BRIDGE_PKG) and \
-            _pkg_installed(home, profile, PROTOCOL_PKG):
-        return True, "已在位（node_modules 实体双包）"
-    ver = _dsh_version(dsh_bin)
+    ver = None
+    try:
+        ver = _dsh_version(dsh_bin)
+    except Exception:
+        ver = None
+    if _pkg_installed(home, profile, BRIDGE_PKG, ver) and \
+            _pkg_installed(home, profile, PROTOCOL_PKG, ver):
+        return True, "已在位（node_modules 实体双包" + (
+            f"，版本配对 {ver}" if ver else "") + "）"
+    if not ver:
+        return False, "无 dsh 可执行——无法确定版本配对目标"
     for act in ("allow", "add"):
         for pkg in (BRIDGE_PKG, PROTOCOL_PKG):
-            if act == "add" and _pkg_installed(home, profile, pkg):
+            if act == "add" and _pkg_installed(home, profile, pkg, ver):
                 continue
             args = [dsh_bin, "plugin", "--profile", profile]
             if act == "allow":
@@ -225,8 +245,12 @@ def main():
     patch = _profile_patch_path(dsh_home, args.profile)
     present = (os.path.exists(patch)
                and patch_entry_present(open(patch, encoding="utf-8").read()))
-    pkg_ok = (_pkg_installed(dsh_home, args.profile, BRIDGE_PKG)
-              and _pkg_installed(dsh_home, args.profile, PROTOCOL_PKG))
+    try:
+        _ver = _dsh_version("dsh")
+    except Exception:
+        _ver = None
+    pkg_ok = (_pkg_installed(dsh_home, args.profile, BRIDGE_PKG, _ver)
+              and _pkg_installed(dsh_home, args.profile, PROTOCOL_PKG, _ver))
 
     if args.check:
         print(f"桥+protocol：{'在位' if pkg_ok else '缺'} | patch 条目："

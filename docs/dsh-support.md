@@ -116,3 +116,24 @@ dsh-hooks-claude-code`（版本配对 dsh 运行时）+protocol peer，实体在
 - 双宿主并发（ZCode+dsh 同项目）：两宿主各自独立门禁（不同进程不同
   钩子链，非同宿主双重拦截）；read_before_edit 状态按会话分文件天然
   隔离（P2#17）。
+
+## 真实桌面 demo 战报（2026-10-31，浏览器全驱动 dsh web UI）
+
+demo 抓出**三个真缺口**（全部契约级测试测不出——载荷/环境形态只有真跑才现形）：
+
+1. **字符串 tool_input 穿门（已修，v2.5.1）**：GLM/zai 通道的 tool-call
+   arguments 序列化为 JSON 字符串而非对象（deepseek 通道是对象）——钩子
+   找不到 command 键判"非提交"放行=越界提交穿门。修=host_env.
+   materialize_tool_input 六入口接线；复现 rc 0→2 钉回归测试。
+2. **web 钩子沙箱挂载视图隔离（已定位，观察位→上游）**：web 实例的钩子
+   进程文件系统视图与宿主隔离（cwd 只读层、预置脚本对钩子不可见
+   "No such file"实证）——guard 在该视图内可能看不到项目 .regress →
+   判"未接入"放行。headless 无此问题（钩子=进程 cwd）。修复方向=上游
+   桥 PreToolUse 载荷带 cwd（现仅 SessionStart 带）或原生插件；guard 侧
+   无文件系统外通道可自愈。
+3. **桥无 shell 执行**（排障纪律）：钩子命令不经 shell 解释——管道/引号
+   是死字（tee 报错与 python exit 1 双实证）。探针必须免引号纯 argv 形态。
+
+**demo 期间实证在岗**：门禁拦截（探针4/终验轮 hook 层 exit 2、git log
+零新提交）、PostToolUse 风险采集、Stop 反思、UserPromptSubmit 需求入口
+（hook/invoked 全记录在会话事件流，可考古）。

@@ -645,12 +645,16 @@ def main():
     # ─── 1. 是否 git commit？──────────────────────────
     raw_input = sys.stdin.read() if not sys.stdin.isatty() else ""
     # 批166（dsh 桥）：宿主不设会话 env 时从 payload 吸收 session_id
-    # （归因用；垫片失败不阻断门禁主路径）；工具名规范化同理
+    # （归因用；垫片失败不阻断门禁主路径）；工具名规范化同理；
+    # 批168：tool_input 字符串物化——GLM/zai 通道 arguments 为 JSON 字符串，
+    # 不物化则命令提取落空=提交穿门（桌面 demo 铁证）
     try:
-        from host_env import absorb_session, canonicalize_tool_names
+        from host_env import absorb_session, canonicalize_tool_names, \
+            materialize_tool_input
         _pl = json.loads(raw_input) if raw_input else {}
         absorb_session(_pl)
         canonicalize_tool_names(_pl)
+        materialize_tool_input(_pl)
         raw_input = json.dumps(_pl) if _pl else raw_input
     except Exception:
         pass

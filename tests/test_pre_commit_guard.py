@@ -1919,3 +1919,34 @@ def test_boundary_include_covers_staged_file(project):
         'boundary:\n  include:\n    - "src/**"\nactual_changes: []'))
     code2, err2, _ = run_guard("git commit -m 改动二（R1）；1/1", project)
     assert code2 == 0, err2
+
+
+def test_string_tool_input_commit_blocked(project):
+    """批168（demo 穿门回归钉）：字符串 tool_input 的 git commit 必拦——
+    GLM/zai 通道 arguments 序列化为 JSON 字符串（会话 b948e95d seq229
+    铁证），不物化则门禁判"非提交"放行=越界提交穿门。"""
+    _passing_runner(project)
+    _write_manifest(project, "---\nid: R1\nstatus: in-progress\ntier: S\n"
+                             "rollback: git revert 即回滚\n"
+                             "planned_changes:\n  - id: F1\n    file: src/app.js\n"
+                             "actual_changes: []\n---\n")
+    _stage(project, "evil.txt", "x\n")
+    import json as _json
+    payload = {"tool_name": "bash",
+               "tool_input": _json.dumps(
+                   {"command": "git commit -m 改动（R1）；1/1",
+                    "description": "Commit staged"})}
+    code, err, _ = run_guard(None, project, payload=payload) \
+        if False else (None, None, None)
+    # run_guard 只收命令串——用子进程直喂门禁（与桥的真实形态一致）
+    import subprocess
+    import sys
+    import os
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(project))
+    r = subprocess.run(
+        [sys.executable, "-E",
+         os.path.join(os.path.dirname(__file__), "..", "hooks",
+                      "scripts", "pre_commit_guard.py")],
+        input=_json.dumps(payload), capture_output=True, text=True, env=env,
+        timeout=300)
+    assert r.returncode == 2 and "不在回归清单" in r.stderr

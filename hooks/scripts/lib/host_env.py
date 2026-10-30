@@ -14,6 +14,27 @@ import os
 import tempfile
 
 
+def materialize_tool_input(payload):
+    """tool_input 字符串→对象就地物化（批168：demo 抓真穿门根修）。
+
+    dsh 某些模型通道（实证 GLM/zai pi-ai）把 tool-call arguments 序列化
+    为 JSON 字符串而非对象——钩子端 tool_input 非 dict → 命令键提取落空
+    → 提交门禁判"非提交"放行=越界提交穿门（会话 b948e95d seq229 铁证，
+    2026-10-31 桌面端真实 demo）。物化失败（非法 JSON）保持原值=既有
+    语义（无命令可判的放行路径不变）。"""
+    if isinstance(payload, dict):
+        ti = payload.get("tool_input")
+        if isinstance(ti, str) and ti.strip():
+            try:
+                import json
+                obj = json.loads(ti)
+                if isinstance(obj, dict):
+                    payload["tool_input"] = obj
+            except ValueError:
+                pass
+    return payload
+
+
 def sandbox_aware_state_dir():
     """跨调用状态文件目录（批167 终版：项目亲和，免探测）。
 

@@ -80,8 +80,9 @@ def main():
 
     # 批166（dsh 桥）：工具名规范化（dsh 小写名→CC 形态，观测不漏采）
     try:
-        from host_env import canonicalize_tool_names
+        from host_env import canonicalize_tool_names, materialize_tool_input
         canonicalize_tool_names(data)
+        materialize_tool_input(data)
     except ImportError:
         pass
 

@@ -54,3 +54,21 @@ def test_absorb_zcode_env_still_wins(monkeypatch):
     _ = monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
     sid = absorb_session({"session_id": "dsh-sess"})
     assert sid == "zcode-sess"
+
+
+def test_materialize_tool_input_string_to_dict():
+    """批168（demo 穿门根修）：字符串 tool_input 就地物化——GLM/zai 通道
+    arguments 为 JSON 字符串，不物化则命令键提取落空=提交穿门。"""
+    from host_env import materialize_tool_input
+    p = {"tool_name": "bash",
+         "tool_input": '{"command":"git commit -m x","description":"d"}'}
+    materialize_tool_input(p)
+    assert isinstance(p["tool_input"], dict) and p["tool_input"]["command"].startswith("git commit")
+    # 非法 JSON/非字符串/嵌套字符串：保持原值（既有语义）
+    bad = {"tool_input": "not-json{"}
+    materialize_tool_input(bad)
+    assert bad["tool_input"] == "not-json{"
+    ok = {"tool_input": {"command": "ls"}}
+    materialize_tool_input(ok)
+    assert ok["tool_input"] == {"command": "ls"}
+    assert materialize_tool_input(None) is None

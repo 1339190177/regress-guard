@@ -209,9 +209,10 @@ def main():
     # lib 路径插入自带（_state_lock 同惯用法——main 时点尚无模块级插入）
     try:
         sys.path.insert(0, os.path.join(SCRIPT_DIR, "lib"))
-        from host_env import absorb_session, canonicalize_tool_names
+        from host_env import absorb_session, canonicalize_tool_names, materialize_tool_input
         absorb_session(data)
         canonicalize_tool_names(data)
+        materialize_tool_input(data)
     except ImportError:
         pass
 
