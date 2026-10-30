@@ -49,7 +49,10 @@ try:
     from boundary_guard import (path_matches as _bg_path_matches,  # noqa: E402
                                 parse_boundary as _bg_parse_boundary)
 except ImportError:
-    _bg_path_matches = _bg_parse_boundary = None
+    # 降级位=精确集语义（fail-safe）；None 赋值给 Callable 形参是刻意的
+    # Optional 哨兵——调用侧均有 None 短路，mypy 告警定向豁免
+    _bg_path_matches = None  # type: ignore[assignment]
+    _bg_parse_boundary = None  # type: ignore[assignment]
 
 
 def _manifest_include_pats(manifest_path):
