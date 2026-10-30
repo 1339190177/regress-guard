@@ -83,6 +83,16 @@ def generate_hooks_cc(root=None):
             m = g.get("matcher")
             if m in MATCHER_WIDEN:
                 g["matcher"] = MATCHER_WIDEN[m]
+    # 批167（dsh 100%）：PostToolUseFailure 无桥点——fail_watch 复挂到
+    # PostToolUse 自筛失败（fail_watch.main 的 tool_response 启发式）。
+    # 只搬 fail_watch（观察谁在买保险）；plan_bridge 的 ExitPlanMove 无
+    # dsh 对应（宿主无计划模式）不搬。
+    ptu = data["hooks"].setdefault("PostToolUse", [])
+    for g in data.get("hooks", {}).get("PostToolUseFailure", []):
+        for h in g.get("hooks", []):
+            if "fail_watch" in h.get("command", ""):
+                ptu.append({"matcher": g.get("matcher", ""),
+                            "hooks": [dict(h)]})
     dest = os.path.join(root, "hooks.cc.json")
     tmp = dest + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:

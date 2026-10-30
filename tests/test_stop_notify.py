@@ -3,6 +3,7 @@ import json
 import os
 import stat
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -152,7 +153,11 @@ def test_drift_new_pair_warns_once(tmp_path, monkeypatch, capsys):
     _run_main()
     err = capsys.readouterr().err
     assert "版本漂移" in err and "install.sh" in err
-    assert (tmp_path / "regress-drift-noticed.json").exists()
+    # 批167：状态目录项目亲和化——接入项目（CLAUDE_PROJECT_DIR+.regress 在）
+    # 的跨调用状态落 proj/.regress/tmp（dsh 私有 tmpfs 免疫），断言按规则取址
+    import host_env
+    assert (Path(host_env.sandbox_aware_state_dir())
+            / "regress-drift-noticed.json").exists()
     assert "版本漂移" in (tmp_path / "m1").read_text(encoding="utf-8")  # chat 落标
     _run_main()  # 同对第二轮：静默
     err2 = capsys.readouterr().err

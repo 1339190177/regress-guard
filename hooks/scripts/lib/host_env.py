@@ -11,6 +11,34 @@
 错归属比无归属糟，垫片只补缺不覆盖（已有 env=宿主明示，尊重之）。
 """
 import os
+import tempfile
+
+
+def sandbox_aware_state_dir():
+    """跨调用状态文件目录（批167 终版：项目亲和，免探测）。
+
+    e2e 活体（2026-10-30）：dsh 沙箱给每个钩子进程**私有 tmpfs /tmp**——
+    探测"成功"、写入"成功"、跨进程全丢（journal 走工作区才存活）——
+    探测法测不出这种沙箱。故改为确定性规则，不探测：
+      1. RG_STATE_DIR env（测试钉位/运维覆盖）
+      2. CLAUDE_PROJECT_DIR 在场且其 .regress 存在（=已接入治理的项目）
+         → 项目 .regress/tmp（工作区=两宿主皆可写且持久；状态随项目走
+         语义上更正确）
+      3. 否则 tempfile.gettempdir()（旧语义：未接入项目/无 env 的调用面）
+    dsh 桥按契约设 CLAUDE_PROJECT_DIR；ZCode 亦然——主战场（治理项目内）
+    两宿主统一走项目内。"""
+    override = os.environ.get("RG_STATE_DIR")
+    if override:
+        return override
+    proj = os.environ.get("CLAUDE_PROJECT_DIR")
+    if proj and os.path.isdir(os.path.join(proj, ".regress")):
+        d = os.path.join(proj, ".regress", "tmp")
+        try:
+            os.makedirs(d, exist_ok=True)
+        except OSError:
+            pass  # 写者自有 except 静默（既有语义）
+        return d
+    return tempfile.gettempdir()
 
 # dsh 工具名→CC 规范名（批166 侦察实证：dsh 注册小写 bash/read/write/edit
 # 另有 pwsh；钩子内部分支按 CC 大小写匹配——不规范化则 dsh 会话全线漏判，

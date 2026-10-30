@@ -10,10 +10,21 @@
       /tmp/regress-guard-usage-<session>.jsonl  {"ts","tool","sig"}
 """
 import sys
+
+try:
+    import sys as _sys
+    import os as _os
+    _ld = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "lib")
+    if _ld not in _sys.path:
+        _sys.path.insert(0, _ld)
+    from host_env import sandbox_aware_state_dir as _state_dir
+except ImportError:
+    import tempfile as _tf
+    def _state_dir():
+        return _tf.gettempdir()
 import os
 import json
 import re
-import tempfile
 from datetime import datetime, timedelta
 
 # 考古地层（公理三）：风险动作同时埋进项目内地层（/tmp 重启即失）
@@ -43,7 +54,7 @@ def session_id():
 
 def _state_path(kind):
     return os.path.join(
-        tempfile.gettempdir(), f"regress-guard-{kind}-{session_id()}.jsonl"
+        _state_dir(), f"regress-guard-{kind}-{session_id()}.jsonl"
     )
 
 
@@ -173,6 +184,13 @@ def main():
     if not isinstance(data, dict):
         # 批135：形态破坏不记事件（观测钩子，非阻断）——防 .get AttributeError
         sys.exit(0)
+
+    # 批167 补：会话身份同吸收（dsh 桥无 env——否则观测状态落 default 键跨会话合并）
+    try:
+        from host_env import absorb_session
+        absorb_session(data)
+    except ImportError:
+        pass
 
     # 批166（dsh 桥）：工具名规范化（dsh 小写名→CC 形态，观测不漏采）
     try:

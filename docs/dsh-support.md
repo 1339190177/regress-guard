@@ -57,6 +57,25 @@ fixture 仓（活跃清单 R1 边界=src/app.js，staged 越界文件）执行
 回写"）并原样转达、零绕过。全链：dsh bash 工具→桥 PreToolUse→
 hooks.cc.json（摊平路径）→launcher/门禁→deny→agent。复跑可再现。
 
+## 100% 冲刺（批167，v2.5.0）——两个探针实证与三处补位
+
+- **SessionStart 实证**：工作区探针捕获 payload `source:"startup"`——
+  与 self_heal 的 matcher 完全吻合（compact_notice 同词对齐）。
+  "待证"转"实证"。
+- **沙箱纪律（重大发现）**：dsh 桥经 ctx.shell 跑钩子=**会话
+  workspace-write 沙箱辖内**——写 /tmp 被拒且各写者 except 静默。推论：
+  状态文件在 /tmp 的钩子在 dsh 全部静默失效。修=host_env.
+  sandbox_aware_state_dir（/tmp 写探测→失败回退 CLAUDE_PROJECT_DIR/
+  .regress/tmp 工作区内），接线 rbe/fail_watch/risk_watch/stop_notify/
+  reflection 五写者。ZCode 无沙箱=探测恒成功零行为变化。
+- **fail_watch 补位**：dsh 无 PostToolUseFailure 桥点——hooks.cc 生成时
+  把 fail_watch 复挂到 PostToolUse，载荷带 tool_response 时自筛失败
+  （dsh 归一化契约：`[exit code: N>0]` 或 `Error:` 前缀；无该键=宿主已
+  筛的 ZCode 语义直通）。
+- **能力矩阵终态**：ZCode 100%（原生全事件面）；dsh 100%*（*唯一 N/A=
+  plan_bridge——dsh 无原生计划模式，宿主概念缺位非缺口；上游加计划
+  模式后 hooks.cc 生成器已预留复挂模式可循 fail_watch 先例扩展）。
+
 ## 如实声明（能力子集，spec §13.2 精神）
 
 **降级面**：
@@ -68,8 +87,10 @@ hooks.cc.json（摊平路径）→launcher/门禁→deny→agent。复跑可再�
   self_heal/compact_notice 不触发（缺位非误拦）。
 
 **不受降级影响的主链**：提交门禁（PreToolUse launcher）、边界守卫、
-执行阀、先读后改、风险采集（PostToolUse）、反思检查（Stop）、需求入口
-（UserPromptSubmit）——全部在桥的映射点内。
+执行阀、先读后改、风险采集（PostToolUse）、**失败信号采集（批167 起：
+PostToolUse 自筛复挂）**、反思检查（Stop）、需求入口
+（UserPromptSubmit）、自愈/压缩提醒（SessionStart，source=startup/
+compact 实证契合）——全部在桥的映射点内。
 
 **AGENTS.md 契约**：dsh-agent-instructions 原生装载（64KB 预算，dsh-base
 默认启用）——回归契约注入免改自动生效。

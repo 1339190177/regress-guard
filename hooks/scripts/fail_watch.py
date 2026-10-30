@@ -8,9 +8,20 @@
 状态: /tmp/regress-guard-fails-<session>.jsonl
 """
 import sys
+
+try:
+    import sys as _sys
+    import os as _os
+    _ld = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "lib")
+    if _ld not in _sys.path:
+        _sys.path.insert(0, _ld)
+    from host_env import sandbox_aware_state_dir as _state_dir
+except ImportError:
+    import tempfile as _tf
+    def _state_dir():
+        return _tf.gettempdir()
 import os
 import json
-import tempfile
 from datetime import datetime, timedelta
 
 # 考古地层（公理三）：失败事件同时埋进项目内 append-only 地层（/tmp 重启即失）
@@ -33,7 +44,7 @@ def session_id():
 
 
 def state_path():
-    return os.path.join(tempfile.gettempdir(), f"regress-guard-fails-{session_id()}.jsonl")
+    return os.path.join(_state_dir(), f"regress-guard-fails-{session_id()}.jsonl")
 
 
 def normalize_sig(tool, tool_input):
@@ -60,12 +71,32 @@ def main():
         # 批135：形态破坏不记事件（观测钩子，非阻断）——防 .get AttributeError
         sys.exit(0)
 
+    # 批167 补：会话身份同吸收（dsh 桥无 env——否则观测状态落 default 键跨会话合并）
+    try:
+        from host_env import absorb_session
+        absorb_session(data)
+    except ImportError:
+        pass
+
     # 批166（dsh 桥）：工具名规范化（dsh 小写名→CC 形态，观测不漏采）
     try:
         from host_env import canonicalize_tool_names
         canonicalize_tool_names(data)
     except ImportError:
         pass
+
+    # 批167（dsh 补位）：ZCode 靠宿主只在失败时调本钩（PostToolUseFailure
+    # 事件）；dsh 无此桥点，hooks.cc 生成时把本钩复挂到 PostToolUse——
+    # 载荷带 tool_response 时自筛失败（dsh 归一化契约：bash 非零=文本含
+    # [exit code: N]（N>0）；fs/工具错误=Error: 前缀）。无 tool_response
+    # 键=宿主已筛（ZCode 语义）直通。
+    resp = data.get("tool_response")
+    if isinstance(resp, str):
+        import re as _re
+        failed = bool(_re.search(r"\[exit code: [1-9]\d*\]", resp)) \
+            or resp.lstrip().startswith("Error:")
+        if not failed:
+            sys.exit(0)
 
     tool = data.get("tool_name", "?")
     tool_input = data.get("tool_input", data)

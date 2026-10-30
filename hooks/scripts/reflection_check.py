@@ -7,6 +7,18 @@ ZCode 的 Stop 事件在 AI 生成完回复准备结束时触发，
 通过 additionalContext 注入反思清单，让 AI 自查后再输出最终回复。
 """
 import sys
+
+try:
+    import sys as _sys
+    import os as _os
+    _ld = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "lib")
+    if _ld not in _sys.path:
+        _sys.path.insert(0, _ld)
+    from host_env import sandbox_aware_state_dir as _state_dir
+except ImportError:
+    import tempfile as _tf
+    def _state_dir():
+        return _tf.gettempdir()
 import os
 import json
 import glob
@@ -558,8 +570,7 @@ def check_context(project_dir):
 
 
 def _get_read_counter_path():
-    import tempfile
-    return os.path.join(tempfile.gettempdir(), "regress-guard-read-counter.json")
+    return os.path.join(_state_dir(), "regress-guard-read-counter.json")
 
 
 def main():

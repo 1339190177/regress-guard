@@ -37,6 +37,13 @@ if _LIB_DIR not in sys.path:
     sys.path.insert(0, _LIB_DIR)
 
 from notify import notify  # noqa: E402
+try:
+    from host_env import sandbox_aware_state_dir as _state_dir  # noqa: E402
+except ImportError:
+    import tempfile as _tf2
+
+    def _state_dir():
+        return _tf2.gettempdir()
 
 AUTONOMY_RE = re.compile(r"自决策|自决|你决定|自主决|自动做|直接做|放手做")
 COOLDOWN_S = 90
@@ -126,8 +133,7 @@ def _drift_notice_once():
             return
         installed, source_v = pair
         import json as _json
-        import tempfile
-        state = os.path.join(tempfile.gettempdir(), "regress-drift-noticed.json")
+        state = os.path.join(_state_dir(), "regress-drift-noticed.json")
         key = f"{installed}->{source_v}"
         try:
             with open(state, encoding="utf-8") as f:

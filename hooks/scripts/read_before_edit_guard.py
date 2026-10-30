@@ -23,10 +23,21 @@ PreToolUse(Edit/Write) → 检查本轮 Read 次数是否足够
 退出码：0=放行，2=阻断
 """
 import sys
+
+try:
+    import sys as _sys
+    import os as _os
+    _ld = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "lib")
+    if _ld not in _sys.path:
+        _sys.path.insert(0, _ld)
+    from host_env import sandbox_aware_state_dir as _state_dir
+except ImportError:
+    import tempfile as _tf
+    def _state_dir():
+        return _tf.gettempdir()
 import os
 import json
 import time
-import tempfile
 
 DEFAULT_RATIO = 3
 from datetime import datetime
@@ -111,7 +122,7 @@ def get_state_path():
            or os.environ.get("ZCODE_SESSION_ID") or "default")
     import hashlib as _h
     key = _h.md5(sid.encode()).hexdigest()[:8]
-    return os.path.join(tempfile.gettempdir(),
+    return os.path.join(_state_dir(),
                         f"regress-guard-read-counter-{key}.json")
 
 
