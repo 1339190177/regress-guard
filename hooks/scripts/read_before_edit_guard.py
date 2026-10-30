@@ -192,6 +192,18 @@ def main():
     if not isinstance(data, dict):
         _fail_closed("载荷不是 JSON 对象（非 dict 形态）")
 
+    # 批166（dsh 桥）：宿主不设会话 env 时从 payload 吸收 session_id
+    # （无此垫片则 dsh 全会话落 default 键=跨会话串味，P2#17 病理）；
+    # dsh 小写工具名规范化为 CC 形态（内部分支按 CC 大小写匹配）。
+    # lib 路径插入自带（_state_lock 同惯用法——main 时点尚无模块级插入）
+    try:
+        sys.path.insert(0, os.path.join(SCRIPT_DIR, "lib"))
+        from host_env import absorb_session, canonicalize_tool_names
+        absorb_session(data)
+        canonicalize_tool_names(data)
+    except ImportError:
+        pass
+
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", data)
     if not isinstance(tool_input, dict):

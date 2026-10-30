@@ -61,7 +61,8 @@ REQUIRED_LIB_FILES = [
     "notify.py", "wecom_notify.py", "facts.py",
     "pending.py", "session_relay.py", "sentinel.py", "scan_check.py",
     "secret_scan.py", "test_cache.py", "veto_search.py", "advisor_token.py",
-    "agent_hooks_adapter.py"
+    "agent_hooks_adapter.py",
+    "host_env.py",  # 批166：宿主方言垫片（dsh 桥 session/工具名，部署对账卫兵点名入册）
 ]
 REQUIRED_COMMANDS = [
     "regress:init", "regress:plan", "regress:track", "regress:verify",

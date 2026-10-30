@@ -174,6 +174,13 @@ def main():
         # 批135：形态破坏不记事件（观测钩子，非阻断）——防 .get AttributeError
         sys.exit(0)
 
+    # 批166（dsh 桥）：工具名规范化（dsh 小写名→CC 形态，观测不漏采）
+    try:
+        from host_env import canonicalize_tool_names
+        canonicalize_tool_names(data)
+    except ImportError:
+        pass
+
     tool = data.get("tool_name", "?")
     tool_input = data.get("tool_input", data)
 

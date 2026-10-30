@@ -644,6 +644,16 @@ def _blast_radius_evaluate(config, project_dir, staged):
 def main():
     # ─── 1. 是否 git commit？──────────────────────────
     raw_input = sys.stdin.read() if not sys.stdin.isatty() else ""
+    # 批166（dsh 桥）：宿主不设会话 env 时从 payload 吸收 session_id
+    # （归因用；垫片失败不阻断门禁主路径）；工具名规范化同理
+    try:
+        from host_env import absorb_session, canonicalize_tool_names
+        _pl = json.loads(raw_input) if raw_input else {}
+        absorb_session(_pl)
+        canonicalize_tool_names(_pl)
+        raw_input = json.dumps(_pl) if _pl else raw_input
+    except Exception:
+        pass
     if not is_git_commit(raw_input):
         emit_pass()
 

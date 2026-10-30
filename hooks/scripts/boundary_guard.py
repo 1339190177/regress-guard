@@ -393,6 +393,14 @@ def main():
     if not isinstance(data, dict):
         _fail_closed("载荷不是 JSON 对象（非 dict 形态）")
 
+    # 批166（dsh 桥）：工具名规范化（内部分支按 CC 大小写匹配——dsh 小写
+    # 名不规范化则全线漏判=假阴性放行）
+    try:
+        from host_env import canonicalize_tool_names
+        canonicalize_tool_names(data)
+    except ImportError:
+        pass
+
     tool = data.get("tool_name", "")
     if tool not in ("Edit", "Write", "ApplyPatch", "Bash"):
         sys.exit(0)
