@@ -326,6 +326,9 @@ def do_post(project_dir, data, sid):
     if native:
         path, fm, _ = native
         if _fm_get(fm, "plan_hash") == sha:  # 幂等键命中：重复事件 no-op
+            # v1.108 §17：no-op 分支顺带对账化石——清单写成功而 journal 写崩的
+            # 中间态在此自愈（补写幂等，双跑仍一条）
+            _repair_fossils(project_dir, _fm_get(fm, "id"), sha)
             return
         paths = extract_paths(plan)
         mid = _fm_get(fm, "id")
@@ -375,6 +378,38 @@ def do_post(project_dir, data, sid):
         journal_append("plan_approved", start_dir=project_dir, manifest_id=mid,
                        via="native-plan-bridge", plan_hash=sha)
     _receipt(mid, len(paths))
+
+
+def _repair_fossils(project_dir, mid, sha):
+    """幂等重入自愈（v1.108 批160，PHILOSOPHY §17 化石面）：清单写成功而
+    journal 写崩过的中间态，重入时按幂等键对账补写缺失化石——崩溃窗口在
+    下一次重入闭合（病灶：桥的 journal 写无守卫，plan_approved 曾会永久丢失）。
+
+    判定：无 plan_approved（创建即崩）→ 补 approved；approved 在而其
+    plan_hash ≠ 当前 sha（当前形态来自修订重写）且无对应 plan_refined →
+    补 refined。查账失败宁可不补（守卫是增强，宁缺勿重）。"""
+    if not journal_append:
+        return
+    try:
+        from journal import load_journal
+        events = load_journal(project_dir)
+    except Exception:
+        return
+    approved = next((e for e in events
+                     if e.get("kind") == "plan_approved"
+                     and e.get("manifest_id") == mid), None)
+    if approved is None:
+        journal_append("plan_approved", start_dir=project_dir, manifest_id=mid,
+                       via="native-plan-bridge", plan_hash=sha,
+                       note="repair: 幂等重入补写（原写崩溃窗口，v1.108）")
+        return
+    if approved.get("plan_hash") != sha and not any(
+            e.get("kind") == "plan_refined"
+            and e.get("manifest_id") == mid
+            and e.get("plan_hash") == sha for e in events):
+        journal_append("plan_refined", start_dir=project_dir, manifest_id=mid,
+                       via="native-plan-bridge", plan_hash=sha,
+                       note="repair: 幂等重入补写（原写崩溃窗口，v1.108）")
 
 
 def _fossil(project_dir, plan, sid, kind="design_rejected"):

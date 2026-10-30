@@ -38,8 +38,9 @@ provisional:            # 临行（v1.18 伪全自动）：预授权任务经顾
   advisor: ""            # 预审一句话结论——顾问有一票否决权，没有一票批准权
 planned_changes:
   - id: F1
-    # file 用「提交所在仓的相对路径」（嵌套仓拓扑下=子仓相对，如 hooks/scripts/x.py
-    # 而非 regress-guard/hooks/scripts/x.py——清单声明空间与 F3 匹配以提交仓为基准）
+    # file 用「提交所在仓的相对路径」（嵌套仓拓扑下=子仓相对，如 hooks/scripts/xxx.py
+    # 而非 regress-guard/hooks/scripts/xxx.py——清单声明空间与 F3 匹配以提交仓为基准；
+    # 占位符用 xxx 形态：check_docs 对 xxx/example 豁免路径存在性检查）
     file: "{{FILE_PATH}}"
     type: method-logic
     reason: "{{REASON}}"

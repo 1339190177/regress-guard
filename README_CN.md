@@ -2,7 +2,7 @@
 
 > AI 辅助开发的测试回归卡点 + 反脆弱控制体（四公理架构，版本见 plugin.json）
 >
-> **先读思想**：[docs/PHILOSOPHY.md](docs/PHILOSOPHY.md)——十六条设计哲学与它们背后的真实教训。功能会过时，思想不会。
+> **先读思想**：[docs/PHILOSOPHY.md](docs/PHILOSOPHY.md)——设计哲学与它们背后的真实教训（条数由机器派生，不手写）。功能会过时，思想不会。
 
 ## 安装（三轨）
 

@@ -333,3 +333,49 @@ def test_bridge_tongtu004_shape_dry(tmp_path):
     _, proj = _gen(tmp_path, plan)
     body = _first_manifest(proj)
     assert "tier: M" in body and "## 验收标准" in body
+
+
+# ─── v1.108（批160 §17）：幂等重入化石守卫 ─────────────────
+
+def _strip_approved_fossil(proj):
+    """模拟中间态：清单写成功而 journal 写崩（plan_approved 化石丢失）。"""
+    import json as _j
+    p = proj / ".regress" / "journal" / "events.jsonl"
+    if not p.exists():
+        return
+    kept = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            try:
+                if _j.loads(line).get("kind") == "plan_approved":
+                    continue
+            except Exception:
+                pass
+        kept.append(line)
+    p.write_text("\n".join(kept) + "\n", encoding="utf-8")
+
+
+def test_post_idempotent_reentry_repairs_missing_fossil(tmp_path, monkeypatch):
+    """中间态自愈（§17 化石面）：清单在场+plan_hash 同+化石缺失 →
+    重入补写一条带 repair 注记的 plan_approved。"""
+    proj = _proj(tmp_path)
+    _env(monkeypatch, proj)
+    pb = _load()
+    _run(pb, PAYLOAD1)
+    _strip_approved_fossil(proj)
+    assert "plan_approved" not in _journal(proj)   # 中间态确已就位
+    _run(pb, PAYLOAD1)                              # 幂等重入
+    ev = _journal(proj)
+    assert ev.count("plan_approved") == 1 and "repair" in ev
+
+
+def test_post_reentry_repair_is_idempotent(tmp_path, monkeypatch):
+    """补写自身幂等：重入补写后再次重入不重复埋化石（双跑仍一条）。"""
+    proj = _proj(tmp_path)
+    _env(monkeypatch, proj)
+    pb = _load()
+    _run(pb, PAYLOAD1)
+    _strip_approved_fossil(proj)
+    _run(pb, PAYLOAD1)
+    _run(pb, PAYLOAD1)                              # 再重入
+    assert _journal(proj).count("plan_approved") == 1

@@ -98,3 +98,37 @@ def test_workflow_write_discipline():
     t = open(os.path.join(ROOT, "docs", "WORKFLOW.md"), encoding="utf-8").read()
     assert "写入防丢纪律" in t, "WORKFLOW 缺防丢纪律节"
     assert "独立读回验证" in t
+
+
+# ─── 批160（v1.108 §17/证据环境梯级）：三把在场/派生锁 ──────
+
+def test_claim_discipline_has_evidence_rungs():
+    """批160：证据环境梯级（R0–R3）节在场锁——纪律位，内容强制等升格
+    三条件（形状连两批稳定后才议，claim-discipline 文末自己的律）。"""
+    t = open(os.path.join(ROOT, "docs", "claim-discipline.md"),
+             encoding="utf-8").read()
+    assert "证据环境梯级" in t, "claim-discipline 缺环境梯级节"
+    for rung in ("R0", "R1", "R2", "R3"):
+        assert rung in t, f"梯级 {rung} 锚点丢失"
+    assert "跨梯级外推" in t, "梯级外推禁令丢失"
+
+
+def test_philosophy_section_numbers_consecutive():
+    """批160：§ 编号连续性锁（派生优于断举——PHILOSOPHY 头部手写计数
+    「十三条」是活漂移标本：写下时就与 §0–§16 不符）。尾部追加零破坏；
+    跳号/重号即红；§17 幂等律与出生四问同锁。"""
+    import re
+    t = open(os.path.join(ROOT, "docs", "PHILOSOPHY.md"), encoding="utf-8").read()
+    nums = [int(m.group(1)) for m in re.finditer(r"^## (\d+)\.", t, re.M)]
+    assert nums == list(range(0, len(nums))), f"§ 编号不连续: {nums}"
+    assert "幂等律" in t, "PHILOSOPHY §17 副作用幂等律丢失"
+    assert "出生四问" in t and "副作用重试路径" in t, "出生四问措辞丢失"
+
+
+def test_readme_no_handwritten_principle_count():
+    """批160：README 双语禁手写 principles 计数——计数由上一条连续性锁
+    派生，手写数字必然漂移（sixteen/十六条 与「十三条」标本同病）。"""
+    en = open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()
+    cn = open(os.path.join(ROOT, "README_CN.md"), encoding="utf-8").read()
+    assert "sixteen principles" not in en, "README 手写计数复活"
+    assert "十六条" not in cn, "README_CN 手写计数复活"

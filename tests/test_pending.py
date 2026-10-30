@@ -239,6 +239,59 @@ def test_blocked_different_cause_or_ref_pushes(tmp_path, monkeypatch):
     assert len(pd._load()[0]) == 3 and pd.count_merged() == 0
 
 
+# ─── v1.108（批160 §17）：显式合并键——固化候选推送去重 ──────
+
+def test_coalesce_key_plan_approval_same_key_folds(tmp_path, monkeypatch):
+    """同 coalesce_key 的决策事件窗口内折叠：不重发、不新增待决（病灶：
+    rules_ledger health 每跑一次就新增一条待决+推送）。oracle 盯台账
+    （不新增待决号）而非仅通道——台账与通道是两个副作用面。"""
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "p.jsonl"))
+    nt = _load(NOTIFY, "nt-ck1")
+    marker = tmp_path / "m"
+    proj = _mk_proj(tmp_path, [_stub_channel(tmp_path, marker) + " {title} {body}"])
+    _trusted(nt, tmp_path, proj)
+    kw = dict(source_id="rules-ledger-candidates", coalesce_key="abc12345")
+    assert nt.notify(str(proj), "plan_approval", "🦴 固化候选 ×2", "x", **kw) == 1
+    assert nt.notify(str(proj), "plan_approval", "🦴 固化候选 ×2", "x", **kw) == 0
+    pd = _load(PENDING, "pd-ck1")
+    assert len(pd._load()[0]) == 1, "同键第二次新增了待决（幂等键失效）"
+    assert pd.count_merged() == 1
+    assert marker.read_text(encoding="utf-8").count("〔待决#") == 1
+
+
+def test_coalesce_key_different_key_new_entry(tmp_path, monkeypatch):
+    """候选集合变化（键变）=新决策点：照常新增待决（同 blocked 指纹修正
+    语义——不同集合不能互相折叠丢信息）。"""
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "p.jsonl"))
+    nt = _load(NOTIFY, "nt-ck2")
+    marker = tmp_path / "m"
+    proj = _mk_proj(tmp_path, [_stub_channel(tmp_path, marker) + " {title}"])
+    _trusted(nt, tmp_path, proj)
+    kw = dict(source_id="rules-ledger-candidates")
+    nt.notify(str(proj), "plan_approval", "🦴 固化候选 ×1", "x",
+              coalesce_key="aaaaaa", **kw)
+    nt.notify(str(proj), "plan_approval", "🦴 固化候选 ×2", "x",
+              coalesce_key="bbbbbb", **kw)  # 集合变大=新决策点
+    pd = _load(PENDING, "pd-ck2")
+    assert len(pd._load()[0]) == 2 and pd.count_merged() == 0
+
+
+def test_coalesce_key_reopens_after_resolve(tmp_path, monkeypatch):
+    """人已裁决后同键再现=新待决（newest_open 语义）——去重不吞第二次
+    决策；这也是 resolve→重开闭环在显式合并键上的等价性。"""
+    monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "p.jsonl"))
+    nt = _load(NOTIFY, "nt-ck3")
+    marker = tmp_path / "m"
+    proj = _mk_proj(tmp_path, [_stub_channel(tmp_path, marker) + " {title}"])
+    _trusted(nt, tmp_path, proj)
+    kw = dict(source_id="rules-ledger-candidates", coalesce_key="abc12345")
+    assert nt.notify(str(proj), "plan_approval", "🦴 固化候选 ×2", "x", **kw) == 1
+    pd = _load(PENDING, "pd-ck3")
+    assert pd.resolve(1, "useful") == 1
+    assert nt.notify(str(proj), "plan_approval", "🦴 固化候选 ×2", "x", **kw) == 1
+    assert len(pd._load()[0]) == 2, "resolve 后同键再现未开新待决"
+
+
 def test_blocked_repush_after_resolve_or_expiry(tmp_path, monkeypatch):
     """四象限③④：裁决回流=窗口重置；锚点超窗=重推（「该推没推」对称病）。"""
     import datetime

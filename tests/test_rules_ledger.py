@@ -497,3 +497,51 @@ def test_fires_counts_prompt_side_events(tmp_path):
         {"event": "note", "note": "rule_recall_fired", "sig": "规律甲"}])
     cards = g.case(proj, top=1)
     assert cards[0]["fires"] == 1
+
+
+# ─── v1.108（批160 §17）：固化候选推送幂等键 + 账本写锁 ──────
+
+def _rl():
+    import importlib.util as ilu
+    spec = ilu.spec_from_file_location("rl160a", LEDGER)
+    g = ilu.module_from_spec(spec)
+    spec.loader.exec_module(g)
+    return g
+
+
+def test_candidates_fp_stable_across_hits(tmp_path):
+    """§17 幂等键：候选集合指纹只认 sig 集合——hits 日增不改键（同集合=
+    同决策点，日频 health 不重推不重记账），sig 增减=新键。"""
+    g = _rl()
+    proj = _mk(tmp_path)
+    for _ in range(3):
+        g.record(str(proj), "规则甲：先读后改")
+    fp1 = g._candidates_fp(g.health(str(proj)))
+    g.record(str(proj), "规则甲：先读后改")     # hits 3→4（日频重跑形态）
+    fp2 = g._candidates_fp(g.health(str(proj)))
+    assert fp1 == fp2 and len(fp1) == 8, "hits 增长改了键（日频会重推）"
+    for _ in range(3):
+        g.record(str(proj), "规则乙：边界外编辑")
+    fp3 = g._candidates_fp(g.health(str(proj)))
+    assert fp3 != fp1, "集合变化未产生新键（新决策点被折叠）"
+
+
+def test_record_concurrent_both_entries_survive(tmp_path):
+    """§17 写盘面：两进程并发 record 不同 sig → 两条都在（_save 整文件
+    重写读改写丢账洞，v1.108 file_lock 临界区的契约锁）。"""
+    proj = _mk(tmp_path)
+    script = (
+        "import sys; sys.path.insert(0, %r); "
+        "from rules_ledger import record; "
+        "record(%r, sys.argv[1])"
+        % (LIB, str(proj)))
+    procs = [subprocess.Popen(
+        [sys.executable, "-c", script, sig],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        for sig in ("规则甲：并发一", "规则乙：并发二")]
+    for p in procs:
+        assert p.wait(timeout=30) == 0, p.stderr.read().decode()
+    data = json.load(open(os.path.join(str(proj), ".regress",
+                                       "rules-ledger.json"),
+                          encoding="utf-8"))
+    assert len([k for k in data if k != "_superseded"]) == 2, "并发 record 丢账"

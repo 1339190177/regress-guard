@@ -4,8 +4,9 @@
 > re-runs your tests itself, blocks edits outside the declared change-scope, and
 > keeps human-only-calibrated telemetry on every interception.
 >
-> Design philosophy first: [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md) (sixteen
-> principles and the real incidents behind them). Features age, principles don't.
+> Design philosophy first: [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md) (the design
+> principles and the real incidents behind them — count derived, never
+> hand-written). Features age, principles don't.
 > Full workflow: [docs/WORKFLOW.md](docs/WORKFLOW.md) · 中文文档：[README_CN.md](README_CN.md)
 
 ## Why
@@ -125,7 +126,7 @@ MIT. Third-party: none at runtime (stdlib only).
 
 **实况（由 gen_reference.py 生成，勿手改本区）**
 
-- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：824 个
+- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：835 个
 
 | 命令 | 说明 |
 |---|---|

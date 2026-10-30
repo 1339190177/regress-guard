@@ -160,17 +160,33 @@ def record(project_dir, regress_dir, result, scope=None):
     path = os.path.join(regress_dir, _CACHE_FILE)
     try:
         os.makedirs(regress_dir, exist_ok=True)
-        lines = []
-        if os.path.exists(path):
-            with open(path, encoding="utf-8") as f:
-                lines = [l for l in f.read().splitlines() if l.strip()]
-        lines.append(json.dumps(entry, ensure_ascii=False))
-        cap = _cfg(project_dir).get("max_entries") or _MAX_ENTRIES
-        lines = lines[-int(cap):]
-        tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines) + "\n")
-        os.replace(tmp, path)
+
+        def _write():
+            lines = []
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as f:
+                    lines = [l for l in f.read().splitlines() if l.strip()]
+            lines.append(json.dumps(entry, ensure_ascii=False))
+            cap = _cfg(project_dir).get("max_entries") or _MAX_ENTRIES
+            lines = lines[-int(cap):]
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+            os.replace(tmp, path)
+
+        # v1.108（批160 §17）：读改写临界区加锁——两门禁并发落账同树时
+        # 互相覆盖丢一条（正确性洞，非优化位）；锁文件 .test-cache.jsonl.lock
+        # 在 .regress/ 内（已排除出树键，不破坏命中）。filelock 缺席平台
+        # 降级无锁原子写（v1.95.1 语义：锁是增强不是依赖）。
+        try:
+            from filelock import file_lock
+        except ImportError:
+            file_lock = None
+        if file_lock is not None:
+            with file_lock(path):
+                _write()
+        else:
+            _write()
         return True
     except Exception:
         return False

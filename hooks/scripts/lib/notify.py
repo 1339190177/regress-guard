@@ -194,8 +194,13 @@ def _load_fpr():
 def _save_fpr(side):
     try:
         os.makedirs(os.path.dirname(_TRUST_FPR_PATH), exist_ok=True)
-        with open(_TRUST_FPR_PATH, "w", encoding="utf-8") as f:
+        # v1.108（批160 §17）：tmp+os.replace 原子替换——json.dump 直接写崩在
+        # 半途=边车撕裂，下轮 _load_fpr 整体丢指纹触发误重钉；原子性至少保证
+        # 旧指纹完整可见。last-writer-wins 语义保留（边车是增强不是账本）。
+        tmp = _TRUST_FPR_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(side, f, ensure_ascii=False, indent=1, sort_keys=True)
+        os.replace(tmp, _TRUST_FPR_PATH)
     except Exception:
         pass  # 边车是增强：写不进=下次重判，不阻断通知
 
@@ -290,7 +295,7 @@ def load_conf(project_dir):
     return merged
 
 
-def notify(project_dir, event, title, body="", source_id=""):
+def notify(project_dir, event, title, body="", source_id="", coalesce_key=""):
     """发通知（best-effort）。返回实际执行的通道数。
 
     格式统一在层内注入（v1.31.2，用户令"应含项目名/任务名/时间"）：
@@ -298,6 +303,9 @@ def notify(project_dir, event, title, body="", source_id=""):
     调用方只写任务名——五个事件的推送点分散，约定放调用方必然漏。
     source_id（P0-3 回流接线）：清单 id——入待决台账的 ref 字段，
     plan_approve 批准/取消时按它精确自动 resolve。
+    coalesce_key（v1.108 批160，§17 幂等律）：决策事件的显式合并键——
+    非 blocked 的决策事件声明「同键=同决策点」，30 分钟窗内同键未决折叠
+    不重发不重记账（先例：blocked 的原因指纹）。不传则保持原行为不合并。
     """
     cfg = load_conf(project_dir)
     if cfg.get("enabled", True) is False:
@@ -324,13 +332,19 @@ def notify(project_dir, event, title, body="", source_id=""):
         # v1.38 blocked 合并（降噪，顾问指纹修正）：同「项目+ref+原因指纹」未决
         # 且窗口内 → 折叠（不重发不重记账不刷新窗口——持续失败最多每 30 分钟
         # 重推一次；首推即使通道失败也是锚点：台账记决策不记送达）。
+        # v1.108（批160 §17 幂等律）：合并键显式化——blocked 沿用原因指纹，
+        # 其余决策事件由调用方传 coalesce_key 声明决策点身份（固化候选推送的
+        # 候选集合指纹）；不传键的决策事件保持原行为（不合并）。
         # 已知边界：窗口内提交成功后同因再拦仍被折叠（首推已告知，最多延迟
         # 半小时重提）；查账异常则照旧发送（合并是增强不是依赖）。
         fp = ""
         if event == "blocked":
-            import datetime as _dt
             import hashlib as _hl
             fp = _hl.sha1(body.encode("utf-8", "ignore")).hexdigest()[:8]
+        elif coalesce_key:
+            fp = str(coalesce_key)[:16]
+        if fp:
+            import datetime as _dt
             try:
                 from pending import merge_note, newest_open
                 prev = newest_open(pname, source_id, fp)
@@ -340,7 +354,7 @@ def notify(project_dir, event, title, body="", source_id=""):
                            ).total_seconds()
                     if age < BLOCKED_COALESCE_S:
                         merge_note(prev["id"])
-                        print(f"notify: blocked 推送合并（同键 "
+                        print(f"notify: 推送合并（同键 "
                               f"{int(age // 60)} 分钟内已推，待决#{prev['id']}）",
                               file=sys.stderr)
                         return 0

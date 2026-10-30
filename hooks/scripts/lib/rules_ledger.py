@@ -52,6 +52,22 @@ def load(project_dir):
         return {}
 
 
+def _ledger_lock(project_dir):
+    """读改写临界区（v1.108 批160 §17）：锁覆盖 load→mutate→_save 全程——
+    只锁 _save 锁不住「两个进程都读旧账、各写各的」丢更新（并发测试实测
+    逮住）。filelock 缺席平台降级无锁（v1.95.1 语义：锁是增强不是依赖）。
+    makedirs 前置：裸项目首跑 record 时 .regress/ 尚不存在，锁文件 open
+    会 FileNotFoundError（旧 _save 的 makedirs 在锁后，时序倒了）。"""
+    try:
+        from filelock import file_lock
+        path = ledger_path(project_dir)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        return file_lock(path)
+    except ImportError:
+        from contextlib import nullcontext
+        return nullcontext()
+
+
 def _save(project_dir, data):
     os.makedirs(os.path.dirname(ledger_path(project_dir)), exist_ok=True)
     with open(ledger_path(project_dir), "w", encoding="utf-8") as f:
@@ -68,31 +84,32 @@ def record(project_dir, sig, occurrences=0):
     账本膨胀的主路径（实测：真实项目 3 周 18 节）。提示 print-only——
     自动合并的错误比膨胀更贵，人看一眼再决定 supersede。
     """
-    data = load(project_dir)
-    key = hashlib.sha1(sig.encode("utf-8")).hexdigest()[:12]
-    today = date.today().isoformat()
-    entry = data.get(key)
-    if entry is None:
-        # 批150：新录默认 shadow——知识先影子服役攒证据，晋升是人裁（材料包 A
-        # 病理根治：度量自动、人只守晋升）
-        data[key] = {"sig": sig, "captured_at": today, "last_hit": today,
-                     "hits": 1, "occurrences": occurrences,
-                     "lifecycle": "shadow", "shadow_since": today}
-        action = "新沉淀（shadow）"
-    else:
-        entry["sig"] = sig
-        entry["hits"] = int(entry.get("hits", 1)) + 1
-        entry["last_hit"] = today
-        entry["occurrences"] = max(int(entry.get("occurrences", 0)), occurrences)
-        action = f"命中（第 {entry['hits']} 次）"
-        if entry.get("lifecycle") == "retired":
-            # 再检出=生命证据：饿死误杀的复活通道（回 shadow 重新攒证据）
-            entry["lifecycle"] = "shadow"
-            entry["shadow_since"] = today
-            entry.pop("retire_reason", None)
-            action += "（retired 复活→shadow）"
-    _save(project_dir, data)
-    print(f"📒 {action}: 「{sig[:60]}」 occurrences={data[key]['occurrences']}")
+    with _ledger_lock(project_dir):  # §17：读改写全程（含近重复自检的读）
+        data = load(project_dir)
+        key = hashlib.sha1(sig.encode("utf-8")).hexdigest()[:12]
+        today = date.today().isoformat()
+        entry = data.get(key)
+        if entry is None:
+            # 批150：新录默认 shadow——知识先影子服役攒证据，晋升是人裁（材料包 A
+            # 病理根治：度量自动、人只守晋升）
+            data[key] = {"sig": sig, "captured_at": today, "last_hit": today,
+                         "hits": 1, "occurrences": occurrences,
+                         "lifecycle": "shadow", "shadow_since": today}
+            action = "新沉淀（shadow）"
+        else:
+            entry["sig"] = sig
+            entry["hits"] = int(entry.get("hits", 1)) + 1
+            entry["last_hit"] = today
+            entry["occurrences"] = max(int(entry.get("occurrences", 0)), occurrences)
+            action = f"命中（第 {entry['hits']} 次）"
+            if entry.get("lifecycle") == "retired":
+                # 再检出=生命证据：饿死误杀的复活通道（回 shadow 重新攒证据）
+                entry["lifecycle"] = "shadow"
+                entry["shadow_since"] = today
+                entry.pop("retire_reason", None)
+                action += "（retired 复活→shadow）"
+        _save(project_dir, data)
+        print(f"📒 {action}: 「{sig[:60]}」 occurrences={data[key]['occurrences']}")
     if action.startswith("新沉淀"):
         try:
             near = [r for r in match(project_dir, sig, top=2, min_shared=NEAR_DUP_MIN)
@@ -133,16 +150,17 @@ def supersede(project_dir, old_sig, new_sig):
     旧规律过气是**预期**不是病——被取代条目从降级候选摘出、health 单列。
     回滚信号判据（影子，账本有货前不启用）：新条目衰变 ≥2 周期 且 旧条目
     曾稳定 ≥2 周期 且 总命中下降，才提示回滚（顾问三条件防早停误回滚）。"""
-    data = load(project_dir)
-    ok = hashlib.sha1(old_sig.encode("utf-8")).hexdigest()[:12]
-    nk = hashlib.sha1(new_sig.encode("utf-8")).hexdigest()[:12]
-    sup = data.get("_superseded")
-    if not isinstance(sup, dict):
-        sup = {}
-    sup[ok] = {"by": nk, "ts": date.today().isoformat(),
-               "old_sig": old_sig[:60]}
-    data["_superseded"] = sup
-    _save(project_dir, data)
+    with _ledger_lock(project_dir):  # §17：读改写全程
+        data = load(project_dir)
+        ok = hashlib.sha1(old_sig.encode("utf-8")).hexdigest()[:12]
+        nk = hashlib.sha1(new_sig.encode("utf-8")).hexdigest()[:12]
+        sup = data.get("_superseded")
+        if not isinstance(sup, dict):
+            sup = {}
+        sup[ok] = {"by": nk, "ts": date.today().isoformat(),
+                   "old_sig": old_sig[:60]}
+        data["_superseded"] = sup
+        _save(project_dir, data)
     print(f"🔗 已链接：旧「{old_sig[:40]}」→ 新「{new_sig[:40]}」")
     return True
 
@@ -264,6 +282,14 @@ def health(project_dir, decay_days=DEFAULT_DECAY_DAYS, promote_hits=PROMOTE_HITS
             "shadow": shadow_q, "starved": starved}
 
 
+def _candidates_fp(res):
+    """固化候选集合指纹（v1.108 批160，PHILOSOPHY §17 幂等键）：
+    sig 排序后哈希——集合不变则键不变（hits 增长不改键，日频 health 重跑
+    不重推不重记账），sig 增减=新决策点新开待决。"""
+    sigs = sorted(str(e.get("sig", "")) for e in (res or {}).get("promotable", []))
+    return hashlib.sha1("|".join(sigs).encode("utf-8")).hexdigest()[:8]
+
+
 def case(project_dir, top=5):
     """批150：shadow 条目晋升证据卡——度量自动，人只守晋升（材料包 A 病理根治）。
 
@@ -322,52 +348,54 @@ def sweep(project_dir):
     curated 永不自动退役（人裁过的知识只有人能退）。
     """
     ttl = _shadow_ttl_days(project_dir)
-    data = load(project_dir)
-    today = date.today().isoformat()
-    retired = 0
-    for k, e in data.items():
-        if str(k).startswith("_") or not isinstance(e, dict):
-            continue
-        if e.get("lifecycle") != "shadow":
-            continue
-        if _days_since(e.get("captured_at", "")) > ttl \
-                and int(e.get("hits", 0)) < 2:
-            e["lifecycle"] = "retired"
-            e["retired_at"] = today
-            e["retire_reason"] = "starved"
-            retired += 1
-            print(f"🍂 已退役：「{str(e.get('sig'))[:60]}」"
-                  f"（超 TTL {ttl} 天且 hits<2——留档，promote 可复活）")
-    if retired:
-        _save(project_dir, data)
-    else:
-        print(f"（零饿死条目——shadow 队列健康或未超 TTL {ttl} 天）")
-    return retired
+    with _ledger_lock(project_dir):  # §17：读改写全程
+        data = load(project_dir)
+        today = date.today().isoformat()
+        retired = 0
+        for k, e in data.items():
+            if str(k).startswith("_") or not isinstance(e, dict):
+                continue
+            if e.get("lifecycle") != "shadow":
+                continue
+            if _days_since(e.get("captured_at", "")) > ttl \
+                    and int(e.get("hits", 0)) < 2:
+                e["lifecycle"] = "retired"
+                e["retired_at"] = today
+                e["retire_reason"] = "starved"
+                retired += 1
+                print(f"🍂 已退役：「{str(e.get('sig'))[:60]}」"
+                      f"（超 TTL {ttl} 天且 hits<2——留档，promote 可复活）")
+        if retired:
+            _save(project_dir, data)
+        else:
+            print(f"（零饿死条目——shadow 队列健康或未超 TTL {ttl} 天）")
+        return retired
 
 
 def promote(project_dir, sig):
     """批150：人裁晋升盖章（shadow|retired → curated）。evidence 自动捕获。"""
-    data = load(project_dir)
-    key = hashlib.sha1(sig.encode("utf-8")).hexdigest()[:12]
-    e = data.get(key)
-    if not (isinstance(e, dict) and e.get("sig")):
-        cands = [x for x in data.values() if isinstance(x, dict)
-                 and str(x.get("sig", "")).startswith(sig)]
-        if len(cands) == 1:
-            e = cands[0]
-        else:
-            print(f"promote: 未找到条目「{sig[:40]}」（前缀歧义或不存在）",
-                  file=sys.stderr)
-            return False
-    today = date.today().isoformat()
-    age = _days_since(e.get("captured_at", ""))
-    e["lifecycle"] = "curated"
-    e["promoted_at"] = today
-    e["evidence"] = (f"hits={e.get('hits')} occ={e.get('occurrences')}"
-                     f" 服役{age}天 @{today}")
-    _save(project_dir, data)
-    print(f"🏅 已晋升 curated：「{str(e['sig'])[:60]}」（{e['evidence']}）")
-    return True
+    with _ledger_lock(project_dir):  # §17：读改写全程
+        data = load(project_dir)
+        key = hashlib.sha1(sig.encode("utf-8")).hexdigest()[:12]
+        e = data.get(key)
+        if not (isinstance(e, dict) and e.get("sig")):
+            cands = [x for x in data.values() if isinstance(x, dict)
+                     and str(x.get("sig", "")).startswith(sig)]
+            if len(cands) == 1:
+                e = cands[0]
+            else:
+                print(f"promote: 未找到条目「{sig[:40]}」（前缀歧义或不存在）",
+                      file=sys.stderr)
+                return False
+        today = date.today().isoformat()
+        age = _days_since(e.get("captured_at", ""))
+        e["lifecycle"] = "curated"
+        e["promoted_at"] = today
+        e["evidence"] = (f"hits={e.get('hits')} occ={e.get('occurrences')}"
+                         f" 服役{age}天 @{today}")
+        _save(project_dir, data)
+        print(f"🏅 已晋升 curated：「{str(e['sig'])[:60]}」（{e['evidence']}）")
+        return True
 
 
 def main(argv=None):
@@ -427,7 +455,7 @@ def main(argv=None):
     else:
         import io as _io, contextlib as _cb
         with _cb.redirect_stdout(_io.StringIO()) as buf:
-            health(project_dir, args.decay_days, args.promote_hits)
+            res = health(project_dir, args.decay_days, args.promote_hits)
         out = buf.getvalue()
         print(out, end="")
         # 固化候选=需要人类批准的决策点（v1.33 企业级）：出现即推送，
@@ -438,9 +466,14 @@ def main(argv=None):
                 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
                 from notify import notify as _notify
                 n = out.count("🦴 固化候选")
+                # v1.108（§17 幂等律）：同候选集合=同决策点，30 分钟窗内折叠
+                # 不重发不重记账（每次 health 运行都新增待决+推送的病灶就此
+                # 闭）；集合变化=新决策点；人 resolve 后同集合再现=新待决
                 _notify(project_dir, "plan_approval",
                         f"🦴 固化候选 ×{n}",
-                        "规律命中≥3 可固化为 skill——需要你批准（/regress:stats 查看详情）")
+                        "规律命中≥3 可固化为 skill——需要你批准（/regress:stats 查看详情）",
+                        source_id="rules-ledger-candidates",
+                        coalesce_key=_candidates_fp(res))
             except Exception:
                 pass
     return 0

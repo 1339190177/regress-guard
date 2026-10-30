@@ -199,3 +199,27 @@ def test_incremental_entry_recorded_but_not_replayed(tmp_path):
     hit2 = test_cache.lookup(str(proj), str(rg))
     # 回放的是全量条目（100）而非最新 incremental（2）——隔离生效
     assert hit2 and hit2["result"]["total"] == 100
+
+
+# ─── v1.108（批160 §17）：record 并发落账锁 ────────────────
+
+def test_record_concurrent_both_survive(tmp_path):
+    """两进程并发 record 同树 → 两条都在（读改写互相覆盖丢一条的正确性洞，
+    v1.108 file_lock 临界区的契约锁——锁缺席平台丢条同样是真回归）。"""
+    r = _git_repo(tmp_path)
+    rg = r / ".regress"
+    rg.mkdir(exist_ok=True)
+    script = (
+        "import sys; sys.path.insert(0, %r); "
+        "from test_cache import record; "
+        "sys.exit(0 if record(%r, %r, {'runner': 'pytest', 'status': 'pass',"
+        "'passed': 1, 'total': 1}) else 1)"
+        % (LIB, str(r), str(rg)))
+    procs = [subprocess.Popen([sys.executable, "-c", script],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+             for _ in range(2)]
+    for p in procs:
+        assert p.wait(timeout=60) == 0, p.stderr.read().decode()
+    lines = [l for l in (rg / "test-cache.jsonl").read_text(
+        encoding="utf-8").splitlines() if l.strip()]
+    assert len(lines) == 2, "并发落账丢条（§17 读改写临界区失效）"
