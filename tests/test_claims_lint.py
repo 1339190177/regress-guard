@@ -70,7 +70,7 @@ def test_referenced_dirs_exist():
 def test_requirements_dev_lists_actual_deps():
     """requirements-dev 必须列齐套件真实 import 的三方件（自检基线）。"""
     req = open(os.path.join(ROOT, "requirements-dev.txt"), encoding="utf-8").read()
-    for pkg in ("pytest", "anyio", "filelock"):
+    for pkg in ("pytest", "anyio", "filelock", "pyyaml"):
         assert re.search(rf"^{pkg}\b", req, re.M), f"requirements-dev 缺 {pkg}"
 
 

@@ -57,13 +57,29 @@ def _purge_state_file(session_id):
 
 
 @pytest.fixture(autouse=True)
-def _isolated_session(request):
-    """每用例独立会话（setup/teardown 各清一次自己的状态文件）。"""
+def _isolated_session(request, tmp_path):
+    """每用例独立会话（setup/teardown 各清一次自己的状态文件）。
+
+    CI 隔离补丁（批163）：本套件按 ratio=2 校准（读 2 放 1 改），但 guard 的
+    配置向上查找会撞外围工作区——原位跑读的是工作区 config 的 ratio=2，
+    独立 clone/CI 无 config 走默认地板 3 →「读 2 应放行」翻车（2026-10-30
+    CI 首跑活体标本：环境隔离泄漏与 conftest v1.31.4 通知事故同病）。修法=
+    每用例自带 tmp 项目 config 钉 ratio=2，环境无关确定性。"""
+    proj = tmp_path / "rbe-hermetic"
+    (proj / ".regress").mkdir(parents=True)
+    (proj / ".regress" / "config.json").write_text(
+        json.dumps({"read_before_edit_ratio": 2}), encoding="utf-8")
+    old_pd = os.environ.get("CLAUDE_PROJECT_DIR")
+    os.environ["CLAUDE_PROJECT_DIR"] = str(proj)
     _SESSION["id"] = f"rbe-{request.node.name}"
     _purge_state_file(_SESSION["id"])
     yield
     _purge_state_file(_SESSION["id"])
     _SESSION["id"] = None
+    if old_pd is None:
+        os.environ.pop("CLAUDE_PROJECT_DIR", None)
+    else:
+        os.environ["CLAUDE_PROJECT_DIR"] = old_pd
 
 
 def run_guard(mode, tool_name, file_path, session_id=None, project_dir=None):

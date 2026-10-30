@@ -3,3 +3,7 @@
 pytest>=7
 anyio>=3
 filelock>=3
+# PyYAML（批163）：套件按 yaml 在场校准（manifest 解析/写回走主路径）——
+# CI 新鲜环境缺它走 fallback 解析器，行为微差致 13 用例翻车（2026-10-30
+# 首跑实证）。运行时仍是可选依赖（HAS_YAML 探测），本行只为测试环境对齐。
+pyyaml>=6
