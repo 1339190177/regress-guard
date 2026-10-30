@@ -1899,3 +1899,23 @@ def test_full_calibration_invalid_n_ignored(project):
     assert "增量模式" in err and "校准位" not in err
     cps = [e for e in read_history(project) if e.get("event") == "commit_passed"]
     assert all(c.get("incremental") is True for c in cps)
+
+
+def test_boundary_include_covers_staged_file(project):
+    """批165（163 活体标本）：boundary.include 通配纳入提交门禁——Edit 面
+    与提交面语义统一。此前分叉曾逼机械清理批逐条枚举 35 个测试文件入册。"""
+    _passing_runner(project)
+    base = ("---\nid: R1\nstatus: in-progress\ntier: S\n"
+            "rollback: git revert 即回滚\n"
+            "planned_changes:\n  - id: F1\n    file: src/app.js\n"
+            "actual_changes: []\n---\n")
+    _stage(project, "src/other.js", "x\n")  # 不在任何 file: 条目
+    # 反向对照先行：无 include 时同文件必拦（证明本用例真的踩在通配路径上）
+    _write_manifest(project, base)
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    assert code != 0 and "不在回归清单" in err
+    _write_manifest(project, base.replace(
+        "actual_changes: []",
+        'boundary:\n  include:\n    - "src/**"\nactual_changes: []'))
+    code2, err2, _ = run_guard("git commit -m 改动二（R1）；1/1", project)
+    assert code2 == 0, err2

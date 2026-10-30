@@ -543,3 +543,25 @@ def test_quoted_redirection_target_still_caught():
     assert any(t.endswith("my file.txt") for t in ts)
     ts = m.extract_write_targets('echo x > "另一档.txt"', "/tmp/p")
     assert any(t.endswith("另一档.txt") for t in ts)
+
+
+def test_write_targets_pip_install_forms_zero():
+    """批165（163 活体标本）：pip install 包名非写目标；2>&1 管道形态不再
+    产「2>」幻影（动词捕获组在 & 处截断的根修）。"""
+    m = _bg()
+    for cmd in (
+        "pip install --user --quiet ruff mypy",
+        "pip3 install --user pytest-cov",
+        "pip install --user --break-system-packages --quiet -i "
+        "https://pypi.tuna.tsinghua.edu.cn/simple pytest-cov",
+        "python3 -m pip install --user ruff",
+        "pip install x 2>&1 | tail -2; echo done; ruff --version && mypy --version",
+    ):
+        assert m.extract_write_targets(cmd, "/proj") == [], cmd
+
+
+def test_write_targets_coreutils_install_kept():
+    """反向钉（批165 FP1 防过宽）：coreutils install 的目标文件仍被捕。"""
+    m = _bg()
+    ts = m.extract_write_targets("install -m 755 src/server dst/bin", "/proj")
+    assert ts == ["/proj/dst/bin"]

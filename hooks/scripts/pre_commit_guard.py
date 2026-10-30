@@ -40,6 +40,29 @@ from manifest_parser import (get_all_changed_files, get_manifest_status,  # noqa
 from git_diff_analyzer import get_staged_files, filter_files, find_untracked_changes  # noqa: E402
 from test_runner import run_tests  # noqa: E402
 from history import record as _history_record  # noqa: E402
+try:
+    # 批165：与 Edit 面边界守卫同一匹配语义——复用 boundary_guard 的单一
+    # 来源实现（兄弟模块，脚本目录在 sys.path[0]）；失败降级=精确集语义
+    _SELF_DIR = os.path.dirname(os.path.abspath(__file__))
+    if _SELF_DIR not in sys.path:
+        sys.path.insert(0, _SELF_DIR)
+    from boundary_guard import (path_matches as _bg_path_matches,  # noqa: E402
+                                parse_boundary as _bg_parse_boundary)
+except ImportError:
+    _bg_path_matches = _bg_parse_boundary = None
+
+
+def _manifest_include_pats(manifest_path):
+    """清单 boundary.include 通配（批165：提交门禁纳入，语义与 Edit 面统一）。
+
+    导入缺席/解析异常 → []（降级为既有精确集核对，fail-safe 不因增强面
+    破坏提交主路径）。"""
+    if _bg_parse_boundary is None:
+        return []
+    try:
+        return _bg_parse_boundary(manifest_path)[0] or []
+    except Exception:
+        return []
 from journal import pending_corrections as _pending_corrections  # noqa: E402
 
 
@@ -1348,6 +1371,14 @@ def main():
     try:
         manifest_files = get_all_changed_files(manifest)
         staged = _staged_list()
+        # 批165：boundary.include 通纳入——此前与 Edit 面分叉（boundary_guard
+        # 认通配、此处只认精确 file: 集），机械清理批被迫逐条枚举 35 文件
+        # 入册（163 活体）。staged 命中通配视同在册（track 回写出口不变）。
+        _inc = _manifest_include_pats(manifest)
+        if _inc:
+            manifest_files = manifest_files + [
+                s for s in staged
+                if _bg_path_matches(s.replace(os.sep, "/"), _inc, [])]
         untracked = find_untracked_changes(staged, manifest_files)
     except Exception as e:
         record(regress_dir, "error", manifest_id, error=f"diff analysis failed: {e}")

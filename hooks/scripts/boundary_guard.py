@@ -246,6 +246,13 @@ def _seg_write_targets(seg):
             r'(?:^|[;|&\s])(rm|rmdir|mv|cp|tee|truncate|touch|install|shred)\s+([^;|&\n]+)',
             dq):
         name, rest = m.group(1), m.group(2)
+        if name == "install" and re.search(
+                r'(?:\bpip3?|\s-m\s+pip)$', dq[:m.start(1)].rstrip()):
+            # 批165（163 活体）：pip/pip3/python -m pip 的 install 包名不是
+            # 写目标（落 site-packages 在仓外），且动词捕获组在 2>&1 的 &
+            # 处截断会产出「2>」幻影——包管理器形态整组跳过；coreutils
+            # install 保留捕获（反向用例钉死，防收口过宽）
+            continue
         toks = [t for t in rest.split() if not t.startswith("-")]
         if not toks:
             continue
