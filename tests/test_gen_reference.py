@@ -1,6 +1,5 @@
 """gen_reference（v1.22 派生优于断言）的单元测试。"""
 import os
-import shutil
 import subprocess
 import sys
 

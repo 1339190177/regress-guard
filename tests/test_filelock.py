@@ -2,7 +2,6 @@
 import sys
 import os
 import threading
-import pytest
 
 LIB = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "lib")
 sys.path.insert(0, LIB)

@@ -1,0 +1,44 @@
+# CI（批163，REGRESS-2026-161）——公网仓的新鲜环境证明：本地绿的同一套件
+# 在陌生 runner 上也绿。发布链（publish.py 全树镜像）把本文件带上公网仓后，
+# 每次 API push 即触发——首跑即自举实证。
+#
+# 工具链跟随 repo（pero ci.yml 同原则）：Python 3.10 = install.sh 的契约
+# 下限（证明的是承诺，不是奢侈）；ruff/mypy 钉次版本；pytest 只装
+# requirements-dev.txt（清单受 claims lint 对账，不在此增项）。
+#
+# 串行依据：xdist 不在依赖内（裸 -n 直接报错）；串行是 README/validate.sh
+# 的官方口径，本地 16 核串行实测约 2 分钟，CI 预算 15 分钟绰绰有余。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: 安装依赖（requirements-dev + 静态工具钉版本）
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install ruff==0.17.3 mypy==2.4.1
+      - name: ruff（E/F/W，line-length 120，配置在 pyproject.toml）
+        run: ruff check .
+      - name: mypy（非严格，配置在 pyproject.toml）
+        run: mypy hooks/scripts scripts
+      - name: pytest（串行，官方口径）
+        run: python -m pytest tests/ -q

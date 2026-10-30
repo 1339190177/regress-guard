@@ -25,7 +25,7 @@ def _load():
 
 def _diff(path, *lines):
     out = [f"+++ b/{path}", "@@ -0,0 +1,{len(lines)} @@"]
-    out += ["+" + l for l in lines]
+    out += ["+" + ln for ln in lines]
     return "\n".join(out)
 
 

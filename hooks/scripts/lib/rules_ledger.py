@@ -267,7 +267,7 @@ def health(project_dir, decay_days=DEFAULT_DECAY_DAYS, promote_hits=PROMOTE_HITS
         print(f"  🍂 降级候选 last_hit={e.get('last_hit')} 「{e['sig'][:50]}」"
               f"（提示人工修剪——本工具永不自动删）")
     if shadow_q:
-        print(f"  🔬 shadow 队列（批150 晋升管线——case 看证据卡，sweep 清饿死）：")
+        print("  🔬 shadow 队列（批150 晋升管线——case 看证据卡，sweep 清饿死）：")
         for e in shadow_q[:5]:
             mark = " 🥀饿死候选" if e in starved else ""
             print(f"    🔬 hits={e.get('hits')} 服役{_days_since(e.get('captured_at', ''))}天"
@@ -419,7 +419,7 @@ def main(argv=None):
     h.add_argument("--promote-hits", type=int, default=PROMOTE_HITS)
     c = sub.add_parser("case", help="批150：shadow 晋升证据卡（度量自动，人只守晋升）")
     c.add_argument("--top", type=int, default=5)
-    w = sub.add_parser("sweep", help="批150：饿死退役（超 TTL 且 hits<2，幂等留档）")
+    sub.add_parser("sweep", help="批150：饿死退役（超 TTL 且 hits<2，幂等留档）")
     pm = sub.add_parser("promote", help="批150：人裁晋升/复活（shadow|retired→curated）")
     pm.add_argument("--sig", required=True, help="失败签名（完整或唯一前缀）")
     args = ap.parse_args(argv)
@@ -453,7 +453,8 @@ def main(argv=None):
                 mark = "🔬 " if r.get("lifecycle") == "shadow" else ""
                 print(f"  {i}. {mark}「{r['sig'][:60]}」 命中×{r['hits']}（最近 {r['last_hit']}）")
     else:
-        import io as _io, contextlib as _cb
+        import io as _io
+        import contextlib as _cb
         with _cb.redirect_stdout(_io.StringIO()) as buf:
             res = health(project_dir, args.decay_days, args.promote_hits)
         out = buf.getvalue()

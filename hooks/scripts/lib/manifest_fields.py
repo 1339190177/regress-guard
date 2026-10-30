@@ -15,7 +15,8 @@ STATUS_RE = re.compile(
     re.M)
 ACTIVE_STATUS_RE = re.compile(r"status:\s*(planning|in-progress|verifying|blocked)")
 ACTIVE_STATUSES = ("planning", "in-progress", "verifying", "blocked")
-_OPEN_FP_RE = re.compile(r"^\s+status:\s*open\s*(?:#.*)?$", re.M)  # P1#12：容忍行尾注释（旧模板带注释的清单 open 检测不再恒不中）
+# P1#12：容忍行尾注释（旧模板带注释的清单 open 检测不再恒不中）
+_OPEN_FP_RE = re.compile(r"^\s+status:\s*open\s*(?:#.*)?$", re.M)
 
 
 def frontmatter(content):
@@ -46,7 +47,8 @@ def filled(text, block, key="at"):
 
 def parse_core(content):
     """一次读全。返回 {id, status, approved_at, provisional_at,
-    blocked_reason, blocked_need, open_fragiles}；非清单返回 {}。"""
+    blocked_reason, blocked_need, open_fragiles, lease_holder,
+    lease_expires_at, lease_input_hash}；非清单返回 {}。"""
     fm = frontmatter(content)
     if fm is None:
         return {}
@@ -59,6 +61,10 @@ def parse_core(content):
         "blocked_reason": block_value(fm, "blocked", "reason"),
         "blocked_need": block_value(fm, "blocked", "need"),
         "open_fragiles": len(_OPEN_FP_RE.findall(fm)),
+        # v1.109 批161：租约三件（域逻辑在 lib/lease.py，这里只是读）
+        "lease_holder": block_value(fm, "lease", "holder"),
+        "lease_expires_at": block_value(fm, "lease", "expires_at"),
+        "lease_input_hash": block_value(fm, "lease", "input_hash"),
     }
 
 

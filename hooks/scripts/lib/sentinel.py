@@ -15,7 +15,6 @@ import glob
 import os
 import sys
 import time
-from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from journal import _find_project_dir  # noqa: E402  项目定位单一来源
@@ -44,9 +43,14 @@ def _fm_get(path, key):
 
 
 def scan(project_dir):
-    """返回 [(path, id, status, session, age_days, files_n)]，活跃清单。"""
+    """返回 [(path, id, status, session, age_days, files_n, lease_expired,
+    lease_drift)]，活跃清单。租约三件（v1.109 批161）：过期=⏳ 可收回
+    （跨会话保护已被门禁/边界守卫收回，此处只是同一事实的展示位），
+    input_hash 不符=📥 输入已漂移（接管者非盲核对的入口）。"""
     mdir = os.path.join(project_dir, ".regress", "manifests")
     out = []
+    from lease import drift as _drift
+    from lease import expired as _expired
     for p in sorted(glob.glob(os.path.join(mdir, "*.md"))):
         status = _fm_get(p, "status")
         if status not in _ACTIVE:
@@ -56,8 +60,14 @@ def scan(project_dir):
             files_n = len(get_all_changed_files(p))
         except Exception:
             files_n = 0
+        try:
+            with open(p, encoding="utf-8") as f:
+                content = f.read()
+            lexp, ldrift = _expired(content), _drift(content, p)
+        except Exception:
+            lexp, ldrift = False, False
         out.append((p, _fm_get(p, "id") or os.path.basename(p), status,
-                    _fm_get(p, "session"), _age_days(p), files_n))
+                    _fm_get(p, "session"), _age_days(p), files_n, lexp, ldrift))
     return out
 
 
@@ -69,7 +79,7 @@ def render(project_dir):
     if not rows:
         print("  （无活跃清单——疆域干净）")
         return rows
-    for p, mid, status, sid, age, files_n in rows:
+    for p, mid, status, sid, age, files_n, lexp, ldrift in rows:
         who = "本会话" if (sid and sid == my_sid) else ("共享/无戳" if not sid else f"他会话 {sid[:8]}…")
         hover = ""
         if status == "blocked":
@@ -78,11 +88,15 @@ def render(project_dir):
             hover = f" ⚠️ 悬停 {age:.0f} 天（卡死或被遗忘？）"
         elif status == "planning" and age > 2:
             hover = f" ⚠️ 待批准 {age:.0f} 天"
+        if lexp:
+            hover += " ⏳ 租约可收回（跨会话保护已失效）"
+        if ldrift:
+            hover += " 📥 输入已漂移（边界文件被动过——接管前先对账）"
         print(f"  [{status:<10}] {mid} · {who} · {files_n} 文件 · 改于 {age:.1f} 天前{hover}")
     # 跨会话文件重叠（真正的集成态风险点）：只看带 session 戳的清单
     from manifest_parser import get_all_changed_files
     owners = {}
-    for p, mid, _, sid, _, _ in rows:
+    for p, mid, _, sid, _, _, _, _ in rows:
         if not sid:
             continue
         try:

@@ -34,7 +34,9 @@ LIB_DIR = os.path.join(SCRIPT_DIR, "lib")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
-from manifest_parser import find_active_manifest, get_all_changed_files, get_manifest_status, update_frontmatter, get_fragile_points, parse_frontmatter, ears_extract  # noqa: E402
+from manifest_parser import (get_all_changed_files, get_manifest_status,  # noqa: E402
+                             update_frontmatter, get_fragile_points,
+                             parse_frontmatter, ears_extract)
 from git_diff_analyzer import get_staged_files, filter_files, find_untracked_changes  # noqa: E402
 from test_runner import run_tests  # noqa: E402
 from history import record as _history_record  # noqa: E402
@@ -66,9 +68,17 @@ def _running_version():
     return "unknown"
 
 
+_RUN_ID = {"v": ""}  # 本次把关的 run 锚（v2.0.0 批162）：main 选定活跃清单后回填，
+#                    来源=清单 frontmatter run: 字段（自迭代 run/哨兵派单时盖）
+
+
 def record(rd, event, manifest_id="", **details):
-    """一点包装（v1.59）：所有事件盖 guard_version——谁在把关，事后可查。"""
+    """一点包装（v1.59）：所有事件盖 guard_version——谁在把关，事后可查。
+    v2.0.0 批162：run 锚经单一咽喉注入（record 调用点遍布全文件，改签名
+    会散弹——_RUN_ID 由 main 在选定清单处回填一次，调用方零改动）。"""
     details.setdefault("guard_version", _running_version())
+    if not details.get("run_id") and _RUN_ID["v"]:
+        details.setdefault("run_id", _RUN_ID["v"])
     _history_record(rd, event, manifest_id, **details)
 
 
@@ -147,8 +157,8 @@ def _deepcheck_state(manifest_path):
     # 预计算三问行索引（先扫一遍，再取区间——生成器嵌套易错，121 用例期教训）
     q_idx = []
     for i, (label, kw) in enumerate(KEYS):
-        idx = next((j for j, l in enumerate(lines)
-                    if (f"反问{'一二三'[i]}" in l or kw in l)), None)
+        idx = next((j for j, ln in enumerate(lines)
+                    if (f"反问{'一二三'[i]}" in ln or kw in ln)), None)
         q_idx.append(idx)
     for i, (label, kw) in enumerate(KEYS):
         if q_idx[i] is None:
@@ -166,6 +176,16 @@ def _deepcheck_state(manifest_path):
         if not ans or ans in {"待补", "NA", "无", "略", "TODO"} or len(ans) <= 2:
             empty.append(f"{label}·{kw}")
     return True, missing, empty
+
+
+def _lease_expired(parsed):
+    """清单租约过期判定（v1.109 批161）：无 lease 块=不过期（存量清单旧语义
+    逐位不变）；格式坏=过期（bypass_until 先例）。域逻辑单一来源 lib/lease.py。"""
+    try:
+        from lease import expired_from_dict
+        return expired_from_dict(parsed.get("lease"))
+    except Exception:
+        return False
 
 
 def _acceptance_state(manifest_path):
@@ -813,7 +833,12 @@ def main():
         if parsed.get("status") in ("planning", "in-progress", "verifying", "blocked"):
             entry = (mf_path, parsed.get("id", ""))
             m_sid = str(parsed.get("session") or "")
-            (others if my_sid and m_sid and m_sid != my_sid else mine).append(entry)
+            # v1.109 批161：他人清单租约过期 → 收回跨会话保护（归 mine）——
+            # 死会话不再永久占边界；重盖租约（接管）即恢复保护
+            if my_sid and m_sid and m_sid != my_sid and _lease_expired(parsed):
+                mine.append(entry)
+            else:
+                (others if my_sid and m_sid and m_sid != my_sid else mine).append(entry)
 
     def _others_files():
         """他人活跃清单声明的文件并集（集成态冲突检查的对照面）。"""
@@ -895,10 +920,10 @@ def main():
                     ["git", "-C", sub, "diff", "--cached", "--name-only"],
                     capture_output=True, text=True, timeout=10)
                 if r.returncode == 0:
-                    base += [l.strip().replace(os.sep, "/")
-                             for l in r.stdout.splitlines()
-                             if l.strip()
-                             and not l.strip().replace(os.sep, "/").startswith(".regress/")]
+                    base += [ln.strip().replace(os.sep, "/")
+                             for ln in r.stdout.splitlines()
+                             if ln.strip()
+                             and not ln.strip().replace(os.sep, "/").startswith(".regress/")]
             except Exception:
                 pass  # 子仓扫描是增强：失败回到仅工作区仓（老行为）
         return base
@@ -930,6 +955,12 @@ def main():
             return mine_list[0]
 
         manifest, manifest_id = _attribute_mine(mine, _staged_list())
+        # v2.0.0 批162：run 锚回填（清单 run: 字段 → 本轮把关全部事件；
+        # 无 run 字段的零散任务不带——run_id 只在有 run 语义时出现）
+        try:
+            _RUN_ID["v"] = str((parse_frontmatter(manifest) or {}).get("run") or "")
+        except Exception:
+            _RUN_ID["v"] = ""
         if len(mine) > 1:
             record(regress_dir, "note", manifest_id,
                    note="co_active", co_active=len(mine),
@@ -1041,11 +1072,11 @@ def main():
                 )
             # 高影响路径删除提示（「只扩不缩」类契约的提示位——记不拦）
             try:
-                _br_del = [l.strip().replace(os.sep, "/") for l in subprocess.run(
+                _br_del = [ln.strip().replace(os.sep, "/") for ln in subprocess.run(
                     ["git", "-C", project_dir, "diff", "--staged",
                      "--diff-filter=D", "--name-only"],
                     capture_output=True, text=True, timeout=10
-                ).stdout.splitlines() if l.strip()]
+                ).stdout.splitlines() if ln.strip()]
                 _br_del = [f for f in _br_del
                            if any(_br_path_matches(f, p)
                                   for p in _br["high_impact"])]
@@ -1282,7 +1313,7 @@ def main():
         _locks = [s for s in get_staged_files(project_dir)
                   if os.path.basename(s) in _lock_bases
                   or s.replace(os.sep, "/").startswith("requirements")]
-        if any(os.path.basename(l) == "package-lock.json" for l in _locks):
+        if any(os.path.basename(ln) == "package-lock.json" for ln in _locks):
             import subprocess as _sp3
             _tmo = float(os.environ.get("RG_AUDIT_TIMEOUT_S", "60"))
             try:
@@ -1347,7 +1378,9 @@ def main():
 
     if untracked:
         files_str = "\n  ".join(untracked)
-        msg = f"commit 被阻断。以下 staged 文件不在回归清单中：\n  {files_str}\n\n请先运行 /regress:track 回写，或 git reset 撤销。\n清单：{manifest}"
+        msg = (f"commit 被阻断。以下 staged 文件不在回归清单中：\n"
+               f"  {files_str}\n\n"
+               f"请先运行 /regress:track 回写，或 git reset 撤销。\n清单：{manifest}")
         record(regress_dir, "commit_blocked", manifest_id,
                reason="untracked_files", untracked_files=untracked)
         if strict:
@@ -1433,7 +1466,8 @@ def main():
             if not has:
                 verify_failed.append(
                     (vid, "human_check", "无 human_check 化石（人工确认未落产物）："
-                     f'journal.py . add human_check \'{{"manifest_id":"{manifest_id}","vid":"{vid}","result":"pass"}}\''))
+                     f'journal.py . add human_check '
+                     f'\'{{"manifest_id":"{manifest_id}","vid":"{vid}","result":"pass"}}\''))
 
     for fp in [f for f in fps
                if str(f.get("status", "")).lower() == "locked"
@@ -1845,7 +1879,7 @@ def main():
                    runner=runner, passed=0, total=0,
                    note="quick_no_runner_exempt", files=_quick_files)
             _mark_expected(regress_dir, "gated")
-            emit_warn(f"quick 模式清单无测试运行器（mode: quick 豁免，已留痕 history）。")
+            emit_warn("quick 模式清单无测试运行器（mode: quick 豁免，已留痕 history）。")
         # 注：能走到这里说明清单是明确活跃的（planning/in-progress/verifying），
         # 否则 main() 早就以 no_active_manifest 放行了
         # （P1#11 去重：旧行为连记两条同毫秒 record——stats 的比率全体翻倍）

@@ -505,7 +505,7 @@ def _mf_events(proj):
     p = Path(proj) / ".regress" / "journal" / "events.jsonl"
     if not p.exists():
         return []
-    return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l]
+    return [json.loads(ln) for ln in p.read_text(encoding="utf-8").splitlines() if ln]
 
 
 def _write_manifest(proj, status="planning", approved_at=""):

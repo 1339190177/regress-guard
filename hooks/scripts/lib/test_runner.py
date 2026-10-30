@@ -350,8 +350,10 @@ def _parse_jest(output, exit_code, project_dir=None):
             except (json.JSONDecodeError, IOError):
                 data = None
             finally:
-                try: os.remove(jest_file)
-                except OSError: pass
+                try:
+                    os.remove(jest_file)
+                except OSError:
+                    pass
             if data:
                 break
 

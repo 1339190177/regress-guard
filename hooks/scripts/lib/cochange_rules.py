@@ -305,6 +305,7 @@ def check_cochange(changed_files, project_dir):
 if __name__ == "__main__":
     import sys
     import json
+    import os
     project_dir = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
     changed = sys.argv[2].split(",") if len(sys.argv) > 2 else []
 

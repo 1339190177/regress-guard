@@ -153,29 +153,32 @@ def _pi():
     spec = _ilu.spec_from_file_location(
         "pi-gov", os.path.join(os.path.dirname(__file__), "..",
                                "hooks", "scripts", "prompt_intercept.py"))
-    m = _ilu.module_from_spec(spec); spec.loader.exec_module(m)
+    m = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(m)
     return m
 
 
 def _run_prompt(pi, monkeypatch, proj, text):
-    import io, json as _json
+    import io
+    import json as _json
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
     import pytest as _pytest
     with _pytest.raises(SystemExit) as e:
         pi.main.__globals__["sys"].stdin = io.StringIO(_json.dumps({"prompt": text}))
-        import builtins
-        real_input = builtins.input
         pi.main()
     return e.value.code
 
 
 def test_governance_active_manifest_line(tmp_path, monkeypatch, capsys):
-    proj = tmp_path / "proj"; (proj / ".regress" / "manifests").mkdir(parents=True)
+    proj = tmp_path / "proj"
+    (proj / ".regress" / "manifests").mkdir(parents=True)
     (proj / ".regress" / "manifests" / "R1.md").write_text(
         "---\nid: REGRESS-9\nstatus: in-progress\ntier: M\n---\n"
         "planned_changes:\n- id: F1\n- id: F2\n", encoding="utf-8")
     pi = _pi()
-    import io, json as _json, pytest
+    import io
+    import json as _json
+    import pytest
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
     monkeypatch.setattr("sys.stdin", io.StringIO(_json.dumps({"prompt": "改一下登录逻辑"})))
     with pytest.raises(SystemExit):
@@ -185,9 +188,12 @@ def test_governance_active_manifest_line(tmp_path, monkeypatch, capsys):
 
 
 def test_governance_no_manifest_silent(tmp_path, monkeypatch, capsys):
-    proj = tmp_path / "proj"; (proj / ".regress").mkdir(parents=True)
+    proj = tmp_path / "proj"
+    (proj / ".regress").mkdir(parents=True)
     pi = _pi()
-    import io, json as _json, pytest
+    import io
+    import json as _json
+    import pytest
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
     monkeypatch.setattr("sys.stdin", io.StringIO(_json.dumps({"prompt": "你好"})))
     with pytest.raises(SystemExit):
@@ -241,11 +247,14 @@ def test_governance_recall_measurement_never_breaks(tmp_path, monkeypatch):
 
 
 def test_governance_off_escape(tmp_path, monkeypatch, capsys):
-    proj = tmp_path / "proj"; (proj / ".regress" / "manifests").mkdir(parents=True)
+    proj = tmp_path / "proj"
+    (proj / ".regress" / "manifests").mkdir(parents=True)
     (proj / ".regress" / "manifests" / "R1.md").write_text(
         "---\nid: REGRESS-9\nstatus: in-progress\n---\n", encoding="utf-8")
     pi = _pi()
-    import io, json as _json, pytest
+    import io
+    import json as _json
+    import pytest
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
     monkeypatch.setenv("RG_PROMPT_CONTEXT", "off")
     monkeypatch.setattr("sys.stdin", io.StringIO(_json.dumps({"prompt": "改进一下性能"})))

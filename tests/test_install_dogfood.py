@@ -7,7 +7,6 @@ stub python 注入（快，缺省跑）。
 import os
 import stat
 import subprocess
-import sys
 
 import pytest
 

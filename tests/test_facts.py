@@ -43,8 +43,8 @@ def test_index_orders_by_date_desc_and_covers_domains(tmp_path, monkeypatch):
     m.record("老", "a", "zsh", when=datetime.date(2026, 1, 1))
     m.record("新", "b", "server", when=datetime.date(2026, 9, 5))
     m.record("中", "c", "server", when=datetime.date(2026, 6, 1))
-    lines = [l for l in card.read_text(encoding="utf-8").split("\n") if l.startswith("- ")]
-    dates = [l[2:].split(" ")[0] for l in lines]
+    lines = [ln for ln in card.read_text(encoding="utf-8").split("\n") if ln.startswith("- ")]
+    dates = [ln[2:].split(" ")[0] for ln in lines]
     assert dates[0] == "2026-09-05" and dates[-1] == "2026-01-01"
     assert m.health()["count"] == 3
     assert (tmp_path / "facts" / "references" / "zsh.md").exists()

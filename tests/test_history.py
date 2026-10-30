@@ -2,13 +2,13 @@
 import sys
 import os
 import json
-import tempfile
 import pytest
 
 LIB = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "lib")
 sys.path.insert(0, LIB)
 
-from history import record, load_history, summarize, _maybe_archive, build_trace, telemetry, block_heatmap, feature_fire_health
+from history import (record, load_history, summarize, _maybe_archive,
+                     build_trace, telemetry, block_heatmap, feature_fire_health)
 
 
 @pytest.fixture
@@ -347,7 +347,6 @@ def test_cache_stats_measured_from_nested_repo(regress_dir, tmp_path):
     """v1.92.4（115）：本位无档而嵌套仓有——回退命中报实测，source/path
     标注实际来源（写入位与消费位错位的修复：门禁遥测在外层 .regress，
     实验档在嵌套仓）。"""
-    import os as _os
     from history import cache_stats
     record(regress_dir, "commit_passed", "R1", runner="pytest", cached=True)
     record(regress_dir, "commit_passed", "R2", runner="pytest", cached=True)
@@ -463,13 +462,14 @@ def test_feature_fire_journal_fold(regress_dir):
 def test_feature_health_iso_shipped_at(tmp_path):
     """129：registry shipped_at ISO 字符串（批127 手笔曾令命令整崩两日）——
     双格式兼容，不崩且折算正确。"""
-    import json as _json, time as _time
-    m = _load() if False else None
-    import importlib.util as ilu, os as _os
+    import json as _json
+    import importlib.util as ilu
+    import os as _os
     H = _os.path.join(_os.path.dirname(__file__), "..", "hooks",
                       "scripts", "lib", "history.py")
     spec = ilu.spec_from_file_location("h_iso", H)
-    h = ilu.module_from_spec(spec); spec.loader.exec_module(h)
+    h = ilu.module_from_spec(spec)
+    spec.loader.exec_module(h)
     rg = tmp_path / ".regress"
     rg.mkdir()
     _json.dump([{"slug": "iso-feat",
@@ -494,7 +494,8 @@ def test_outofband_summary_counts_and_rate(tmp_path):
     H = os.path.abspath(os.path.join(
         os.path.dirname(__file__), "..", "hooks", "scripts", "lib", "history.py"))
     spec = ilu.spec_from_file_location("hist", H)
-    h = ilu.module_from_spec(spec); spec.loader.exec_module(h)
+    h = ilu.module_from_spec(spec)
+    spec.loader.exec_module(h)
     hp = tmp_path / ".regress" / "history.jsonl"
     hp.parent.mkdir(parents=True)
     evs = [
@@ -523,7 +524,8 @@ def test_outofband_empty(tmp_path):
     H = os.path.abspath(os.path.join(
         os.path.dirname(__file__), "..", "hooks", "scripts", "lib", "history.py"))
     spec = ilu.spec_from_file_location("hist2", H)
-    h = ilu.module_from_spec(spec); spec.loader.exec_module(h)
+    h = ilu.module_from_spec(spec)
+    spec.loader.exec_module(h)
     s = h.outofband_summary(str(tmp_path / ".regress"))
     assert s["total_commits"] == 0 and s["rate"] == 0.0
 
@@ -535,7 +537,8 @@ def _load_history_module(tag):
     H = os.path.abspath(os.path.join(
         os.path.dirname(__file__), "..", "hooks", "scripts", "lib", "history.py"))
     spec = ilu.spec_from_file_location(tag, H)
-    h = ilu.module_from_spec(spec); spec.loader.exec_module(h)
+    h = ilu.module_from_spec(spec)
+    spec.loader.exec_module(h)
     return h
 
 
@@ -629,7 +632,8 @@ def test_slo_summary_five_metrics(tmp_path, monkeypatch):
     H = os.path.abspath(os.path.join(
         os.path.dirname(__file__), "..", "hooks", "scripts", "lib", "history.py"))
     spec = ilu.spec_from_file_location("hist_slo1", H)
-    h = ilu.module_from_spec(spec); spec.loader.exec_module(h)
+    h = ilu.module_from_spec(spec)
+    spec.loader.exec_module(h)
     rg = _slo_write_history(tmp_path, [
         {"event": "commit_observed", "timestamp": "2026-10-20T10:00:00",
          "subject": "直提", "source": "git-hook"},
@@ -671,7 +675,8 @@ def test_slo_empty_all_missing(tmp_path, monkeypatch):
     H = os.path.abspath(os.path.join(
         os.path.dirname(__file__), "..", "hooks", "scripts", "lib", "history.py"))
     spec = ilu.spec_from_file_location("hist_slo2", H)
-    h = ilu.module_from_spec(spec); spec.loader.exec_module(h)
+    h = ilu.module_from_spec(spec)
+    spec.loader.exec_module(h)
     monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "none.jsonl"))
     (tmp_path / ".regress").mkdir()
     s = h.slo_summary(str(tmp_path / ".regress"))

@@ -7,7 +7,6 @@
 3. 输出 JSON 格式的改动文件列表
 """
 import sys
-import os
 import re
 import json
 import subprocess

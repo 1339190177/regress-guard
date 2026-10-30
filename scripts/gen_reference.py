@@ -59,7 +59,7 @@ def _test_count():
     for f in os.listdir(tdir):
         if f.startswith("test_") and f.endswith(".py"):
             try:
-                total += len(re.findall(r"^def test_", 
+                total += len(re.findall(r"^def test_",
                            open(os.path.join(tdir, f), encoding="utf-8").read(), re.M))
             except (IOError, OSError):
                 pass

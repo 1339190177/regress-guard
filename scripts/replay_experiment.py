@@ -110,7 +110,6 @@ def _sequence(form):
     +5 次重读）——旧式累计乘法在第 39 改时要求 80 读。"""
     files = [f"src/m{i}.py" for i in range(15)]
     seq = []
-    reads = 0
     for k in range(39):
         if form == "disciplined":
             seq.append(("read", files[k % 15]))

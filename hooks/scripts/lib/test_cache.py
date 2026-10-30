@@ -117,7 +117,7 @@ def lookup(project_dir, regress_dir):
     path = os.path.join(regress_dir, _CACHE_FILE)
     try:
         with open(path, encoding="utf-8") as f:
-            lines = [l for l in f.read().splitlines() if l.strip()]
+            lines = [ln for ln in f.read().splitlines() if ln.strip()]
     except (IOError, OSError):
         return None
     for line in reversed(lines):  # 最新优先
@@ -165,7 +165,7 @@ def record(project_dir, regress_dir, result, scope=None):
             lines = []
             if os.path.exists(path):
                 with open(path, encoding="utf-8") as f:
-                    lines = [l for l in f.read().splitlines() if l.strip()]
+                    lines = [ln for ln in f.read().splitlines() if ln.strip()]
             lines.append(json.dumps(entry, ensure_ascii=False))
             cap = _cfg(project_dir).get("max_entries") or _MAX_ENTRIES
             lines = lines[-int(cap):]

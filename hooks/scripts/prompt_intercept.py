@@ -427,7 +427,7 @@ def main():
         gov_lines = _active_manifests(pd) + _rule_recall_line(pd, prompt_text)
     parts = []
     if gov_lines:
-        parts.append("【regress-guard 治理上下文】\n" + "\n".join(f"  {l}" for l in gov_lines))
+        parts.append("【regress-guard 治理上下文】\n" + "\n".join(f"  {ln}" for ln in gov_lines))
     if reminders:
         parts.append("【regress-guard 需求入口检查】\n" + "\n".join(f"  {r}" for r in reminders))
     if parts:

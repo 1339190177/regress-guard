@@ -17,7 +17,6 @@ import sys
 import os
 import re
 import json
-import glob
 
 
 def _ver_gt(a, b):
@@ -58,6 +57,7 @@ REQUIRED_LIB_FILES = [
     "test_runner.py", "history.py", "filelock.py", "self_heal.py",
     "cochange_rules.py",
     "journal.py", "plan_approve.py", "manifest_fields.py", "rules_ledger.py",
+    "lease.py",  # v1.109 批161：任务租约域单一来源（部署对账卫兵点名入册）
     "notify.py", "wecom_notify.py", "facts.py",
     "pending.py", "session_relay.py", "sentinel.py", "scan_check.py",
     "secret_scan.py", "test_cache.py", "veto_search.py", "advisor_token.py",
@@ -127,7 +127,8 @@ def do_upgrade(source):
 
     # 清理旧版 evolution.py（v1.1 砍掉了）
     old_evolution = os.path.join(HOOK_HOME, "lib", "evolution.py")
-    if os.path.exists(old_evolution) and not os.path.exists(os.path.join(source, "hooks", "scripts", "lib", "evolution.py")):
+    src_evo = os.path.join(source, "hooks", "scripts", "lib", "evolution.py")
+    if os.path.exists(old_evolution) and not os.path.exists(src_evo):
         os.remove(old_evolution)
         upgraded.append("清理旧lib:evolution.py")
 
@@ -471,7 +472,9 @@ def _gc_tmp_state(max_age_days=7):
     """P2#27：/tmp 状态文件 GC——评审实测 5 天积 238 个（last-prompt×80+、
     stop-notify 戳×58、read-counter 等）。死会话的状态文件永不清理。
     SessionStart 顺手扫，>7 天即删；失败静默（GC 是卫生不是依赖）。"""
-    import tempfile, time, glob as _g
+    import tempfile
+    import time
+    import glob as _g
     try:
         cutoff = time.time() - max_age_days * 86400
         base = tempfile.gettempdir()

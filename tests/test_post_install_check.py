@@ -2,7 +2,6 @@
 import importlib.util as ilu
 import json
 import os
-import sys
 
 CHECK = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "scripts", "post_install_check.py"))
@@ -10,14 +9,17 @@ CHECK = os.path.abspath(os.path.join(
 
 def _load():
     spec = ilu.spec_from_file_location("pic", CHECK)
-    m = ilu.module_from_spec(spec); spec.loader.exec_module(m)
+    m = ilu.module_from_spec(spec)
+    spec.loader.exec_module(m)
     return m
 
 
 def _good_tree(tmp_path):
     """最小源仓+已装目录对：hooks.json 引用一个脚本，戳=源版本。"""
-    src = tmp_path / "src"; ins = tmp_path / "ins"
-    (src / "hooks").mkdir(parents=True); (src / ".zcode-plugin").mkdir()
+    src = tmp_path / "src"
+    ins = tmp_path / "ins"
+    (src / "hooks").mkdir(parents=True)
+    (src / ".zcode-plugin").mkdir()
     (ins).mkdir()
     (src / "hooks" / "hooks.json").write_text(json.dumps({"hooks": {"PreToolUse": [
         {"hooks": [{"type": "command",

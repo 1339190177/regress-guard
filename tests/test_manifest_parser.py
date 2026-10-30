@@ -4,7 +4,6 @@
 """
 import sys
 import os
-import tempfile
 import pytest
 
 # 把 lib 目录加入 path
@@ -13,7 +12,7 @@ sys.path.insert(0, LIB)
 
 from manifest_parser import (
     parse_frontmatter, update_frontmatter, find_active_manifest,
-    get_all_changed_files, get_manifest_status, HAS_YAML,
+    get_all_changed_files, get_manifest_status,
 )
 
 

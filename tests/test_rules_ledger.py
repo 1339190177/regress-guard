@@ -5,7 +5,6 @@ import subprocess
 import sys
 from datetime import date, timedelta
 
-import pytest
 
 LIB = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "lib"))
 LEDGER = os.path.join(LIB, "rules_ledger.py")
@@ -48,8 +47,10 @@ def test_health_decay_and_promote(tmp_path, capsys):
     old = (date.today() - timedelta(days=200)).isoformat()
     data = {
         "a": {"sig": "老规律没人用了", "captured_at": old, "last_hit": old, "hits": 5, "occurrences": 9},
-        "b": {"sig": "高频稳定规律", "captured_at": old, "last_hit": date.today().isoformat(), "hits": 4, "occurrences": 7},
-        "c": {"sig": "新规律", "captured_at": date.today().isoformat(), "last_hit": date.today().isoformat(), "hits": 1, "occurrences": 1},
+        "b": {"sig": "高频稳定规律", "captured_at": old,
+              "last_hit": date.today().isoformat(), "hits": 4, "occurrences": 7},
+        "c": {"sig": "新规律", "captured_at": date.today().isoformat(),
+              "last_hit": date.today().isoformat(), "hits": 1, "occurrences": 1},
     }
     (proj / ".regress" / "rules-ledger.json").write_text(
         json.dumps(data, ensure_ascii=False), encoding="utf-8")
@@ -275,7 +276,8 @@ def test_record_default_shadow(tmp_path):
     H = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
                      "lib", "rules_ledger.py")
     spec = ilu.spec_from_file_location("rl150a", H)
-    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    g = ilu.module_from_spec(spec)
+    spec.loader.exec_module(g)
     e = g.record(str(proj), "签名甲 失败规律", 2)
     assert e["lifecycle"] == "shadow" and "shadow_since" in e
     # 存量无字段=curated 兼容
@@ -313,7 +315,8 @@ def test_sweep_starved_idempotent(tmp_path):
     H = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
                      "lib", "rules_ledger.py")
     spec = ilu.spec_from_file_location("rl150b", H)
-    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    g = ilu.module_from_spec(spec)
+    spec.loader.exec_module(g)
     assert g.sweep(str(proj)) == 1
     d = g.load(str(proj))
     assert d["aaa"]["lifecycle"] == "retired" and d["aaa"]["retire_reason"] == "starved"
@@ -335,7 +338,8 @@ def test_promote_stamp_and_revive(tmp_path):
     H = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
                      "lib", "rules_ledger.py")
     spec = ilu.spec_from_file_location("rl150c", H)
-    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    g = ilu.module_from_spec(spec)
+    spec.loader.exec_module(g)
     assert g.promote(str(proj), "影子规律")
     e = g.load(str(proj))["aaa"]
     assert e["lifecycle"] == "curated" and e.get("promoted_at") \
@@ -365,7 +369,8 @@ def test_retired_not_recalled(tmp_path):
     H = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
                      "lib", "rules_ledger.py")
     spec = ilu.spec_from_file_location("rl150d", H)
-    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    g = ilu.module_from_spec(spec)
+    spec.loader.exec_module(g)
     res = g.match(str(proj), "复合命令 提交 暂存 被拦 规律", top=3)
     sigs = [r["sig"] for r in res]
     assert "复合命令提交被拦的规律" not in sigs  # retired 零召回
@@ -399,7 +404,8 @@ def test_case_three_verdicts(tmp_path):
     H = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
                      "lib", "rules_ledger.py")
     spec = ilu.spec_from_file_location("rl150e", H)
-    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    g = ilu.module_from_spec(spec)
+    spec.loader.exec_module(g)
     cards = g.case(str(proj), top=5)
     def verdict_of(prefix):
         return [c["verdict"] for c in cards
@@ -456,7 +462,8 @@ def test_ttl_config_knob(tmp_path):
     H = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
                      "lib", "rules_ledger.py")
     spec = ilu.spec_from_file_location("rl150f", H)
-    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    g = ilu.module_from_spec(spec)
+    spec.loader.exec_module(g)
     assert g._shadow_ttl_days(str(proj)) == 200
     assert g._shadow_ttl_days(str(tmp_path / "nonexistent")) == 60
 
@@ -471,7 +478,8 @@ def _mk_case_env(tmp_path, sig, events):
     H = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
                      "lib", "rules_ledger.py")
     spec = ilu.spec_from_file_location("rl151a", H)
-    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    g = ilu.module_from_spec(spec)
+    spec.loader.exec_module(g)
     key = g.hashlib.sha1(sig.encode()).hexdigest()[:12]
     _mk_ledger(proj, {key: {"sig": sig, "captured_at": "2026-10-01",
                             "last_hit": "2026-10-20", "hits": 3,

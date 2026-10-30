@@ -62,7 +62,7 @@ def test_add_returns_incrementing_ids(tmp_path, monkeypatch):
 def test_resolve_filters_pending_and_feeds_fp_rate(tmp_path, monkeypatch):
     monkeypatch.setenv("RG_PENDING_LEDGER", str(tmp_path / "p.jsonl"))
     pd = _load(PENDING, "pd")
-    a, b, c = pd.add("P", "blocked", "t"), pd.add("P", "sensory", "t"), pd.add("P", "blocked", "t")
+    a, b, _ = pd.add("P", "blocked", "t"), pd.add("P", "sensory", "t"), pd.add("P", "blocked", "t")
     pd.resolve(a, "useful")
     pd.resolve(b, "fp")
     s = pd.stats()
@@ -402,7 +402,6 @@ def test_aging_buckets_and_stale(tmp_path, monkeypatch):
 def test_backlog_verb_prints_and_reads_only(tmp_path, monkeypatch, capsys):
     """backlog verb：打印分布+候选；台账内容字节不变（只读不代裁）。"""
     import datetime as dt
-    pending = _load(PENDING, "pending_backlog_mod")
     notify = _load(NOTIFY, "notify_backlog_mod")
     now = dt.datetime(2026, 10, 29, 12, 0, 0)
     path = _aging_ledger(tmp_path, monkeypatch, now)

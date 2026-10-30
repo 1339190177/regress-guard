@@ -84,6 +84,20 @@ worktree 是**物理隔离**；不开 worktree、多会话直接并行同一仓�
   仍靠 git 自身与事后审计（F3 检查以我的清单为基准，他人文件天然不在
   我清单内→拦，方向正确）
 
+### 任务租约（v1.109 批161：死会话占边界的到期出口）
+
+多会话守卫的死穴：会话死了，它的清单还在占边界（人工重盖戳是唯一出口）。
+v1.109 起批准/临行/受阻转写时自动盖 `lease: {holder, expires_at, input_hash}`
+（域逻辑单一来源 lib/lease.py；holder 与 session 戳同源）：
+
+- **过期 = 收回跨会话保护**：门禁 mine/others 分桶归 mine + 边界守卫 foreign
+  拦截失效 + 哨兵标 ⏳ 可收回——**不改 status 不处置清单**（清单不过期公理）
+- **input_hash = 输入钉**：边界文件内容快照；哨兵重算不符标 📥 输入已漂移
+  ——接管者先对账再动手（非盲接管）
+- **格式坏 = 过期**（bypass 先例）；**无 lease 块 = 旧语义逐位不变**
+- TTL 缺省 72h，config `lease.ttl_hours` 覆写；**重盖戳 = 接管/续租**
+  （接管者重跑转写即成新 holder）；心跳自动续租=观察位未实现
+
 并行子代理开发的移交界面见 [subagent-playbook.md](subagent-playbook.md)
 
 ## 原生计划模式桥（v1.39：批准点对齐）
@@ -601,6 +615,38 @@ Braintrust/Arize 金丝雀语义 + ACE 进化 playbook）。设计立场（材�
 根治）：**度量自动（fires/开火联查机器做），人只守晋升**——回路里人的注意
 力只花在盖章这一处。注入面影子条目带 🔬 前缀（prompt_intercept 规律行 +
 门禁召回段），消费方可辨知识的新旧成色。
+
+## 产物 schema 契约（v2.0.0 批162：考古承诺的机器位）
+
+三族产物（journal/history/pending）写入口带 `schema_version: 1`（对账锚）；
+读侧宽容惯例不变（坏行跳过/缺字段默认）——**考古夹具**
+（tests/fixtures/archaeology/，真实地层取样脱敏）钉死「当前读者读得起
+历史格式」，格式变更时 bump 版本号并补新形态夹具。因果链：清单带
+`run:` 字段（自迭代 run/哨兵派单时盖一行）→ 转写/journal/门禁事件带
+`run_id`；查询面 `history.py .regress trace <run-id>`（跨执行体一屏看全）。
+span 树可视化=观察位不做（OTel 思想借字段不借 SDK）。
+
+## 工程外围层（v2.1.0 批163：新鲜环境证明 + 静态检查 + 发布 tag）
+
+三件外围补课（成熟度体检裁定的欠账；核心治理机制零改动）：
+
+- **CI（.github/workflows/ci.yml）**：publish.py 全树镜像自动把 workflow 带上
+  公网仓，每次 API push 触发——新鲜 runner 跑 ruff + mypy + pytest 串行。
+  Python 钉 3.10（install.sh 契约下限——证明的是承诺）；串行是官方口径
+  （xdist 不进依赖）。本地绿不再是发布的唯一证据。
+- **静态检查（pyproject.toml）**：ruff E/F/W + line-length 120（中文注释不
+  虚增行宽），存量清零首跑即抓到两条真 F821（cochange_rules CLI 分支
+  os 未导入、test_history 死行）；E402 全局忽略=「sys.path 引导后置导入」
+  装载惯例；facts.py E501 豁免=内嵌 frontmatter 串折行即改产物。mypy
+  非严格起步（零注解存量不回扫），能力降级模式（try-import-fallback）
+  的三个误报错误码按模块定向关闭。validate.sh 挂两检（本机未装提示跳过，
+  CI 是硬执法点）。
+- **发布 tag 双写（publish.py）**：等值校验通过后本地 HEAD 打轻量 tag +
+  公网 API 建 refs/tags/v{version}。版本取 plugin.json（权威源——commit
+  主题常引用多个历史版本，解析有歧义）；幂等（已存在跳过）；失败不
+  fail 发布（书签不是门禁）。远端历史每次发布压一个 commit，历史版本
+  无远端对象——旧版只补本地考古 tag（v2.0.0@4b8fe40），远端 tag 从
+  v2.1.0 起前向。
 
 ## 机器事实卡（v1.32：跨项目地层，三层结构）
 

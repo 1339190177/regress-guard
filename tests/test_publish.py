@@ -171,3 +171,101 @@ def test_check_message_accepts_ref_with_note():
     """（NNN，附注）形态合法（096 活体：发布道曾硬拦自家镜像消息）。"""
     pub = _load()
     assert pub.check_message("v1.87.3 发布状态文件（096，哨兵轮）：x") == []
+
+
+# ─── 批163 tag 双写（版本取 plugin.json；幂等；失败不 fail 发布） ──
+
+def _mini_repo(p):
+    p.mkdir()
+    for a in (["git", "init", "-q"], ["git", "config", "user.email", "t@t"],
+              ["git", "config", "user.name", "t"]):
+        subprocess.run(a, cwd=str(p), check=True)
+    (p / "a.txt").write_text("1\n")
+    subprocess.run(["git", "add", "-A"], cwd=str(p), check=True)
+    subprocess.run(["git", "commit", "-qm", "中文首批（001）"], cwd=str(p),
+                   check=True)
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(p),
+                          capture_output=True, text=True,
+                          check=True).stdout.strip()
+
+
+def test_plugin_version_reads_authoritative_source():
+    """版本权威源 = .zcode-plugin/plugin.json（非 commit 主题——有歧义）。"""
+    import json
+    pub = _load()
+    with open(os.path.join(os.path.dirname(SCRIPT), "..",
+                           ".zcode-plugin", "plugin.json"),
+              encoding="utf-8") as f:
+        expected = json.load(f)["version"]
+    assert pub._plugin_version() == expected and expected
+
+
+def test_tag_local_idempotent(tmp_path, monkeypatch):
+    """本地 tag：首打创建、重打跳过（幂等）。"""
+    p = tmp_path / "repo"
+    head = _mini_repo(p)
+    monkeypatch.chdir(p)
+    pub = _load()
+    pub.tag_release(None, head, None)
+    tags = subprocess.run(["git", "tag"], cwd=str(p), capture_output=True,
+                          text=True).stdout.split()
+    assert tags == [f"v{pub._plugin_version()}"]
+    pub.tag_release(None, head, None)  # 第二次：已存在跳过，不炸
+    tags2 = subprocess.run(["git", "tag"], cwd=str(p), capture_output=True,
+                           text=True).stdout.split()
+    assert tags2 == tags
+
+
+def test_tag_no_version_skips(tmp_path, monkeypatch):
+    """plugin.json 无 version → 跳过（不 fail 发布路径的教学位）。"""
+    p = tmp_path / "repo"
+    head = _mini_repo(p)
+    monkeypatch.chdir(p)
+    pub = _load()
+    monkeypatch.setattr(pub, "_plugin_version", lambda: "")
+    pub.tag_release(None, head, None)
+    assert subprocess.run(["git", "tag"], cwd=str(p), capture_output=True,
+                          text=True).stdout.strip() == ""
+
+
+def test_tag_remote_paths(tmp_path, monkeypatch):
+    """远端三态：成功建 ref / 422 已存在跳过 / 其他失败 warn 不 raise。"""
+    p = tmp_path / "repo"
+    head = _mini_repo(p)
+    monkeypatch.chdir(p)
+    pub = _load()
+
+    calls = []
+
+    def _api_ok(tok, path, data=None, method=None):
+        calls.append((path, data))
+        return {}
+
+    monkeypatch.setattr(pub, "_api", _api_ok)
+    pub.tag_release("tok", head, "remoteabc")
+    assert any(d and d.get("ref", "").startswith("refs/tags/v")
+               and d["sha"] == "remoteabc" for _, d in calls)
+
+    def _api_422(tok, path, data=None, method=None):
+        raise Exception("HTTP Error 422: Reference already exists")
+
+    monkeypatch.setattr(pub, "_api", _api_422)
+    pub.tag_release("tok", head, "remoteabc")  # 已存在：跳过不炸
+
+    def _api_boom(tok, path, data=None, method=None):
+        raise Exception("HTTP Error 502")
+
+    monkeypatch.setattr(pub, "_api", _api_boom)
+    pub.tag_release("tok", head, "remoteabc")  # 其他失败：不 raise（书签非门禁）
+
+
+def test_cli_dry_run_shows_tag_plan(tmp_path):
+    """dry-run 预告 tag 计划（零网络零 token 的面也教学）。"""
+    p = tmp_path / "repo"
+    _mini_repo(p)
+    r = subprocess.run(
+        [sys.executable, SCRIPT, "--dry-run", "-m", "中文试发布（001）"],
+        cwd=str(p), capture_output=True, text=True,
+        env={"PATH": os.environ["PATH"], "HOME": str(p)}, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert "tag 计划" in r.stdout

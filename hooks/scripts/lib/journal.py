@@ -17,6 +17,9 @@ from datetime import datetime
 
 # 单字段截断上限（防一条超大报错撑爆地层）
 _FIELD_CAP = 400
+# v2.0.0（批162）产物 schema 契约：写侧立桩，读侧宽容（旧行=无版本照读）。
+# 格式变更时 bump 此号并补考古夹具（tests/fixtures/archaeology/）。
+SCHEMA_VERSION = 1
 
 
 def _find_project_dir(start_dir=None):
@@ -54,6 +57,7 @@ def journal_append(kind, start_dir=None, **fields):
     event = {
         "ts": datetime.now().isoformat(),
         "kind": kind,
+        "schema_version": SCHEMA_VERSION,  # v2.0.0 批162：对账锚（旧行缺省=宽容读）
         "session": (
             os.environ.get("CLAUDE_SESSION_ID")
             or os.environ.get("ZCODE_SESSION_ID")

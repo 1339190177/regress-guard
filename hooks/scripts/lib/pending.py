@@ -74,14 +74,17 @@ def add(project, event, title, ref="", fp=""):
     plan_approve 批准/取消时按它精确 resolve，不靠标题猜。
     fp（v1.38）：拦截原因指纹——blocked 合并键第三维（顾问修正：同清单
     不同原因的拦截是不同决策点，不能互相折叠）。
-    P2#21：max+1 分配加 flock——两会话同推不再拿到同 id（重放去重吞记录）。"""
+    P2#21：max+1 分配加 flock——两会话同推不再拿到同 id（重放去重吞记录）。
+    schema_version（v2.0.0 批162）：对账锚——resolve 行不带（v1.38 形态
+    稳定至今，续写不重标；add 行格式变更时 bump+考古夹具）。"""
     from filelock import file_lock
     with file_lock(_path()):
         adds = _load()[0]
         nid = (max(adds) if adds else 0) + 1
         _append({"id": nid, "ts": _now(), "project": str(project)[:60],
                  "event": str(event)[:20], "title": str(title)[:80],
-                 "ref": str(ref)[:60], "fp": str(fp)[:16]})
+                 "ref": str(ref)[:60], "fp": str(fp)[:16],
+                 "schema_version": 1})
     return nid
 
 
@@ -211,8 +214,8 @@ def main(argv=None):
     a.add_argument("--project", required=True)
     a.add_argument("--event", required=True)
     a.add_argument("--title", required=True)
-    l = sub.add_parser("list", help="列出记录（未决在前，已决只列最近 5 条）")
-    l.add_argument("--pending", action="store_true", help="只看未决")
+    pl = sub.add_parser("list", help="列出记录（未决在前，已决只列最近 5 条）")
+    pl.add_argument("--pending", action="store_true", help="只看未决")
     r = sub.add_parser("resolve", help="回流人类裁决")
     r.add_argument("pid", type=int)
     r.add_argument("outcome", choices=OUTCOMES)

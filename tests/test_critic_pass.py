@@ -1,10 +1,7 @@
 """critic_pass（127：A 批评臂）测试——管道与解析，批评质量归试点双指标。"""
 import importlib.util as ilu
-import json
 import os
-import sys
 
-import pytest
 
 SCRIPT = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "scripts", "critic_pass.py"))
@@ -12,7 +9,8 @@ SCRIPT = os.path.abspath(os.path.join(
 
 def _load():
     spec = ilu.spec_from_file_location("cp", SCRIPT)
-    m = ilu.module_from_spec(spec); spec.loader.exec_module(m)
+    m = ilu.module_from_spec(spec)
+    spec.loader.exec_module(m)
     return m
 
 

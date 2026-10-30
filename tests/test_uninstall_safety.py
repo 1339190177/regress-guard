@@ -5,7 +5,6 @@
 """
 import os
 import subprocess
-import pytest
 
 UNINSTALL = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "uninstall.sh"))

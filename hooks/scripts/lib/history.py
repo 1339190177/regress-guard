@@ -17,6 +17,11 @@ import os
 import json
 from datetime import datetime
 
+# v2.0.0（批162）产物 schema 契约：写侧立桩，读侧宽容（旧行=无版本照读——
+# cache_stats 对无 cached 字段旧行诚实计 miss 即此惯例）。格式变更时 bump
+# 并补考古夹具（tests/fixtures/archaeology/）。
+SCHEMA_VERSION = 1
+
 
 def _current_session_id():
     """从环境变量推断当前 ZCode 会话 ID（证据链的过程锚点）。"""
@@ -34,6 +39,8 @@ def record(regress_dir, event, manifest_id="", **details):
       manifest_id  = 意图锚点（哪个需求）
       session_id   = 过程锚点（哪次会话）
       commit_sha   = 产出锚点（哪个提交，commit 事件才有）
+      run_id       = run 锚点（哪个自迭代 run/哨兵轮次——清单 run: 字段，
+                     v2.0.0 批162 因果链；缺省无 run 的零散事件不带）
 
     Args:
         regress_dir: .regress/ 目录路径
@@ -46,6 +53,7 @@ def record(regress_dir, event, manifest_id="", **details):
         "timestamp": datetime.now().isoformat(),
         "event": event,
         "manifest_id": manifest_id,
+        "schema_version": SCHEMA_VERSION,  # v2.0.0 批162：对账锚（旧行缺省=宽容读）
         # 证据链锚点：自动从环境推断（不依赖调用方传）
         "session_id": _current_session_id(),
     }
@@ -336,13 +344,17 @@ def block_heatmap(regress_dir):
     return rows
 
 
-def build_trace(regress_dir):
+def build_trace(regress_dir, run=None):
     """构建交付链视图（借鉴 Harness Inspector 的 Intent→Process→Output）。
 
     把 history.jsonl 按 意图(manifest) → 过程(session) → 产出(commit) 组织。
     输出人类可读的文本交付链，供 /regress:trace 展示。
+    run（v2.0.0 批162）：只列带该 run_id 的事件——跨执行体因果链的查询面
+    （自迭代 run/哨兵轮次一屏看全；无 run 锚的零散事件不在此视图）。
     """
     events = load_history(regress_dir)
+    if run:
+        events = [e for e in events if e.get("run_id") == run]
 
     # 按 manifest 分组（意图锚点）
     by_manifest = {}
@@ -407,8 +419,8 @@ def telemetry(regress_dir):
     out = {}
     hp = os.path.join(regress_dir, "history.jsonl")
     try:
-        evs = [json.loads(l) for l in
-               open(hp, encoding="utf-8").read().splitlines() if l.strip()]
+        evs = [json.loads(ln) for ln in
+               open(hp, encoding="utf-8").read().splitlines() if ln.strip()]
         out["history"] = {"file": "history.jsonl", "fields": "event/timestamp",
                           "events": len(evs),
                           "last": evs[-1].get("event") if evs else None,
@@ -417,8 +429,8 @@ def telemetry(regress_dir):
         out["history"] = {"file": "history.jsonl", "missing": True}
     jp = os.path.join(regress_dir, "journal", "events.jsonl")
     try:
-        evs = [json.loads(l) for l in
-               open(jp, encoding="utf-8").read().splitlines() if l.strip()]
+        evs = [json.loads(ln) for ln in
+               open(jp, encoding="utf-8").read().splitlines() if ln.strip()]
         out["journal"] = {"file": "journal/events.jsonl", "fields": "kind/ts",
                           "events": len(evs),
                           "last": evs[-1].get("kind") if evs else None,
@@ -708,7 +720,9 @@ if __name__ == "__main__":
         for e in load_history(regress_dir):
             print(json.dumps(e, ensure_ascii=False))
     elif cmd == "trace":
-        print(build_trace(regress_dir))
+        # v2.0.0 批162：history.py <dir> trace [run-id] —— run 因果链过滤
+        run_id = sys.argv[3] if len(sys.argv) > 3 else None
+        print(build_trace(regress_dir, run=run_id))
     elif cmd == "nudge":
         rows = nudge_effectiveness(regress_dir)
         if not rows:

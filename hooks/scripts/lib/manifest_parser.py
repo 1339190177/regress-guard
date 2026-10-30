@@ -149,7 +149,7 @@ def find_active_manifest(regress_dir):
     封闭终态表会把自造词误判为活跃 → 误卡提交。
     """
     manifests_dir = os.path.join(regress_dir, "manifests")
-    files = sorted(glob.glob(os.path.join(manifest_dir := manifests_dir, "*.md")), reverse=True)
+    files = sorted(glob.glob(os.path.join(manifests_dir, "*.md")), reverse=True)
     active_statuses = ("planning", "in-progress", "verifying", "blocked")
     for f in files:
         data = parse_frontmatter(f)
@@ -409,11 +409,16 @@ def _strip_comment(val):
 
 def _parse_scalar(val):
     val = _strip_comment(val)
-    if val.lower() == "true": return True
-    if val.lower() == "false": return False
-    if val.lower() in ("null", ""): return None
-    try: return int(val)
-    except ValueError: pass
+    if val.lower() == "true":
+        return True
+    if val.lower() == "false":
+        return False
+    if val.lower() in ("null", ""):
+        return None
+    try:
+        return int(val)
+    except ValueError:
+        pass
     return val.strip('"').strip("'")
 
 

@@ -9,7 +9,6 @@ import re
 import glob
 import json
 
-import pytest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 # 批137：claims 面扩 commands/*.md（uninstall.md「3 skill/8 命令」陈旧宣称实证）

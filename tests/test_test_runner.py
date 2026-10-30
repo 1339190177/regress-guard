@@ -218,8 +218,10 @@ def test_timeout_config_knob(tmp_path):
     import importlib.util as ilu
     spec = ilu.spec_from_file_location(
         "tr-knob", os.path.join(LIB, "test_runner.py"))
-    tr = ilu.module_from_spec(spec); spec.loader.exec_module(tr)
-    d = tmp_path / "proj"; (d / ".regress").mkdir(parents=True)
+    tr = ilu.module_from_spec(spec)
+    spec.loader.exec_module(tr)
+    d = tmp_path / "proj"
+    (d / ".regress").mkdir(parents=True)
     assert tr._timeout_for(str(d)) == 120  # 无配置
     (d / ".regress" / "config.json").write_text(
         json.dumps({"test_runner": {"timeout": 300}}), encoding="utf-8")
@@ -297,7 +299,6 @@ def test_detect_vitest_output_file(tmp_path):
 def test_junit_real_pytest_all_forms(tmp_path):
     """真 pytest 子进程端到端：1 过+1 跳+1 xfail+1 败——xfail 不进分母（聚合
     skipped 混淆 skip+xfail 的实证坑，逐 case type 拆）。"""
-    import subprocess as sp
     (tmp_path / ".regress").mkdir()
     (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
     (tmp_path / "test_jx.py").write_text(
@@ -350,8 +351,6 @@ def test_regex_fallback_when_no_regress(tmp_path):
 
 def test_parse_junitxml_unit():
     """解析器单元：xfail/xpass type 拆分+testsuites 包装层+坏档 None。"""
-    from test_runner import _parse_junitxml
-    import xml.etree.ElementTree as ET
     good = tmp_path_maker = None  # noqa: F841
     p_xml = ("<?xml version='1.0'?><testsuites><testsuite name='t'>"
              "<testcase name='a'/>"
@@ -361,7 +360,8 @@ def test_parse_junitxml_unit():
              "<testcase name='e'><failure message='x'/></testcase>"
              "<testcase name='f'><error message='y'/></testcase>"
              "</testsuite></testsuites>")
-    import pathlib, tempfile
+    import pathlib
+    import tempfile
     d = pathlib.Path(tempfile.mkdtemp())
     f = d / "r.xml"
     f.write_text(p_xml, encoding="utf-8")
@@ -376,8 +376,8 @@ def test_parse_junitxml_unit():
 def test_parse_junitxml_unit_multi_child():
     """130（批评家 run3 历史发现）：前置附属元素/多子元素形态——全子元素
     扫描不误分类（旧 kids[0] 逻辑会把带前置 system-out 的失败例记 passed）。"""
-    import pathlib, tempfile
-    from test_runner import _parse_junitxml
+    import pathlib
+    import tempfile
     d = pathlib.Path(tempfile.mkdtemp())
     xml = ("<?xml version='1.0'?><testsuites><testsuite>"
            "<testcase name='pre'><system-out>noise</system-out>"

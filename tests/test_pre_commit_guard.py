@@ -3,7 +3,6 @@
 历史上 4 个 bug 都出在这个文件（||吞输出、completed终态、monorepo路径、
 no_active_manifest不记录），却没有单元测试。本文件把手工验证固化为可回归。
 """
-import sys
 import os
 import json
 import subprocess
@@ -152,7 +151,7 @@ def test_monorepo_finds_parent_regress(project, tmp_path):
     # 把 git 项目移进 monorepo 子目录
     sub = parent / "server"
     sub.mkdir()
-    import subprocess as sp, shutil
+    import shutil
     for item in os.listdir(project):
         shutil.move(str(project / item), str(sub / item))
 
@@ -734,7 +733,8 @@ def test_auto_reflow_pending_on_gate_pass(project, tmp_path, monkeypatch):
     _L = os.path.abspath(os.path.join(
         os.path.dirname(__file__), "..", "hooks", "scripts", "lib"))
     spec = ilu.spec_from_file_location("pd-ar", os.path.join(_L, "pending.py"))
-    pd = ilu.module_from_spec(spec); spec.loader.exec_module(pd)
+    pd = ilu.module_from_spec(spec)
+    spec.loader.exec_module(pd)
     pd.add("P", "blocked", "⛔ 提交被拦 R1", ref="R1")
     pd.add("P", "blocked", "⛔ 提交被拦 R9", ref="R9")
     _passing_runner(project)
@@ -1671,7 +1671,8 @@ def test_recall_hint_shadow_prefix(project):
     """影子条目在门禁召回段带 🔬 前缀（EARS 批150 第6条第二面的直接锁）。"""
     import importlib.util as ilu
     spec = ilu.spec_from_file_location("pcg151", GUARD)
-    g = ilu.module_from_spec(spec); spec.loader.exec_module(g)
+    g = ilu.module_from_spec(spec)
+    spec.loader.exec_module(g)
     import json as _json
     key = g.__dict__.get("hashlib") or __import__("hashlib")
     sig = "test_failed 复合命令测试失败影子规律"
@@ -1791,11 +1792,8 @@ def _incr_setup(project, srcs=("src/app.py",), tests=("tests/test_app.py",)):
 def test_incremental_subset_run_and_event(project):
     """opt-in+全映射 → 子集跑（耗时骤降旁证=total 只计子集文件）+事件带
     incremental/subset+对账豁免 note。"""
-    import time
     _incr_setup(project)
-    t0 = time.time()
     code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
-    dt = time.time() - t0
     assert code == 0, err
     assert "增量模式" in err
     evs = read_history(project)

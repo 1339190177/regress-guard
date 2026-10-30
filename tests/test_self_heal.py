@@ -341,7 +341,8 @@ def _run_main_stdout(sh, tmp_path, monkeypatch, config):
     (tmp_path / "hookhome" / "lib").mkdir(parents=True, exist_ok=True)  # check_and_heal 铺文件目标位
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
     monkeypatch.delenv("ZCODE_PROJECT_DIR", raising=False)
-    import io, contextlib
+    import io
+    import contextlib
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         sh.main()

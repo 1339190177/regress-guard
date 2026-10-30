@@ -1,10 +1,7 @@
 """boundary_guard（开发边界守卫）的单元测试。"""
 import json
 import os
-import shutil
 import subprocess
-import sys
-import tempfile
 
 GUARD = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
                      "boundary_guard.py")
@@ -495,7 +492,8 @@ def test_unstamped_manifest_stays_shared(tmp_path):
 def _bg():
     import importlib.util as ilu
     spec = ilu.spec_from_file_location("bg-unit", GUARD)
-    m = ilu.module_from_spec(spec); spec.loader.exec_module(m)
+    m = ilu.module_from_spec(spec)
+    spec.loader.exec_module(m)
     return m
 
 

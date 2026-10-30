@@ -1,9 +1,7 @@
 """health_probe（131：巡检探针机器位）——崩/漏可见性，不做语义解读。"""
 import importlib.util as ilu
 import os
-import sys
 
-import pytest
 
 SCRIPT = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "scripts", "health_probe.py"))
@@ -11,12 +9,13 @@ SCRIPT = os.path.abspath(os.path.join(
 
 def _load():
     spec = ilu.spec_from_file_location("hp", SCRIPT)
-    m = ilu.module_from_spec(spec); spec.loader.exec_module(m)
+    m = ilu.module_from_spec(spec)
+    spec.loader.exec_module(m)
     return m
 
 
 def _probe(script_body, name="p.sh"):
-    import tempfile, stat
+    import tempfile
     d = tempfile.mkdtemp()
     p = os.path.join(d, name)
     open(p, "w").write("#!/bin/sh\n" + script_body)
@@ -84,7 +83,8 @@ def test_hook_probes_registered():
     HP = os.path.abspath(os.path.join(
         os.path.dirname(__file__), "..", "scripts", "health_probe.py"))
     spec = ilu.spec_from_file_location("hp", HP)
-    m = ilu.module_from_spec(spec); spec.loader.exec_module(m)
+    m = ilu.module_from_spec(spec)
+    spec.loader.exec_module(m)
     labels = {p[0] for p in m.PROBES}
     assert {"hook.boundary", "hook.valve", "hook.rbe-post"} <= labels
     # 三探针都是 empty_ok（钩子通过时 stdout 本就为空）

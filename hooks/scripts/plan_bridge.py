@@ -220,7 +220,7 @@ scan:
   test: "项目测试套件（门禁 6 节自跑）"
   card: "{card}"
 """
-        body_extra = f"""
+        body_extra = """
 ## 验收标准（EARS-lite·骨架——实施期逐行填+验证后行尾勾 ✅）
 
 - When <条件>，则 <可观察结果>（验：<命令>）
@@ -346,7 +346,7 @@ def do_post(project_dir, data, sid):
         if journal_append:
             journal_append("plan_refined", start_dir=project_dir,
                            manifest_id=mid, via="native-plan-bridge",
-                           plan_hash=sha)
+                           plan_hash=sha, **_run_kw(fm))
         _receipt(mid, len(paths))
         return
     if planning:
@@ -367,7 +367,8 @@ def do_post(project_dir, data, sid):
         if journal_append:
             journal_append("plan_approved", start_dir=project_dir,
                            manifest_id=mid, via="native-plan-bridge",
-                           plan_hash=sha, note="dual-track: 盖章既有 planning 清单")
+                           plan_hash=sha, note="dual-track: 盖章既有 planning 清单",
+                           **_run_kw(fm))
         _receipt(mid)
         return
     paths = extract_paths(plan)
@@ -378,6 +379,13 @@ def do_post(project_dir, data, sid):
         journal_append("plan_approved", start_dir=project_dir, manifest_id=mid,
                        via="native-plan-bridge", plan_hash=sha)
     _receipt(mid, len(paths))
+
+
+def _run_kw(fm):
+    """run 锚（v2.0.0 批162）：清单带 run: 字段则 journal 事件带 run_id
+    （自迭代 run/哨兵轮次的因果链）；无 run 不带。"""
+    r = _fm_get(fm or "", "run")
+    return {"run_id": r} if r else {}
 
 
 def _repair_fossils(project_dir, mid, sha):

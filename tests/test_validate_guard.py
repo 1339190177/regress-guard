@@ -72,7 +72,6 @@ def test_deploy_contract_drift_guard(tmp_path):
     check_docs.check_v1241(ROOT, errs, warns)
     assert not errs, f"真实目录被判漂移: {errs}"
     # 负路：伪源目录多一个脚本不在清单 → 报错
-    import shutil
     proj = tmp_path / "plug"
     (proj / "hooks" / "scripts" / "lib").mkdir(parents=True)
     heal = proj / "hooks" / "scripts" / "self_heal.py"
@@ -137,7 +136,8 @@ def test_gate_liveness_watchdog_both_paths(tmp_path):
                                    log_dir=str(tmp_path / "nologi"))
     assert not errs2 and not warns2
     # 日志负路：含 invalid 记录 → warn
-    logd = tmp_path / "logs"; logd.mkdir()
+    logd = tmp_path / "logs"
+    logd.mkdir()
     (logd / "zcode-2026-09-03.jsonl").write_text(
         '{"event":"config.file.invalid"}\n', encoding="utf-8")
     errs3, warns3 = [], []

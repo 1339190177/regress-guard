@@ -2,11 +2,8 @@
 pinned-SHA 快照对账（顾问三修：确定性声明、边界区间措辞、结构化 boundary、
 快照与 git 历史父提交原文对账）。"""
 import importlib.util as ilu
-import json
 import os
 import subprocess
-import sys
-from datetime import datetime, timedelta
 
 import pytest
 

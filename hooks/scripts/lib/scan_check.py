@@ -56,12 +56,12 @@ def check(project_dir):
         rng = f"{sha}..HEAD"
         log = _git(project_dir, "log", "--oneline", rng, "--", ".",
                    ":(exclude).regress")
-        commits = len([l for l in log.splitlines() if l.strip()])
+        commits = len([ln for ln in log.splitlines() if ln.strip()])
         ad = _git(project_dir, "log", "--diff-filter=ADR", "--name-only",
                   "--format=", rng, "--", ":(exclude).regress",
                   ":(exclude)tests", ":(exclude)docs", ":(exclude)*.md")
-        structural = sorted({l for l in ad.splitlines()
-                             if l.strip() and _structural(l)})
+        structural = sorted({ln for ln in ad.splitlines()
+                             if ln.strip() and _structural(ln)})
     verdict = "stale" if (commits >= 3 or structural) else "fresh"
     return {"verdict": verdict, "card": card_rel,
             "card_last_commit": iso or "未提交",

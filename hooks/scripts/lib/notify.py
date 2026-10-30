@@ -522,7 +522,7 @@ def main(argv=None):
             print(f"  {k}  授信于 {table[k]}{mark}")
         print(
             "\n授信是人的决定，本命令不写表。人工授信/撤销：直接编辑上述文件，\n"
-            f'  授信一行：  "<项目 realpath>": "<ISO 时间>"\n'
+            '  授信一行：  "<项目 realpath>": "<ISO 时间>"\n'
             "  （JSON 对象，键=项目绝对路径，值=授信时间；删行即撤销）")
         if target and target not in table:
             print(f"\n提示：{target} 当前不在表中（未受信）")

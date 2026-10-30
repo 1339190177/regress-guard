@@ -45,7 +45,7 @@ def test_autonomy_word_pushes(tmp_path, monkeypatch):
     monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
     monkeypatch.setenv("ZCODE_PROJECT_DIR", str(proj))
     monkeypatch.setenv("TMPDIR", str(tmp_path))  # 标记文件隔离（否则污染真机 /tmp）
-    from prompt_intercept import save_prompt, _state_path
+    from prompt_intercept import save_prompt
     save_prompt("继续，自决策。开启长程任务推演")
     _run_main()
     out = (tmp_path / "m1").read_text(encoding="utf-8")

@@ -6,7 +6,6 @@ absent（无卡片 → M/L 先建卡或声明纯库）。
 import json
 import os
 import subprocess
-import sys
 
 LIB = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "hooks",
                                    "scripts", "lib"))

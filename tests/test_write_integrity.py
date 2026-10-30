@@ -6,11 +6,9 @@
 回归网：绿=当下环境健康（不是问题不存在的证明）；红=环境级丢失再现，
 证据自携，升 strace 级根因批（FP1 语义）。
 """
-import os
 import subprocess
 import sys
 
-import pytest
 
 PROBE = r"""
 import sys

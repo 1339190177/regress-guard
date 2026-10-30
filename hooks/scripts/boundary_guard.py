@@ -128,6 +128,19 @@ def _manifest_session(manifest_path):
     return m.group(1) if m else ""
 
 
+def _manifest_lease_expired(manifest_path):
+    """清单租约是否过期（v1.109 批161）：域逻辑在 lib/lease.py（判定单一
+    来源）；无 lease 块=不过期。读不到清单=不过期（守卫对存疑者从宽，
+    过期收回是放宽不是收紧——错向可见可修）。"""
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            content = f.read()
+        from lease import expired
+        return expired(content)
+    except Exception:
+        return False
+
+
 def parse_boundary(manifest_path):
     """从清单 frontmatter 提取边界：显式 include 通配 或 精确文件集。
 
@@ -452,7 +465,12 @@ def main():
         #      活跃清单边界内——冲突只在集成态现形，编辑时就对焦比提交后
         #      回滚便宜。无戳清单不受影响（共享语义）。
         if my_sid:
-            foreign = [m for m in matched if m[4] and m[4] != my_sid]
+            # v1.109 批161：租约过期的他会话清单不再拦编辑（收回跨会话保护）——
+            # 死会话占边界的出口从「人工重盖戳」前移为「到期自动可动」；
+            # 无 lease 块=旧语义不变（back-compat）
+            foreign = [m for m in matched
+                       if m[4] and m[4] != my_sid
+                       and not _manifest_lease_expired(m[0])]
             own = [m for m in matched if not m[4] or m[4] == my_sid]
             if foreign:
                 f_ids = ", ".join(f"{mid or os.path.basename(mf)}（{sid[:8]}…）"
@@ -465,7 +483,8 @@ def main():
                     f"  多会话的冲突只在集成点现形——现在对焦比事后回滚便宜。\n"
                     f"  · 哨兵视图看全局归属：python3 hooks/scripts/lib/sentinel.py\n"
                     f"  · 与该会话串行作业，或让人类仲裁文件归属\n"
-                    f"  · 该会话已死？收尾其清单或重盖 session 戳后再动此文件\n"
+                    f"  · 该会话已死？租约过期即自动可收回（v1.109）；未过期可"
+                    f"重盖 session+lease 戳接管后再动此文件\n"
                     f"  · 确要并行抢改 → /regress:bypass <分钟>（限时赦免，赦后记债）",
                     file=sys.stderr,
                 )

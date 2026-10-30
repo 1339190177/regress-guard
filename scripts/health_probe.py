@@ -76,7 +76,6 @@ def run_probes(workspace=None, probes=None, timeout=PER_PROBE_TIMEOUT):
         try:
             p = subprocess.run(cmd, capture_output=True, text=True,
                                cwd=workspace, timeout=timeout)
-            out = (p.stdout or "") + (p.stderr or "")
             ok = (p.returncode == 0
                   and (bool((p.stdout or "").strip()) or empty_ok))
             if not ok:

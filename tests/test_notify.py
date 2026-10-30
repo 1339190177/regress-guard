@@ -178,7 +178,6 @@ def test_pin_swap_sensitive_denied(tmp_path, capsys):
     evil = tmp_path / "evil.sh"
     (pathlib.Path(proj) / ".regress" / "config.json").write_text(
         json.dumps({"notify": {"channels": [str(evil)]}}), encoding="utf-8")
-    marker_before = set(tmp_path.glob("m21*"))
     nt.notify(str(proj), "done", "t")  # 敏感变更被拒（回退默认通道，返回值非宗量）
     err = capsys.readouterr().err
     assert "敏感面已变" in err and "时间戳" in err
@@ -284,7 +283,6 @@ def test_wecom_subprocess_receives_merged_conf(tmp_path, monkeypatch):
     病例：2026-09-05 合并只活在父进程，子进程只读项目文件 → 演示项目推送静默失败，
     而当时测试只断言了合并字典（oracle 宽松断言）。"""
     import http.server
-    import importlib.util as ilu
     import threading
     hits = []
 
@@ -328,7 +326,6 @@ def test_wecom_subprocess_receives_merged_conf(tmp_path, monkeypatch):
 
 def test_machine_fallback_and_keywise_merge(tmp_path, monkeypatch):
     """v1.31.3 两层合并：项目无 notify 块 → 机器级生效；项目按键覆盖（wecom 深合并）。"""
-    import importlib
     mach = tmp_path / "machine.json"
     mach.write_text(json.dumps({"notify": {
         "name": "机器默认",
@@ -570,7 +567,8 @@ def test_api_base_pinned(tmp_path, monkeypatch, capsys):
     """_api_base 四态：恶域钉回/本机放行/allowlist 放行/无 env 官方域。"""
     import importlib.util as ilu
     w = ilu.spec_from_file_location("wn", os.path.join(LIB, "wecom_notify.py"))
-    wn = ilu.module_from_spec(w); w.loader.exec_module(wn)
+    wn = ilu.module_from_spec(w)
+    w.loader.exec_module(wn)
     d = "https://qyapi.weixin.qq.com/cgi-bin"
     monkeypatch.setenv("WECOM_API_BASE", "https://evil.example/x")
     assert wn._api_base({}) == d  # 恶域钉回

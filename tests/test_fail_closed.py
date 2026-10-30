@@ -15,7 +15,6 @@
 import json
 import os
 import subprocess
-import sys
 
 LIB = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts")
 LIB = os.path.abspath(LIB)
@@ -169,7 +168,8 @@ def _imp():
     import importlib.util as ilu
     spec = ilu.spec_from_file_location(
         "pcg", os.path.join(LIB, "pre_commit_guard.py"))
-    m = ilu.module_from_spec(spec); spec.loader.exec_module(m)
+    m = ilu.module_from_spec(spec)
+    spec.loader.exec_module(m)
     return m
 
 

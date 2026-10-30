@@ -78,7 +78,7 @@ def _collect_hits(selector):
         cwd=REPO, capture_output=True, text=True, timeout=180)
     if r.returncode not in (0, 5):  # 5 = 无选中（合法观测值）；其余 = 收集期崩溃
         pytest.fail(f"collect 崩溃 rc={r.returncode}\n{r.stderr[-800:]}")
-    return [l for l in r.stdout.splitlines() if "::" in l]
+    return [ln for ln in r.stdout.splitlines() if "::" in ln]
 
 
 @pytest.mark.parametrize("case", _load(), ids=lambda c: c["id"])

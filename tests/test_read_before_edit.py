@@ -3,7 +3,6 @@ import sys
 import os
 import json
 import subprocess
-import tempfile
 
 import pytest
 

@@ -17,6 +17,10 @@
 （（NNN）或全 ID）/禁尖括号（发布 JSON 与运营双坑）。--mirror-since 的素材
 是本地提交主题——它们已过门禁三查，天然合规。
 
+tag 双写（批163，REGRESS-2026-161）：等值校验通过后，本地 HEAD 打轻量
+tag + 公网 API 建 refs/tags/v{version}（版本取 plugin.json 权威源）。
+失败不 fail 发布——书签不是门禁。
+
 token 从凭据文件读入只进内存，永不回显。未知参数直接拒绝（gen_reference
 静默吞未知 flag 的 #14 教训——argparse 默认行为即所需）。
 """
@@ -55,7 +59,7 @@ def mirror_since(rev):
     """拼接 rev..HEAD 的本地提交主题为发布消息（天然过门禁三查的素材）。"""
     r = subprocess.run(["git", "log", "--format=%s", f"{rev}..HEAD"],
                        capture_output=True, text=True, check=True)
-    subjects = [l for l in r.stdout.splitlines() if l.strip()]
+    subjects = [ln for ln in r.stdout.splitlines() if ln.strip()]
     if not subjects:
         return ""
     return "\n".join(subjects)
@@ -132,6 +136,54 @@ def write_state(last_local_head, remote_commit):
     os.replace(tmp, p)
 
 
+def _plugin_version():
+    """本批版本号取 plugin.json——权威源。不解析 commit 主题：主题常引用
+    多个历史版本（「（v1.107.1）…（v1.92.1 状态锁…）」形态），首匹配有歧义。"""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        with open(os.path.join(root, ".zcode-plugin", "plugin.json"),
+                  encoding="utf-8") as f:
+            return str(json.load(f).get("version") or "")
+    except Exception:
+        return ""
+
+
+def tag_release(tok, head, remote_commit, dry=False):
+    """发布成功后双写 tag（批163）：本地 HEAD 打轻量 tag + 公网 API 建 ref。
+
+    失败不 fail 发布——本体已成功、回滚不可行，tag 是书签不是门禁：
+    夹不上书签不该撕书。幂等：本地已存在跳过；远端 422 已存在跳过。
+    远端 tag 指向公网 commit（与本地 tag 指向不同对象但树哈希已证等值——
+    公网历史每次发布压一个 commit，本地中间提交在远端无对象）。"""
+    ver = _plugin_version()
+    if not ver:
+        print("tag: plugin.json 无 version——跳过（不 fail 发布）")
+        return
+    tag = f"v{ver}"
+    if dry:
+        print(f"[dry-run] tag 计划：{tag}（版本取 plugin.json，零网络）")
+        return
+    exists = subprocess.run(
+        ["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"],
+        capture_output=True, text=True)
+    if exists.returncode == 0:
+        print(f"tag: 本地 {tag} 已存在——跳过")
+    else:
+        subprocess.run(["git", "tag", tag, head], check=True)
+        print(f"tag: 本地 {tag} → {head[:12]}")
+    if not tok:
+        return
+    try:
+        _api(tok, f"/repos/{OWNER}/{REPO}/git/refs",
+             {"ref": f"refs/tags/{tag}", "sha": remote_commit})
+        print(f"tag: 公网 {tag} → {remote_commit[:12]}")
+    except Exception as e:
+        if "422" in str(e) or "already exists" in str(e):
+            print(f"tag: 公网 {tag} 已存在——跳过")
+        else:
+            print(f"tag: 公网建 ref 失败（不 fail 发布）：{e}", file=sys.stderr)
+
+
 def publish(msg, dry=False, token_file="~/.dsh/.credentials.yaml"):
     items = _head_tree_items()
     local_tree = subprocess.run(
@@ -141,6 +193,7 @@ def publish(msg, dry=False, token_file="~/.dsh/.credentials.yaml"):
         print(f"[dry-run] blob 数：{len(items)}")
         print(f"[dry-run] 本地 HEAD 树：{local_tree}")
         print(f"[dry-run] 消息预览：{msg[:80]}...")
+        tag_release(None, None, None, dry=True)
         print("[dry-run] 零网络零 token——未发布")
         return 0
     tok = _read_token(token_file)
@@ -172,6 +225,7 @@ def publish(msg, dry=False, token_file="~/.dsh/.credentials.yaml"):
                               check=True).stdout.strip()
         write_state(head, ref)
         print(f"状态已记：{head[:12]} → 下次 --mirror-since 缺省即取此点")
+        tag_release(tok, head, ref)
         return 0
     print(f"MISMATCH local={local_tree} remote={remote_tree}——停手排查",
           file=sys.stderr)

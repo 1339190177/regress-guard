@@ -32,7 +32,8 @@ _HOOKS = next((d for d in _HOOKS_CANDIDATES
                if os.path.exists(os.path.join(d, "pre_commit_guard.py"))),
               os.path.join(ROOT, "hooks", "scripts"))
 GUARD = os.path.join(_HOOKS, "pre_commit_guard.py")
-VALVE = os.path.join(_HOOKS, "execution_valve.py")  # 120：119 解析序列漏网（部署位 ROOT 断链致 H6 假 fail，部署位束逮住）
+# 120：119 解析序列漏网（部署位 ROOT 断链致 H6 假 fail，部署位束逮住）
+VALVE = os.path.join(_HOOKS, "execution_valve.py")
 RGUARD = os.path.join(_HOOKS, "read_before_edit_guard.py")
 BGN = os.path.join(_HOOKS, "boundary_guard.py")  # 135：fail-closed 场景面
 

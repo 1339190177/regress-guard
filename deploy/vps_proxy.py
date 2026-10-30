@@ -43,7 +43,7 @@ def worker(c):
         head = req.decode("latin1")
         first = head.split("\r\n", 1)[0]
         lines = head.split("\r\n\r\n", 1)[0].split("\r\n")[1:]
-        hdrs = dict(l.split(": ", 1) for l in lines if ": " in l)
+        hdrs = dict(ln.split(": ", 1) for ln in lines if ": " in ln)
         if hdrs.get("Proxy-Authorization", "") != AUTH:
             c.sendall(
                 b"HTTP/1.1 407 Proxy Authentication Required\r\n"

@@ -265,7 +265,6 @@ def check_context(project_dir):
                         "采纳与否必须在回复中标注。"
                     )
             else:
-                mitigated = len(fails) - len(acute)
                 reasons = []
                 if success_sigs & {f.get("sig", "?") for f in fails}:
                     reasons.append("失败签名窗口内也有成功执行（迭代/TDD 推进中）")

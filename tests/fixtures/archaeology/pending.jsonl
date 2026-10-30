@@ -1,0 +1,4 @@
+{"id": 1, "ts": "2026-09-08T20:52:35", "project": "arch-project", "event": "plan_approval", "title": "arch-title"}
+{"id": 19, "ts": "2026-09-16T14:52:48", "project": "arch-project", "event": "blocked", "title": "arch-title", "ref": "REGRESS-2026-032", "fp": "c9d43d3a"}
+{"resolve_id": 2, "ts": "2026-09-08T21:13:04", "outcome": "useful"}
+{"merge_into": 23, "ts": "2026-09-17T21:13:53"}

@@ -163,7 +163,6 @@ def test_signal_killed_child_exits_2(tmp_path):
 
     旧行为 code ?? 1 → exit 1 → 宿主按「非阻断错误」放行 = 门禁在崩溃瞬间
     失守。构造：guard 阻塞读 stdin（管道不关），外层 kill -9 子进程。"""
-    import time
     mk = tmp_path / "mk"
     mk.write_text(
         'import subprocess, sys, os, signal, time, json\n'

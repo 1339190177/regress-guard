@@ -11,7 +11,6 @@ sys.path.insert(0, LIB)
 
 from git_diff_analyzer import (
     filter_files, find_untracked_changes, is_commit_command,
-    DEFAULT_IGNORE_PATTERNS,
 )
 
 

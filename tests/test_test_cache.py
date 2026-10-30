@@ -162,9 +162,9 @@ def test_lookup_ttl_expiry(tmp_path):
     rg.mkdir()
     test_cache.record(str(r), str(rg), dict(_PASS))
     f = rg / "test-cache.jsonl"
-    lines = [json.loads(l) for l in f.read_text(encoding="utf-8").splitlines() if l.strip()]
+    lines = [json.loads(ln) for ln in f.read_text(encoding="utf-8").splitlines() if ln.strip()]
     lines[0]["ts"] = time.time() - 999 * 60  # 远超默认 TTL 240min
-    f.write_text("\n".join(json.dumps(l) for l in lines) + "\n", encoding="utf-8")
+    f.write_text("\n".join(json.dumps(ln) for ln in lines) + "\n", encoding="utf-8")
     assert test_cache.lookup(str(r), str(rg)) is None
 
 
@@ -174,8 +174,8 @@ def test_record_trims(tmp_path):
     rg.mkdir()
     for i in range(60):
         test_cache.record(str(r), str(rg), dict(_PASS, passed=i))
-    lines = [l for l in (rg / "test-cache.jsonl").read_text(
-        encoding="utf-8").splitlines() if l.strip()]
+    lines = [ln for ln in (rg / "test-cache.jsonl").read_text(
+        encoding="utf-8").splitlines() if ln.strip()]
     assert len(lines) <= 50
 
 
@@ -220,6 +220,6 @@ def test_record_concurrent_both_survive(tmp_path):
              for _ in range(2)]
     for p in procs:
         assert p.wait(timeout=60) == 0, p.stderr.read().decode()
-    lines = [l for l in (rg / "test-cache.jsonl").read_text(
-        encoding="utf-8").splitlines() if l.strip()]
+    lines = [ln for ln in (rg / "test-cache.jsonl").read_text(
+        encoding="utf-8").splitlines() if ln.strip()]
     assert len(lines) == 2, "并发落账丢条（§17 读改写临界区失效）"

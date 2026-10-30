@@ -12,6 +12,9 @@ allowed-tools: Read, Bash
 
 ```bash
 python3 "<插件路径>/hooks/scripts/lib/history.py" .regress trace
+# run 因果链过滤（v2.0.0 批162）：只列带该 run_id 的事件——自迭代 run/
+# 哨兵轮次一屏看全（清单带 run: 字段时事件才带 run_id）
+python3 "<插件路径>/hooks/scripts/lib/history.py" .regress trace <run-id>
 ```
 
 ## 输出示例

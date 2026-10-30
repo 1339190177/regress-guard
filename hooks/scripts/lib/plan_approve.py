@@ -64,6 +64,31 @@ def _stamp_session(content, manifest_dir):
                             content, count=1)
 
 
+def _stamp_lease(content, path):
+    """盖任务租约戳（v1.109 批161）：holder 身份与 session 戳同源（中继优先
+    env 兜底），域逻辑（TTL/钉算/过期/漂移）单一来源在 lib/lease.py。
+    无身份不盖（错归属比无戳糟，与 _stamp_session 同策略）。"""
+    try:
+        from session_relay import read_relay, sid_from_env
+        project_dir = journal._find_project_dir(os.path.dirname(path)) \
+            or os.path.dirname(path)
+        holder = (read_relay(project_dir) or {}).get("sid") or sid_from_env() or ""
+    except Exception:
+        holder = ""
+    try:
+        from lease import stamp as _lease_stamp
+        return _lease_stamp(content, path, holder)
+    except Exception:
+        return content  # 租约是增强不是依赖
+
+
+def _run_kw(fm):
+    """run 锚（v2.0.0 批162 因果链）：清单 frontmatter run: 字段——自迭代
+    run/哨兵派单时盖一行，转写事件即带 run_id；无 run 不带（零散任务语义）。"""
+    r = field(fm, "run")
+    return {"run_id": r} if r else {}
+
+
 def _resolve_pending(mid):
     """P0-3 回流接线（评审批次一）：批准/取消/解阻 = 人类对该清单相关
     待决推送的事实裁决（useful）——自动 resolve 同 ref 的未决记录，
@@ -174,7 +199,7 @@ def _dirty_files(manifest_dir, cap=20):
     out = _git(root, "status", "--short")
     if not out:
         return []
-    return [l.strip() for l in out.splitlines() if l.strip()][:cap]
+    return [ln.strip() for ln in out.splitlines() if ln.strip()][:cap]
 
 
 def _already_journaled(kind, mid, manifest_dir):
@@ -222,7 +247,8 @@ def main():
     ap.add_argument("--resolution", default="", help="解阻：阻塞如何被解除的")
     ap.add_argument("--provisional", action="store_true",
                     help="临行（预授权+顾问预审无异议：planning→in-progress，进入否决窗）")
-    ap.add_argument("--advisor", default="", help="顾问预审一句话结论（--provisional 必填；必须来自真实 consult，audit 可查）")
+    ap.add_argument("--advisor", default="",
+                    help="顾问预审一句话结论（--provisional 必填；必须来自真实 consult，audit 可查）")
     args = ap.parse_args()
 
     if sum(bool(x) for x in (args.cancel, args.block, args.unblock, args.provisional)) > 1:
@@ -262,10 +288,11 @@ def main():
             "need": args.need.replace('"', "'"),
             "at": now,
         }
-        new_content = _stamp_session(_set_blocked(content, fields), mdir)  # P1#7：先算后写
+        new_content = _stamp_lease(  # v1.109 批161：受阻转写同盖租约（重盖=续租）
+            _stamp_session(_set_blocked(content, fields), mdir), path)  # P1#7：先算后写
         with open(path, "w", encoding="utf-8") as f:
             f.write(new_content)
-        journal_append("task_blocked", start_dir=mdir, manifest_id=mid,
+        journal_append("task_blocked", start_dir=mdir, manifest_id=mid, **_run_kw(fm),
                        reason=fields["reason"], need=fields["need"],
                        tried=fields["tried"], unsafe_why=fields["unsafe_why"])
         # 人类介入通知（v1.30）：受阻即推送——need 在等一个不在屏幕前的人
@@ -296,11 +323,12 @@ def main():
                   "plan_advisor_review '{\"manifest_id\":\"..\",\"verdict\":\"..\",\"summary\":\"..\"}'"
                   "（防代笔：预审必须留下可审计的痕迹）", file=sys.stderr)
             return 1
-        new_content = _stamp_session(_set_provisional(  # P1#7：先算后写
-            content, now, args.advisor.replace('"', "'")), mdir)
+        new_content = _stamp_lease(  # v1.109 批161：临行转写同盖租约
+            _stamp_session(_set_provisional(  # P1#7：先算后写
+                content, now, args.advisor.replace('"', "'")), mdir), path)
         with open(path, "w", encoding="utf-8") as f:
             f.write(new_content)
-        journal_append("provisional_start", start_dir=mdir, manifest_id=mid,
+        journal_append("provisional_start", start_dir=mdir, manifest_id=mid, **_run_kw(fm),
                        advisor=args.advisor[:400])
         # 批152：临行推送带 EARS 判据段（M/L）——异步否决窗复用，人未否决=默认前进
         ears_block, ears_n = _ears_display(path, field(fm, "tier"))
@@ -326,7 +354,7 @@ def main():
         with open(path, "w", encoding="utf-8") as f:
             f.write(_append_resolved(content, now,
                                      (args.resolution or args.note).replace('"', "'")))
-        journal_append("task_unblocked", start_dir=mdir, manifest_id=mid,
+        journal_append("task_unblocked", start_dir=mdir, manifest_id=mid, **_run_kw(fm),
                        resolution=(args.resolution or args.note)[:400])
         print(f"✅ 已解阻：{mid} → in-progress（blocked 块保留 resolved 记录）")
         n = _resolve_pending(mid)
@@ -348,7 +376,7 @@ def main():
         if _already_journaled("plan_cancelled", mid, mdir):
             print(f"🗑️ 已取消：{mid} → cancelled（地层已有此事件，不重复埋）")
         else:
-            journal_append("plan_cancelled", start_dir=mdir, manifest_id=mid, note=note)
+            journal_append("plan_cancelled", start_dir=mdir, manifest_id=mid, note=note, **_run_kw(fm))
             print(f"🗑️ 已取消：{mid} → cancelled（归档不实施，已入考古地层）")
         n = _resolve_pending(mid)
         if n:
@@ -364,7 +392,8 @@ def main():
     at = human_at or datetime.now().isoformat(timespec="seconds")
     if not note:
         note = "产物直通（人类直接编辑 approved.at）" if human_at else "对话批准转写"
-    new_content = _stamp_session(_apply(content, "in-progress", at, note), mdir)  # P1#7：先算后写
+    new_content = _stamp_lease(  # v1.109 批161：批准转写同盖租约（holder=本会话）
+        _stamp_session(_apply(content, "in-progress", at, note), mdir), path)  # P1#7：先算后写
     with open(path, "w", encoding="utf-8") as f:
         f.write(new_content)
 
@@ -373,7 +402,7 @@ def main():
     already = _already_journaled("plan_approved", mid, mdir)
     ears_block, ears_n = _ears_display(path, field(fm, "tier"))
     if not already:
-        journal_append("plan_approved", start_dir=mdir, manifest_id=mid,
+        journal_append("plan_approved", start_dir=mdir, manifest_id=mid, **_run_kw(fm),
                        approved_at=at, note=note, drift=drift or "none",
                        dirty_count=len(dirty), dirty_files=dirty,
                        ears_n=ears_n if ears_n is not None else "",

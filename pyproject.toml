@@ -1,0 +1,40 @@
+# 静态检查配置（批163，REGRESS-2026-161）——运行时零依赖不动摇：
+# ruff/mypy 是开发/CI 工具，不进 requirements-dev.txt（claims lint 对账该
+# 清单），CI 侧钉版本直装（工具链跟随 repo 原则，同 pero ci.yml 教训）。
+#
+# ruff 宽松度裁定：E/F/W 全选 + line-length 120。存量已清零后阻断。120 的
+# 依据：中文注释不虚增行宽（ruff 按字符计），88/100 会把长教学注释和 URL
+# 撕碎——行长约束服务于可读性而非仪式。
+#
+# mypy 宽松度裁定：零注解代码非严格起步——未注解函数默认不深查（噪音≈0），
+# 严禁 --strict/disallow_untyped_defs（1518 个函数瞬间爆炸）。加严只随新
+# 代码渐进，不回扫存量。
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+# E402 忽略的理由（结构性，非偷懒）：hook 脚本与测试统一采用「sys.path 引导
+# → 后置导入」装载模式（pre_commit_guard/stop_notify 等生产件 + 全部按文件
+# 加载的测试），import 不在文件顶是本仓架构守卫认可的装载惯例。
+ignore = ["E402"]
+
+[tool.ruff.lint.per-file-ignores]
+# facts.py 内嵌 SKILL.md frontmatter 模板串：212 字符的 description 行是
+# 生成物内容本身，折行=改产物（YAML 语义变化）——长行是内容约束，豁免。
+"hooks/scripts/lib/facts.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+
+# 能力探测降级模式（try: from journal import X / except ImportError: stub
+# 或 = None，后续 if X: 判真）是钩子的 fail-open 设计——静态类型视 stub 恒真。
+# 这三个错误码只对降级模式文件定向关闭，其余检查照常。
+[[tool.mypy.overrides]]
+module = ["plan_bridge", "prompt_intercept", "execution_valve", "fail_watch",
+          "risk_watch", "critic_pass", "advisor_token"]
+disable_error_code = ["truthy-function", "assignment", "misc", "var-annotated"]

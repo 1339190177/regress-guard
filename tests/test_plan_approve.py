@@ -55,7 +55,7 @@ def journal_events(proj):
     p = proj / ".regress" / "journal" / "events.jsonl"
     if not p.exists():
         return []
-    return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l]
+    return [json.loads(ln) for ln in p.read_text(encoding="utf-8").splitlines() if ln]
 
 
 def _git(proj, *args):
@@ -361,7 +361,7 @@ def test_approve_auto_resolves_pending(tmp_path, monkeypatch):
 # ─── P1#7：bad escape 不清空清单（评审批次二） ─────────────
 
 def test_bad_escape_note_keeps_manifest(tmp_path):
-    """附言含反斜杠序列（C:\docs、\1）→ 批准成功且清单完好。
+    """附言含反斜杠序列（C:\\docs、\1）→ 批准成功且清单完好。
 
     旧行为：re.sub 对替换串做转义处理 → re.error 在 write 实参里炸，
     而文件已先被 open(w) 截断——清单 0 字节。"""
@@ -427,7 +427,8 @@ def test_ears_extract_merges_two_line_rows(tmp_path):
     spec = ilu.spec_from_file_location("mp_ears", os.path.join(
         os.path.dirname(__file__), "..", "hooks", "scripts", "lib",
         "manifest_parser.py"))
-    mp = ilu.module_from_spec(spec); spec.loader.exec_module(mp)
+    mp = ilu.module_from_spec(spec)
+    spec.loader.exec_module(mp)
     p = tmp_path / "m.md"
     p.write_text("---\nid: R1\n---\n\n## 验收标准\n\n"
                  "- When A，则 B（验：cmd1）\n  ✅\n"
@@ -449,7 +450,8 @@ def test_ears_extract_absent(tmp_path):
     spec = ilu.spec_from_file_location("mp_ears2", os.path.join(
         os.path.dirname(__file__), "..", "hooks", "scripts", "lib",
         "manifest_parser.py"))
-    mp = ilu.module_from_spec(spec); spec.loader.exec_module(mp)
+    mp = ilu.module_from_spec(spec)
+    spec.loader.exec_module(mp)
     p = tmp_path / "m2.md"
     p.write_text("---\nid: R1\n---\n\n正文无验收节\n", encoding="utf-8")
     present, rows = mp.ears_extract(str(p))
