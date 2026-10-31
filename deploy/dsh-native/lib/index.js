@@ -60,8 +60,11 @@ function resultFailed(result) {
 function runGuardHook(scriptPath, hookArgs, payload, cwd, sessionId, timeoutMs) {
 	return new Promise((resolve) => {
 		let settled = false;
-		const done = (code, stderr) => {
-			if (!settled) { settled = true; resolve({ code: code ?? 0, stderr: stderr ?? "" }); }
+		const done = (code, stderr, stdout) => {
+			if (!settled) {
+				settled = true;
+				resolve({ code: code ?? 0, stderr: stderr ?? "", stdout: stdout ?? "" });
+			}
 		};
 		try {
 			const child = spawn("python3", ["-E", scriptPath, ...hookArgs], {
@@ -74,14 +77,17 @@ function runGuardHook(scriptPath, hookArgs, payload, cwd, sessionId, timeoutMs) 
 					CLAUDE_PROJECT_DIR: cwd,
 					CLAUDE_SESSION_ID: sessionId
 				},
-				stdio: ["pipe", "ignore", "pipe"],
+				stdio: ["pipe", "pipe", "pipe"],
 				timeout: timeoutMs
 			});
 			let stderr = "";
+			let stdout = "";
 			child.stderr.setEncoding("utf-8");
 			child.stderr.on("data", (c) => { stderr = (stderr + c).slice(-4000); });
+			child.stdout.setEncoding("utf-8");
+			child.stdout.on("data", (c) => { stdout = (stdout + c).slice(-8192); });
 			child.on("error", () => done(0, "regress-guard(native): spawn python3 失败（fail-open 适配层）"));
-			child.on("close", (code) => done(code, stderr));
+			child.on("close", (code) => done(code, stderr, stdout));
 			child.stdin.write(JSON.stringify(payload));
 			child.stdin.end();
 		} catch {
@@ -182,8 +188,25 @@ export function apply(ctx, config) {
 				: String(m.content ?? ""))
 			.filter(Boolean).pop() ?? "";
 		if (!prompt) return next();
-		await runGuardHook(hook("prompt_intercept.py"), [], { prompt }, cwd, sid, Math.min(T, 30000));
-		return next();
+		// 批170（计划模式平替接线）：prompt_intercept 的 stdout 是
+		// {"additionalContext": "..."}（ZCode 宿主读它注入）——原生层此前把它
+		// 丢弃=提醒永远到不了 dsh agent。现捕获并前置注入下游决策的
+		// additionalContexts（含 3.5 计划性需求档：先立清单等批准）。
+		const r = await runGuardHook(hook("prompt_intercept.py"), [],
+			{ prompt }, cwd, sid, Math.min(T, 30000));
+		const down = await next();
+		let extra;
+		try {
+			const out = JSON.parse(r.stdout || "{}");
+			if (typeof out.additionalContext === "string" && out.additionalContext.trim()) {
+				extra = {
+					role: "user",
+					content: [{ type: "text", text: out.additionalContext }]
+				};
+			}
+		} catch { /* 非 JSON 输出不注入 */ }
+		if (!extra) return down;
+		return { ...down, additionalContexts: [extra, ...(down.additionalContexts ?? [])] };
 	});
 
 	ctx.on("agent/turn-stopping", async ({ agent, signal }) => {

@@ -38,6 +38,10 @@ AMBIGUOUS_PATTERNS = [
 # 变更类动词（触发 plan 提醒）
 CHANGE_VERBS = r'(改|加|修|删|重构|新增|去掉|替换|迁移)'
 
+# 计划性需求词形（批170：计划模式纪律平替——批准是边界钥匙）
+PLAN_INTENT_RE = re.compile(
+    r'计划|方案|设计|架构|规划|怎么[做办]|如何(实现|设计|做)|实施步[骤]|技术选型')
+
 # 最小需求长度
 MIN_REQUIREMENT_LEN = 15
 
@@ -188,6 +192,20 @@ def correction_reminder(text):
     )
 
 
+def _project_has_regress():
+    """本项目（或祖先目录）是否接入治理（有 .regress）——3.5 档门控。"""
+    d = (os.environ.get("CLAUDE_PROJECT_DIR")
+         or os.environ.get("ZCODE_PROJECT_DIR") or os.getcwd())
+    for _ in range(10):
+        if os.path.isdir(os.path.join(d, ".regress")):
+            return True
+        parent = os.path.dirname(d)
+        if parent == d:
+            return False
+        d = parent
+    return False
+
+
 def analyze_prompt(text):
     """分析用户输入，返回需要注入的提醒列表。"""
     if not text:
@@ -247,6 +265,19 @@ def analyze_prompt(text):
             f"💡 需求含模糊词（{', '.join(set(found_ambiguous))}）——"
             f"AI 会先解析歧义、做假设、只问关键分歧。"
             f"如果你有明确预期，建议直接说出来能减少返工。"
+        )
+
+    # 3.5 计划性需求 → 计划模式纪律平替提醒（批170）：dsh 等无原生计划模式
+    #     的宿主，治理本质（计划先于实施+人类批准是边界钥匙）由此提醒面复刻
+    #     ——ZCode 侧同样受益（原生计划模式的纪律前移到入口）。只对接入
+    #     项目（有 .regress）提醒，闲聊词形不刷屏。
+    if PLAN_INTENT_RE.search(clean) and "/regress:" not in text \
+            and _project_has_regress():
+        reminders.append(
+            "🧭 计划性需求——先立清单等批准（计划模式纪律）：AI 应先出计划清单"
+            "（/regress:plan 语义：需求复述+边界+验收判据），你批准（回复「批准」"
+            "或清单填 approved.at）后边界守卫才解锁实施——未批准不动码，批准是"
+            "边界钥匙。"
         )
 
     # 4. 变更类需求 → 提醒 plan（4.5 重任务共用 .regress 探测，故门条件并联

@@ -319,3 +319,19 @@ def test_constraint_requires_direction_word():
     t2 = "发布到公网之前一定要人类审查，作者是yelisheng"
     assert (prompt_intercept.CONSTRAINT_RE.search(t2)
             and prompt_intercept.CONSTRAINT_DIRECTION_RE.search(t2))
+
+
+def test_plan_intent_nudge_managed_only(tmp_path, monkeypatch, capsys):
+    """批170（计划模式平替）：计划性需求词形+接入项目 → 注入「先立清单等
+    批准」纪律提醒；未接入项目不刷屏。"""
+    proj = tmp_path / "proj"
+    (proj / ".regress").mkdir(parents=True)
+    pi = _pi()
+    monkeypatch.setenv("RG_PROMPT_CONTEXT", "off")  # 隔离治理上下文行，只看提醒档
+    _run_prompt(pi, monkeypatch, proj, "帮我设计一个新的缓存方案，考虑淘汰策略")
+    out = capsys.readouterr().out
+    assert "计划性需求" in out and "批准是边界钥匙" in out
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    _run_prompt(pi, monkeypatch, bare, "帮我设计一个新的缓存方案")
+    assert "计划性需求" not in capsys.readouterr().out
