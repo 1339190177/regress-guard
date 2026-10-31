@@ -1,0 +1,15 @@
+{
+  "name": "dsh-regress-guard",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "description": "Native regress-guard interception for DeepSeek Harness: typed pre/post-execute, session-start, pre-step and turn-stopping adapters over the regress-guard python hook chain (single source of truth). In-process spawning fixes the CC-bridge sandbox mount-view gap and provider argument-format variance.",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  }
+}

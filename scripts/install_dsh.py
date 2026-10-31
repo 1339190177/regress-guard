@@ -211,12 +211,104 @@ def ensure_bridge_pkg(profile, dsh_bin="dsh", home=None):
     return True, f"已安装（版本配对 {ver}）"
 
 
+NATIVE_PKG = "dsh-regress-guard"
+NATIVE_LOCAL_DIR = "local-plugins/dsh-regress-guard"
+PLUGIN_SRC = os.path.join(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))), "deploy", "dsh-native")
+
+
+def _profile_pkg_json(dsh_home, profile):
+    return os.path.join(dsh_home, "profiles", profile, "package.json")
+
+
+def native_bundle_present(dsh_home, profile):
+    p = _profile_pkg_json(dsh_home, profile)
+    if not os.path.exists(p):
+        return False
+    d = json.load(open(p, encoding="utf-8"))
+    return NATIVE_PKG in d.get("dsh", {}).get("profile", {}).get("bundles", []) \
+        and NATIVE_PKG in d.get("dependencies", {})
+
+
+def native_install(dsh_home, profile, dsh_bin="dsh"):
+    """原生轨道（批169 默认）：本地插件装载 + profile 注册 + 撤桥防双门禁。
+
+    原生优于桥（桥 README 自述）：无序列化边界/无沙箱挂载缺口（进程内
+    spawn=真实 fs）/无参数形态方差/失败判定原生。python 钩子链仍是单一
+    事实源，插件只是类型化适配层（deploy/dsh-native/lib/index.js）。"""
+    dest = os.path.join(dsh_home, NATIVE_LOCAL_DIR)
+    # 1. 拷插件体（lib/package.json/cordis.patch.yml——源仓 deploy/dsh-native）
+    os.makedirs(dest, exist_ok=True)
+    import shutil
+    for name in ("package.json", "cordis.patch.yml"):
+        shutil.copy2(os.path.join(PLUGIN_SRC, name), os.path.join(dest, name))
+    shutil.rmtree(os.path.join(dest, "lib"), ignore_errors=True)
+    shutil.copytree(os.path.join(PLUGIN_SRC, "lib"), os.path.join(dest, "lib"))
+    # 3.0 插件自有依赖落地（advisor 先例：本地插件目录自带 node_modules——
+    # pnpm link 不为 link: 目标装依赖，缺此步=插件 import 失败=拦截静默缺位）
+    if not os.path.isdir(os.path.join(dest, "node_modules", "@deepseek-ai")):
+        for pm in ("pnpm", "npm"):
+            r = subprocess.run([pm, "install", "--silent"], cwd=dest,
+                               capture_output=True, text=True, timeout=600)
+            if r.returncode == 0:
+                break
+    # 2. profile 注册：deps link + bundles（advisor 先例同构）
+    p = _profile_pkg_json(dsh_home, profile)
+    d = json.load(open(p, encoding="utf-8")) if os.path.exists(p) else {
+        "name": f"dsh-profile-{profile}", "private": True,
+        "dependencies": {}, "dsh": {"profile": {"bundles": []}}}
+    changed = False
+    deps = d.setdefault("dependencies", {})
+    if NATIVE_PKG not in deps:
+        deps[NATIVE_PKG] = f"link:{dest}"
+        changed = True
+    bundles = d.setdefault("dsh", {}).setdefault("profile", {}).setdefault("bundles", [])
+    if NATIVE_PKG not in bundles:
+        bundles.append(NATIVE_PKG)
+        changed = True
+    if changed:
+        tmp = p + ".tmp"
+        json.dump(d, open(tmp, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+        os.replace(tmp, p)
+        r = subprocess.run([dsh_bin, "plugin", "--profile", profile, "install"],
+                           capture_output=True, text=True, timeout=600)
+        if r.returncode != 0:
+            return False, f"pnpm install 失败：{(r.stderr or r.stdout)[-200:]}"
+    # 3. 撤桥条目（防双门禁；桥包保留在位但无注册=惰性）
+    remove_patch_entry(dsh_home, profile)
+    return True, "已装载" if changed else "已在位"
+
+
+def native_remove(dsh_home, profile):
+    p = _profile_pkg_json(dsh_home, profile)
+    if not os.path.exists(p):
+        return False
+    d = json.load(open(p, encoding="utf-8"))
+    changed = False
+    deps = d.get("dependencies", {})
+    if NATIVE_PKG in deps:
+        deps.pop(NATIVE_PKG)
+        changed = True
+    bundles = d.get("dsh", {}).get("profile", {}).get("bundles", [])
+    if NATIVE_PKG in bundles:
+        bundles.remove(NATIVE_PKG)
+        changed = True
+    if changed:
+        tmp = p + ".tmp"
+        json.dump(d, open(tmp, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+        os.replace(tmp, p)
+    return changed
+
+
 def main():
     ap = argparse.ArgumentParser(
-        description="regress-guard → dsh 桌面版安装轨道（批166）")
+        description="regress-guard → dsh 桌面版安装轨道（批166 桥/批169 原生）")
     ap.add_argument("--profile", default="web",
                     help="目标 profile（默认 web=桌面版运行形态）")
     ap.add_argument("--dsh-home", default="~/.dsh")
+    ap.add_argument("--mode", choices=["native", "bridge"], default="native",
+                    help="native=原生插件（批169 默认，无序列化边界/无沙箱挂载缺口）；"
+                         "bridge=CC 方言桥（批166 兼容路径）")
     ap.add_argument("--remove", action="store_true",
                     help="移除本批接线（不动他人条目）")
     ap.add_argument("--check", action="store_true",
@@ -233,6 +325,26 @@ def main():
               + ", ".join(os.listdir(os.path.join(dsh_home, 'profiles')))
               + "）", file=sys.stderr)
         return 2
+
+    if args.mode == "native":
+        if args.remove:
+            changed = native_remove(dsh_home, args.profile)
+            print(f"原生插件注册：{'已移除' if changed else '本无'}"
+                  f"（本地插件目录 {NATIVE_LOCAL_DIR} 保留可复用）")
+            return 0
+        native_here = native_bundle_present(dsh_home, args.profile)
+        if args.check:
+            bridge_left = patch_entry_present(
+                open(_profile_patch_path(dsh_home, args.profile),
+                     encoding="utf-8").read()) if os.path.exists(
+                _profile_patch_path(dsh_home, args.profile)) else False
+            print(f"原生插件：{'在位' if native_here else '缺'} | 桥残留条目："
+                  f"{'有（双门禁风险）' if bridge_left else '无'}")
+            return 0 if (native_here and not bridge_left) else 1
+        ok, msg = native_install(dsh_home, args.profile)
+        print(f"原生插件：{msg}（本地目录 ~/.dsh/{NATIVE_LOCAL_DIR}；"
+              "桥条目已撤防双门禁）")
+        return 0 if ok else 1
 
     if args.remove:
         removed, p = remove_patch_entry(dsh_home, args.profile)

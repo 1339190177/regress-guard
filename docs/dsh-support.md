@@ -137,3 +137,32 @@ demo 抓出**三个真缺口**（全部契约级测试测不出——载荷/环�
 **demo 期间实证在岗**：门禁拦截（探针4/终验轮 hook 层 exit 2、git log
 零新提交）、PostToolUse 风险采集、Stop 反思、UserPromptSubmit 需求入口
 （hook/invoked 全记录在会话事件流，可考古）。
+
+## 原生轨道（批169，v2.6.0·special/dsh-native）——现在的默认
+
+**为什么原生**（桥 README 自述"原生插件能做这一切"）：无序列化边界（类型化
+exec/result）、无沙箱挂载缺口（插件跑 harness 进程内，spawn 钩子=真实
+文件系统视图——桌面 web 会话的"未接入项目"放行病根治）、无参数形态方差
+（原生物化）、失败判定原生（post-execute 的 result 直接判成败，fail_watch
+不再靠文本启发式）。
+
+**架构**：`deploy/dsh-native/`（仓内源）→ 装至 `~/.dsh/local-plugins/
+dsh-regress-guard/`（advisor 同构先例：自带 node_modules）。插件注册全部
+五个原生拦截点：tools/pre-execute（门禁/边界/执行阀/先读后改）、
+tools/post-execute（风险采集/失败采集/读计数）、agent/session-start
+（自愈/压缩提醒，source=startup|resume|compact）、agent/pre-step（需求
+入口）、agent/turn-stopping（反思+完成推送，deny→agent.steer 强续步）。
+**python 钩子链仍是单一事实源**——原生层只做类型化适配（CC 形态 payload
+构造+正确 cwd/env+Decision 映射），判定逻辑零复制。
+
+**双 e2e 实证（2026-10-31）**：headless 与桌面 web 双通道，agent 越界提交
+均被完整拦截文顶回（"commit 被阻断。以下 staged 文件不在回归清单中…"
+），git log 零新提交。
+
+**安装**：`python3 scripts/install_dsh.py`（默认原生；自动撤桥条目防双
+门禁）；`--mode bridge` 退回 CC 桥兼容路径；`--remove` 移除；`--check`
+诊断（原生在位+桥残留检测）。
+
+**已知边界**：turn-stopping 的 stop_notify 仅在反思放行分支跑（同 ZCode
+语义顺序）；subagent 拦截点未接（guard 无对应钩子）；pwsh 归入 Bash 门禁
+族（命令执行语义同构）。

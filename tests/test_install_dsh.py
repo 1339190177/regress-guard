@@ -65,3 +65,37 @@ def test_ensure_bridge_pkg_already_present_via_lock(tmp_path):
     with mock.patch.dict(os.environ, {"HOME": str(tmp_path)}):
         ok, msg = ids.ensure_bridge_pkg("web", dsh_bin="/nonexistent-dsh")
     assert ok and "已在位" in msg
+
+
+def test_native_track_on_fixture(tmp_path):
+    """批169：原生轨道——本地插件拷贝+profile 注册（deps link+bundles）+
+    桥条目撤销（防双门禁），幂等可移除。零 pnpm（install 步 mock 跳过）。"""
+    dsh, prof = _fixture_profile(tmp_path)
+    import json as _json
+    pj = tmp_path / ".dsh" / "profiles" / "web" / "package.json"
+    pj.write_text(_json.dumps({
+        "name": "dsh-profile-web", "private": True,
+        "dependencies": {}, "dsh": {"profile": {"bundles": ["@deepseek-ai/dsh-base"]}}
+    }, ensure_ascii=False), encoding="utf-8")
+    # 伪装源仓 deploy/dsh-native（native_install 从仓库相对路径拷贝）
+    src = tmp_path / "src" / "deploy" / "dsh-native"
+    (src / "lib").mkdir(parents=True)
+    (src / "package.json").write_text("{}", encoding="utf-8")
+    (src / "cordis.patch.yml").write_text("- insert: []\n", encoding="utf-8")
+    (src / "lib" / "index.js").write_text("export const name = 'x'\n", encoding="utf-8")
+    import unittest.mock as mock
+    with mock.patch.object(ids, "PLUGIN_SRC", str(src)):
+        with mock.patch.object(ids.subprocess, "run") as run:
+            run.return_value.returncode = 0
+            ok, msg = ids.native_install(dsh, "web")
+    assert ok
+    dest = tmp_path / ".dsh" / "local-plugins" / "dsh-regress-guard"
+    assert (dest / "lib" / "index.js").exists()
+    d = _json.loads(pj.read_text(encoding="utf-8"))
+    assert d["dependencies"]["dsh-regress-guard"].startswith("link:")
+    assert "dsh-regress-guard" in d["dsh"]["profile"]["bundles"]
+    assert ids.native_bundle_present(dsh, "web")
+    assert ids.native_remove(dsh, "web")
+    assert not ids.native_bundle_present(dsh, "web")
+    # 基线 bundles 不受移除影响
+    assert "@deepseek-ai/dsh-base" in _json.loads(pj.read_text(encoding="utf-8"))["dsh"]["profile"]["bundles"]

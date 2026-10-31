@@ -1,0 +1,13 @@
+# dsh-regress-guard (local): native interception adapter for regress-guard.
+#
+# Mounted by adding this package to the profile's dsh.profile.bundles list
+# (scripts/install_dsh.py --native does it). The python hook chain under
+# guardRoot stays the single source of truth; this bundle only adapts the
+# harness's typed extension points onto it — no serialization boundary, no
+# sandbox mount gap (in-process spawn = real filesystem view).
+- insert:
+    - id: regress-guard
+      name: 'dsh-regress-guard'
+      config:
+        guardRoot: '~/.zcode/regress-guard-hooks'
+        timeoutMs: 600000

@@ -133,7 +133,7 @@ MIT. Third-party: none at runtime (stdlib only).
 
 **实况（由 gen_reference.py 生成，勿手改本区）**
 
-- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：888 个
+- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：889 个
 
 | 命令 | 说明 |
 |---|---|
