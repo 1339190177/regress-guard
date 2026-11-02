@@ -151,3 +151,28 @@ def test_test_cmd_tail_note():
     r = subprocess.run("printf 'l1\nl2\nlast'", shell=True, capture_output=True, text=True)
     tail = (r.stdout or r.stderr or "").strip().splitlines()[-1][:120]
     assert tail == "last"
+
+
+# ─── 加速改造（全开批）：test-only 快道 + 计数不可得口径 ──
+
+def test_criteria_countless_mode():
+    """test_cmd 模式（passed<0）：全绿行以 exit code（tests_ok）为准。"""
+    assert pr_gate.check_criteria(["模块测试全绿"], -1, -1, tests_ok=True)[0]
+    ok, why = pr_gate.check_criteria(["模块测试全绿"], -1, -1, tests_ok=False)
+    assert not ok
+    ok, why = pr_gate.check_criteria(["测试 5/5"], -1, -1, tests_ok=True)
+    assert not ok and "含糊" in why  # 计数不可得时 N/N 不可对账=含糊
+
+
+def test_testonly_detection():
+    """test-only 判定：全部非 .regress 文件为测试形态才走快道。"""
+    import os
+    def is_testonly(files):
+        tf = [f for f in files if not f.startswith(".regress/")]
+        return bool(tf) and all(
+            ("test" in os.path.basename(f) or f.startswith(("tests/", "__tests__/")))
+            for f in tf)
+    assert is_testonly(["tests/a.test.ts", ".regress/manifests/x.md"])
+    assert is_testonly(["device-access-platform/packages/database/tests/secrets.test.mjs"])
+    assert not is_testonly(["src/app.ts", "tests/a.test.ts"])
+    assert not is_testonly([])  # 纯 .regress 变更不触发快道

@@ -102,22 +102,23 @@ def check_sections(body, required):
     return (not missing), ("缺段: " + ",".join(missing) if missing else "")
 
 
-def check_criteria(ears_rows, passed, total):
+def check_criteria(ears_rows, passed, total, tests_ok=True):
     """⑤机械化：验收行逐条找机器可对账的证据；含糊/矛盾 → 升级。
 
     口径（保守）：行含已验标记（门禁盖过）=过；行含 N/N 且与 hermetic
-    结果一致=过、不一致=矛盾；行含"全绿/全过"且测试全过=过；其余=含糊。
+    结果一致=过、不一致=矛盾；行含"全绿/全过"且测试全过=过（计数不可得
+    的 test_cmd 模式下以 exit code 为准）；其余=含糊。
     """
     for row in ears_rows:
         if any(m in row for m in VERIFIED_MARKS):
             continue
         m = RATIO_RE.search(row)
-        if m:
+        if m and passed >= 0:
             a, b = int(m.group(1)), int(m.group(2))
             if not (a == b == passed == total):
                 return False, f"判据矛盾: 「{row[:40]}」 vs hermetic {passed}/{total}"
             continue
-        if ("全绿" in row or "全过" in row) and passed == total and total > 0:
+        if ("全绿" in row or "全过" in row) and tests_ok and (passed < 0 or (passed == total and total > 0)):
             continue
         return False, f"判据含糊(不可机械化): 「{row[:40]}」"
     return True, ""
@@ -129,9 +130,11 @@ def review_pr(repo, number, cfg, json_out=False):
                            "title,body,files,additions,deletions,reviews,mergeable,author"]))
     tmp = tempfile.mkdtemp(prefix="prgate-")
     try:
-        # hermetic 检出（协议第 4 步命令序列）
+        # hermetic 检出（协议第 4 步命令序列；--reference 本地种子=75MB 级仓秒级克隆）
         wt = os.path.join(tmp, "repo")
-        subprocess.run(["git", "clone", "--quiet",
+        seed = os.path.expanduser(f"~/src/{repo.split('/')[-1]}")
+        ref = ["--reference", seed] if os.path.isdir(seed) else []
+        subprocess.run(["git", "clone", "--quiet", *ref,
                         f"https://github.com/{repo}.git", wt],
                        check=True, capture_output=True, timeout=300)
         subprocess.run(["git", "-C", wt, "fetch", "--quiet", "origin",
@@ -162,9 +165,15 @@ def review_pr(repo, number, cfg, json_out=False):
                                    if isinstance(c, dict) and c.get("file")]
                 _, rows = ears_extract(mp)
                 ears_rows += rows
-        # hermetic 测试（④：仓声明 test_cmd 则跑之——多项目仓 test_runner 探测不可用；
-        # 无声明走 test_runner CLI=与提交门禁同一事实源）
-        test_cmd = pr_review_cfg.get("test_cmd", "")
+        # hermetic 测试（④：test-only PR 走 test_cmd_fast 快道；否则 test_cmd；
+        # 均未声明走 test_runner CLI=与提交门禁同一事实源）
+        test_files = [f["path"] for f in meta["files"]
+                      if not f["path"].startswith(".regress/")]
+        is_testonly = bool(test_files) and all(
+            ("test" in os.path.basename(f) or f.startswith(("tests/", "__tests__/")))
+            for f in test_files)
+        fast_cmd = pr_review_cfg.get("test_cmd_fast", "")
+        test_cmd = fast_cmd if (is_testonly and fast_cmd) else pr_review_cfg.get("test_cmd", "")
         if test_cmd:
             # systemd 服务环境 PATH 极简（无 nvm/corepack/pnpm）——富集常用 bin 路径
             env = dict(os.environ)
@@ -207,7 +216,8 @@ def review_pr(repo, number, cfg, json_out=False):
         fail = fail or ("" if ok else why)
         rows.append((tests_ok, f"④hermetic {passed}/{total}" + (f" | {hermetic_note}" if hermetic_note else "")))
         fail = fail or ("" if tests_ok else f"hermetic {passed}/{total}")
-        ok, why = check_criteria(ears_rows, passed, total) if ears_rows else (False, "PR 内无清单验收行")
+        ok, why = (check_criteria(ears_rows, passed, total, tests_ok)
+                   if ears_rows else (False, "PR 内无清单验收行"))
         rows.append((ok, f"⑤判据机械化 {why}"))
         fail = fail or ("" if ok else why)
         bad_reviews = [r["state"] for r in meta.get("reviews", [])
