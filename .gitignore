@@ -5,3 +5,5 @@ __pycache__/
 .regress/.coverage/
 .regress/.jest-result.json
 dist/
+.zcode/
+.coverage

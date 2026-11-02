@@ -1,0 +1,101 @@
+# PR 自动评审协议（独立第二通道）
+
+> 版本（批 172）。来源：super-agent 采用工程实战（REGRESS-2026-169/170，
+> 2026-11-02 沙箱首飞 PR#6）+ 官方 auto-merge 安全模型的替代设计（其模型
+> 依赖 GitHub 分支保护，私有仓无 Pro 不可用——本协议以自家门禁链替代）。
+> 本文是 PR 自动评审的**唯一属主文档**：评审自动化 prompt 与本协议冲突时，
+> 以本文为准并回写 prompt。
+
+一句话原则：**评审者与执行者分权，机器只裁"验证完备+判据相符"，
+模糊一律升级人类，拒绝权永远留人。**
+
+## 为什么需要独立评审
+
+super-agent 的 worker 已经受提交门禁约束（测试绿才能 commit）——但那是
+执行者**自环境**的验证。独立评审补三件事：①hermetic 复核（全新 clone
+重跑测试，防环境漂移与自报失真）；②需求保真度的机器可判部分（清单验收
+判据逐条对照 diff 与测试证据）；③把"合并"这个不可逆动作的决定权放在
+执行体之外的第二通道。
+
+## 评审协议（给评审 agent 的教程）
+
+对注册表（见下节）中每个仓库的每张 `state=open` 且作者为该仓 agent 账号
+的 PR，**顺序执行六步判据**。任何一步失败或模糊 → 该 PR 进入升级态，
+不再继续后续步骤（早停省算力）。
+
+1. **【边界】** PR 的 diff 文件集必须 ⊆ PR 内所含清单（`.regress/manifests/
+   *.md`，随 PR 提交）的 `planned_changes` ∪ `.regress/**`（治理产物自身
+   允许入 diff）。同时逐文件对照该仓 `.regress/config.json` 的
+   `boundary.forbidden`——触禁改区即失败。PR 内无清单 = 升级（不是拒绝：
+   可能是清单缺失的流程违规，让人裁）。
+2. **【体量】** `gh pr diff <N>` 总行数（增+删）≤ 该仓 `pr_review.
+   max_diff_lines`（缺省 200）。超限 = 升级（大改动值得人眼）。
+3. **【描述】** PR body 需含该仓 `pr_review.require_pr_sections` 的每一段
+   （缺省：背景/改动/验证）。缺段 = 升级。
+4. **【验证·hermetic 重跑】** 不信 PR 描述里的"测试已过"：
+   ```
+   TMP=$(mktemp -d /tmp/prrev-XXXX)
+   git clone --quiet https://github.com/<repo>.git $TMP/repo
+   git -C $TMP/repo fetch --quiet origin pull/<N>/head && git -C $TMP/repo checkout --quiet FETCH_HEAD
+   python3 ~/.zcode/regress-guard-hooks/lib/test_runner.py $TMP/repo
+   rm -rf $TMP   # 用后即清
+   ```
+   退出码 0 且 JSON `status=passed` 才算过（test_runner 自动探测
+   jest/vitest/pytest/mvn/gradle/go，timeout/parallel 读该仓 .regress 配置
+   ——与提交门禁同一事实源）。失败/超时 = 升级。
+5. **【判据】** 读 PR 内清单的验收要点/EARS 行，逐条对照 diff 与第 4 步
+   测试结果找证据。**任一条找不到可对应的证据，或判据本身含糊到无法
+   机械对照 = 升级**。此步禁止发挥想象补证据。
+6. **【人类信号】** `gh pr view <N> --json reviews`：存在
+   `CHANGES_REQUESTED` 状态的 review → 不动该 PR，升级。
+
+**决策两态**：六步全过 → `gh pr merge <N> --merge --subject
+"auto-review: passed (六判据全绿)"`（合并提交带审计前缀）；否则 → 升级。
+**没有自动拒绝态**：机器不合时只升级（单条 chat 推送：PR 链接+卡在哪条
+判据），关闭/拒绝由人执行。
+
+**红线**：永不 force push；永不操作注册表之外的仓库；token 永不回显；
+不创建/修改/删除任何定时任务；同轮多 PR 的升级合并为一条推送；每张 PR
+的判定（六步逐项结果）落 `journal add pr_review` 事件；任何工具连续失败
+×2 → 停手记 backlog。
+
+## 项目接入指南（适配不同项目）
+
+新项目接入 = 三步，全部缺省可推导：
+
+1. **注册**：工作区 `.regress/pr-review-repos.json` 数组加一行
+   `{"repo": "<owner>/<name>", "agent_login": "<agent 账号>", "since": "<接入日>"}`。
+   评审自动化只认这张表——不在表里的仓永不触碰。
+2. **仓内配置（可选）**：目标仓 `.regress/config.json` 加 `pr_review` 块：
+   `{"max_diff_lines": 200, "require_pr_sections": ["背景","改动","验证"],
+   "agent_login": "..."}`——全缺省时用上文缺省值。**测试命令零配置**：
+   test_runner 按仓自动探测（pytest/jest/vitest/npm-test/mvn/gradle/go）。
+3. **worker 侧约定**：目标仓 `AGENTS.md` 按 regress-sandbox 模板写机器通道
+   协议（立 in-progress 清单+验收判据 EARS 化+PR 描述三段+行尾套件计数）
+   ——评审六步的判据原料全部来自 worker 按协议产的清单与描述。
+
+## 验收要点
+
+- When 评审自动化处理一张 agent PR，Then 六步判据逐条执行且结果逐项落
+  journal（pr_review 事件），任何一步失败即停后续步骤。
+- When 第 4 步 hermetic 重跑，Then 必须是全新 clone + PR head 检出，
+  通过与否以 test_runner 退出码与 JSON 为准，不以 PR 描述自报为准。
+- When 六步全过且模式为 live，Then merge 提交 subject 带 auto-review
+  审计前缀；When 任一失败或模糊，Then 只升级不拒绝，升级推送单条合并。
+- When 影子模式（前两轮），Then 全协议执行+落账+推送建议，但绝不 merge。
+- 来源与证据链：本协议每条判据的形态先例见 decisions.md 2026-11-02 三
+  条目（首飞 PR#6 的 worker 三拦三自修实录=判据有效性的实证底）。
+
+## 边界（不做）
+
+- 不判断"需求值不值得做"（人在 issue 里已经裁过）——只判"实现验证完备
+  且与清单判据相符"。
+- 不替代分支保护（私有仓不可用）：本协议是应用层闸门，不是 GitHub 层
+  的强制状态检查。
+- 不自动关闭/拒绝 PR；不处理冲突状态（mergeable=false 的 PR 直接升级）。
+- 评审自动化不修改 super-agent 服务与其 prompts（分权：它只读 PR 面）。
+
+## 修订说明
+
+- 2026-11-02 批172 建立：六步判据+两态决策+影子模式纪律+三步接入指南，
+  随沙箱 PR#6/7 狗粮校准。
