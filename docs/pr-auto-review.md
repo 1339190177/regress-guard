@@ -28,8 +28,10 @@ super-agent 的 worker 已经受提交门禁约束（测试绿才能 commit）�
    允许入 diff）。同时逐文件对照该仓 `.regress/config.json` 的
    `boundary.forbidden`——触禁改区即失败。PR 内无清单 = 升级（不是拒绝：
    可能是清单缺失的流程违规，让人裁）。
-2. **【体量】** `gh pr diff <N>` 总行数（增+删）≤ 该仓 `pr_review.
-   max_diff_lines`（缺省 200）。超限 = 升级（大改动值得人眼）。
+2. **【体量·记录性】** `gh pr diff <N>` 总行数（增+删）对照该仓
+   `pr_review.max_diff_lines`（缺省 200）。**2026-11-02 人类策略升级
+   （不冲突默认合并）：本判据降级为记录性——超限不拦截、不升级，仅在
+   合并 subject 与 journal 事件里注明**。阻断判据见决策段。
 3. **【描述】** PR body 需含该仓 `pr_review.require_pr_sections` 的每一段
    （缺省：背景/改动/验证）。缺段 = 升级。
 4. **【验证·hermetic 重跑】** 不信 PR 描述里的"测试已过"：
@@ -49,10 +51,12 @@ super-agent 的 worker 已经受提交门禁约束（测试绿才能 commit）�
 6. **【人类信号】** `gh pr view <N> --json reviews`：存在
    `CHANGES_REQUESTED` 状态的 review → 不动该 PR，升级。
 
-**决策两态**：六步全过 → `gh pr merge <N> --merge --subject
-"auto-review: passed (六判据全绿)"`（合并提交带审计前缀）；否则 → 升级。
-**没有自动拒绝态**：机器不合时只升级（单条 chat 推送：PR 链接+卡在哪条
-判据），关闭/拒绝由人执行。
+**决策（不冲突默认合并，2026-11-02 起）**：**阻断项**=①边界、③描述、
+④hermetic 测试、⑤判据对照、⑥人类信号，外加 mergeable≠MERGEABLE——
+阻断项全过即**默认合并**（`gh pr merge <N> --merge --subject
+"auto-review: passed …"`，体量超限时 subject 附注明）；任一阻断项失败或
+模糊 → 升级（单条 chat 推送：PR 链接+卡在哪条判据）。体量②为记录性
+判据不阻断。**没有自动拒绝态**：机器不合时只升级，关闭/拒绝由人执行。
 
 **红线**：永不 force push；永不操作注册表之外的仓库；token 永不回显；
 不创建/修改/删除任何定时任务；同轮多 PR 的升级合并为一条推送；每张 PR
@@ -76,15 +80,17 @@ super-agent 的 worker 已经受提交门禁约束（测试绿才能 commit）�
 
 ## 验收要点
 
-- When 评审自动化处理一张 agent PR，Then 六步判据逐条执行且结果逐项落
-  journal（pr_review 事件），任何一步失败即停后续步骤。
-- When 第 4 步 hermetic 重跑，Then 必须是全新 clone + PR head 检出，
+- When 评审自动化处理一张 agent PR，Then 阻断项（边界/描述/hermetic/
+  判据对照/人类信号）逐条执行且结果逐项落 journal（pr_review 事件），
+  任一阻断项失败即停后续步骤；体量超限只记录不阻断。
+- When hermetic 重跑，Then 必须是全新 clone + PR head 检出，
   通过与否以 test_runner 退出码与 JSON 为准，不以 PR 描述自报为准。
-- When 六步全过且模式为 live，Then merge 提交 subject 带 auto-review
-  审计前缀；When 任一失败或模糊，Then 只升级不拒绝，升级推送单条合并。
+- When 阻断项全过且 mergeable，Then 默认合并（subject 带 auto-review
+  审计前缀）；任一失败或模糊，Then 只升级不拒绝，升级推送单条合并。
 - When 影子模式（前两轮），Then 全协议执行+落账+推送建议，但绝不 merge。
-- 来源与证据链：本协议每条判据的形态先例见 decisions.md 2026-11-02 三
-  条目（首飞 PR#6 的 worker 三拦三自修实录=判据有效性的实证底）。
+- 来源与证据链：本协议每条判据的形态先例见 decisions.md 2026-11-02
+  各条目（首飞 PR#6 三拦三修、PR#8 冲突恢复环、PR#16 新策略首例
+  hermetic 418/418=判据有效性的实证底）。
 
 ## 边界（不做）
 
@@ -99,3 +105,6 @@ super-agent 的 worker 已经受提交门禁约束（测试绿才能 commit）�
 
 - 2026-11-02 批172 建立：六步判据+两态决策+影子模式纪律+三步接入指南，
   随沙箱 PR#6/7 狗粮校准。
+
+- 2026-11-02 批173：合并策略升级（人类口谕"不冲突默认合并"）——体量②降级
+  记录性，决策改阻断项表述；阻断=边界/描述/hermetic/判据对照/人类信号/冲突。
