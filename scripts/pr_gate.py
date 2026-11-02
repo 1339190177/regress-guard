@@ -235,11 +235,30 @@ def _close_linked_issues(repo, number, body):
              f"PR#{number} 已通过机械评审自动合并——工单闭环。"])
 
 
+def _review_state():
+    """sweep 去重态：PR head sha 不变且已有终态判定则跳过重评（重仓防 3 分钟全量重跑）。"""
+    p = os.path.expanduser("~/.zcode/workspace/default/.regress/pr-gate-state.json")
+    try:
+        return json.load(open(p, encoding="utf-8")), p
+    except Exception:
+        return {}, p
+
+
+def _save_review(state, path, repo, number, head, verdict):
+    state[f"{repo}#{number}"] = {"head": head, "verdict": verdict,
+                                 "at": __import__("time").strftime("%F %T")}
+    try:
+        json.dump(state, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+
+
 def sweep():
     """扫描注册表内各仓的开放 agent PR，按 pr_review.mode 分档执行。"""
     with open(REGISTRY, encoding="utf-8") as f:
         repos = json.load(f)
     merged, escalated = [], []
+    state, state_path = _review_state()
     for entry in repos:
         repo, agent = entry["repo"], entry["agent_login"]
         try:
@@ -250,10 +269,20 @@ def sweep():
             continue
         for pr in open_prs:
             n = pr["number"]
+            # 去重：同 head sha 且已有终态判定（escalate 类滞留 PR 不重评；新推送=新 sha 自动复评）
+            try:
+                head = json.loads(_gh(["pr", "view", str(n), "-R", repo,
+                                       "--json", "headRefOid"]))["headRefOid"]
+                prev = state.get(f"{repo}#{n}") or {}
+                if prev.get("head") == head and prev.get("verdict") in ("merged", "escalate"):
+                    continue
+            except Exception:
+                head = ""
             try:
                 v = review_pr(repo, n, {})
             except Exception as e:
                 escalated.append(f"{repo}#{n}: 自崩 {str(e)[:100]}")
+                _save_review(state, state_path, repo, n, head, "escalate")
                 continue
             mode = v["mode"]  # 权威源=仓内 .regress（hermetic clone 读得）
             fields = {"repo": repo, "pr": n, "mode": "machine",
@@ -263,6 +292,7 @@ def sweep():
             _journal(fields)
             if not v["mechanical_pass"]:
                 escalated.append(f"{repo}#{n}: {v['fail_reason']}")
+                _save_review(state, state_path, repo, n, head, "escalate")
                 _gh(["pr", "comment", str(n), "-R", repo, "--body",
                      f"机械评审升级：{v['fail_reason']}（判据逐项见 journal pr_review）——留人类/LLM 裁决。"])
                 continue
@@ -270,6 +300,7 @@ def sweep():
                 _gh(["pr", "merge", str(n), "-R", repo, "--merge", "--subject",
                      f"auto-review: passed (机械判据全绿·hermetic {v['passed']}/{v['total']})"])
                 merged.append(f"{repo}#{n}（{v['passed']}/{v['total']}）")
+                _save_review(state, state_path, repo, n, head, "merged")
                 # 关联 issue 闭环：body 里的 Issue #N
                 meta_body = json.loads(_gh(["pr", "view", str(n), "-R", repo,
                     "--json", "body"]))["body"]
@@ -278,7 +309,8 @@ def sweep():
                 _gh(["pr", "comment", str(n), "-R", repo, "--body",
                      "机械评审全过——建议合并（human-merge 档，等人类执行）。"])
                 merged.append(f"{repo}#{n} 建议合（human-merge 档）")
-            # review-only 档：仅落账
+                _save_review(state, state_path, repo, n, head, "recommend")
+            # review-only 档：仅落账（不记终态——保持每轮可见性由 journal 承担）
     # ⑦ 拒绝面：superagent 24h 内 ignore 决定未处置 → 提行
     ignored = []
     if os.path.exists(SUPERAGENT_DB):
