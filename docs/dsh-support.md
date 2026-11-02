@@ -165,4 +165,10 @@ tools/post-execute（风险采集/失败采集/读计数）、agent/session-star
 
 **已知边界**：turn-stopping 的 stop_notify 仅在反思放行分支跑（同 ZCode
 语义顺序）；subagent 拦截点未接（guard 无对应钩子）；pwsh 归入 Bash 门禁
-族（命令执行语义同构）。
+族（命令执行语义同构）；**payload 携带 canonicalized tool_name（批171，
+2026-11-02）**——此前原生路径 payload 缺 tool_name，boundary/execution_
+valve/read_before_edit_guard 三守卫整链 no-op（仅提交门禁生效，e2e 恰只
+验了提交）；**worker jobs 后台命令的中间态限制**：dsh preset 把 5 秒以上
+前台命令转后台 job，post-execute 时拿到的是"moved to background"中间态
+结果，resultFailed 判 false——迟到的作业失败对 fail_watch 不可见（接
+job 完成事件是后续批候选，见 tests/test_dsh_native_payload.py 标本测）。

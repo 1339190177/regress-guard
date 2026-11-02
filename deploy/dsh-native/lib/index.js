@@ -32,6 +32,20 @@ const BASH_TOOLS = new Set(["bash", "Bash", "pwsh"]);
 const EDIT_TOOLS = new Set(["edit", "Edit", "write", "Write", "ApplyPatch"]);
 const READ_TOOLS = new Set(["read", "Read"]);
 
+/**
+ * dsh 工具名 → CC 形态（批171：payload 补 tool_name）。
+ * boundary/rbe 侧 host_env.canonicalize_tool_names 会自行规范化，但
+ * execution_valve 严格等 "Bash"（:214）不规范化——故 canonicalize 必须在
+ * 此完成；对已是 CC 形态的名幂等（首字母大写恒等）。
+ */
+function canonicalToolName(name) {
+	if (BASH_TOOLS.has(name)) return "Bash";
+	if (EDIT_TOOLS.has(name) || READ_TOOLS.has(name)) {
+		return name.charAt(0).toUpperCase() + name.slice(1);
+	}
+	return name;
+}
+
 /** 模型通道参数形态方差兜底：GLM/zai 的 arguments 是 JSON 字符串。 */
 function materializeArguments(v) {
 	if (typeof v === "string" && v.trim()) {
@@ -123,7 +137,8 @@ export function apply(ctx, config) {
 
 	ctx.on("tools/pre-execute", async (exec, next) => {
 		const args = materializeArguments(exec.arguments);
-		const base = { tool_input: args ?? {} };
+		// 批171：三守卫（boundary/valve/rbe）以 tool_name 为门控——缺它=整链 no-op
+		const base = { tool_name: canonicalToolName(exec.name), tool_input: args ?? {} };
 		let steps = null;
 		if (BASH_TOOLS.has(exec.name)) {
 			// 原生层直跑门禁本体（launcher.js 是 ZCode 侧的 python 探测+env
@@ -151,15 +166,20 @@ export function apply(ctx, config) {
 		const cwd = await sessionCwd(exec.agent);
 		if (!cwd) return next();
 		const sid = sessionId(exec.agent);
+		// 批171：rbe post 按 tool_name 分支——payload 同样补 canonicalized 名
+		const name = canonicalToolName(exec.name);
 		const response = blocksToText(result?.content);
 		const run = (script, argv, payload) =>
 			runGuardHook(script, argv, { ...payload, session_id: sid }, cwd, sid, T);
 		if (READ_TOOLS.has(exec.name)) {
-			await run(hook("read_before_edit_guard.py"), ["post"], { tool_input: args ?? {} });
+			await run(hook("read_before_edit_guard.py"), ["post"],
+				{ tool_name: name, tool_input: args ?? {} });
 		} else if (BASH_TOOLS.has(exec.name) || EDIT_TOOLS.has(exec.name)) {
-			await run(hook("risk_watch.py"), [], { tool_input: args ?? {}, tool_response: response });
+			await run(hook("risk_watch.py"), [],
+				{ tool_name: name, tool_input: args ?? {}, tool_response: response });
 			if (resultFailed(result)) {
-				await run(hook("fail_watch.py"), [], { tool_input: args ?? {}, tool_response: response });
+				await run(hook("fail_watch.py"), [],
+					{ tool_name: name, tool_input: args ?? {}, tool_response: response });
 			}
 		}
 		return next();
