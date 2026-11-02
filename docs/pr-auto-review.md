@@ -78,6 +78,24 @@ super-agent 的 worker 已经受提交门禁约束（测试绿才能 commit）�
    协议（立 in-progress 清单+验收判据 EARS 化+PR 描述三段+行尾套件计数）
    ——评审六步的判据原料全部来自 worker 按协议产的清单与描述。
 
+## 接入专题（批175 补）
+
+**双分支仓（开发/发布分流）**：默认分支应设为**开发分支**（如 dev）——
+super-agent 的 worktree 基线与 CI 观察都锚定 origin/HEAD，默认分支若为
+发布分支（main），agent 会基于过时基线工作制造冲突风暴。发布门
+（dev→main 的合并）永远由人把持，评审自动化不触碰。
+
+**`pr_review.test_cmd` 覆盖**：多项目仓/非标测试栈（test_runner 自动探测
+不可用）在仓 `.regress/config.json` 声明 `pr_review.test_cmd`——评审 ④
+在 hermetic clone 内执行该命令（shell 语义），exit 0=过，输出尾行进
+journal 作证据。未声明则维持 test_runner 自动探测。
+
+**治理随仓分发模式**（worker 的 hermetic clone 里守卫由此生效）：
+- 提交 `.regress/config.json`（执行阀/禁改区/pr_review 配置）与
+  `.regress/manifests/`（工单清单随 PR 入库）进仓
+- `.gitignore` 排除 `.regress/` 运行态（journal/history/test-cache/
+  .expect-commit/tmp/ 等）——配置与清单入库，状态留本地
+
 ## 验收要点
 
 - When 评审自动化处理一张 agent PR，Then 阻断项（边界/描述/hermetic/

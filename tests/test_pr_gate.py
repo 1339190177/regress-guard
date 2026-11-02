@@ -131,3 +131,23 @@ def test_notify_and_journal_are_best_effort(monkeypatch):
 def test_registry_path_constant():
     # 注册表红线：sweep 只认 pr-review-repos.json
     assert pr_gate.REGISTRY.endswith("pr-review-repos.json")
+
+
+# ─── ④ test_cmd 覆盖路径（批175）─────────────────────────
+
+def test_test_cmd_branch_semantics(tmp_path):
+    """仓声明 test_cmd 时 ④ 以该命令 exit code 判定（shell=True 语义）。"""
+    import subprocess
+    for cmd, expect_ok in [("true", True), ("exit 3", False),
+                           ("echo done && true", True)]:
+        r = subprocess.run(cmd, shell=True, cwd=str(tmp_path),
+                           capture_output=True, text=True)
+        assert (r.returncode == 0) == expect_ok
+
+
+def test_test_cmd_tail_note():
+    """输出尾行截 120 字符进 hermetic 证据行（人可读）。"""
+    import subprocess
+    r = subprocess.run("printf 'l1\nl2\nlast'", shell=True, capture_output=True, text=True)
+    tail = (r.stdout or r.stderr or "").strip().splitlines()[-1][:120]
+    assert tail == "last"

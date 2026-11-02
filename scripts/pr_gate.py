@@ -162,16 +162,31 @@ def review_pr(repo, number, cfg, json_out=False):
                                    if isinstance(c, dict) and c.get("file")]
                 _, rows = ears_extract(mp)
                 ears_rows += rows
-        # hermetic 测试（test_runner CLI 与提交门禁同一事实源）
-        tr = subprocess.run(["python3",
-                             os.path.join(GUARD_ROOT, "lib", "test_runner.py"), wt],
-                            capture_output=True, text=True, timeout=1800)
-        try:
-            tres = json.loads(tr.stdout or "{}")
-        except json.JSONDecodeError:
-            tres = {}
-        passed, total = tres.get("passed", -1), tres.get("total", -1)
-        tests_ok = tr.returncode == 0 and tres.get("status") == "pass"
+        # hermetic 测试（④：仓声明 test_cmd 则跑之——多项目仓 test_runner 探测不可用；
+        # 无声明走 test_runner CLI=与提交门禁同一事实源）
+        test_cmd = pr_review_cfg.get("test_cmd", "")
+        if test_cmd:
+            tr = subprocess.run(test_cmd, shell=True, cwd=wt,
+                                capture_output=True, text=True, timeout=3600)
+            try:
+                tres = json.loads(tr.stdout or "{}")
+            except json.JSONDecodeError:
+                tres = {}
+            passed = tres.get("passed", -1)
+            total = tres.get("total", -1)
+            tests_ok = tr.returncode == 0
+            hermetic_note = (tr.stdout or tr.stderr or "").strip().splitlines()[-1][:120] if (tr.stdout or tr.stderr).strip() else ""
+        else:
+            tr = subprocess.run(["python3",
+                                 os.path.join(GUARD_ROOT, "lib", "test_runner.py"), wt],
+                                capture_output=True, text=True, timeout=1800)
+            try:
+                tres = json.loads(tr.stdout or "{}")
+            except json.JSONDecodeError:
+                tres = {}
+            passed, total = tres.get("passed", -1), tres.get("total", -1)
+            tests_ok = tr.returncode == 0 and tres.get("status") == "pass"
+            hermetic_note = ""
 
         rows, fail = [], ""
         ok, why = check_boundary([f["path"] for f in meta["files"]],
@@ -183,7 +198,7 @@ def review_pr(repo, number, cfg, json_out=False):
         ok, why = check_sections(meta.get("body"), sections)
         rows.append((ok, f"③描述 {why}"))
         fail = fail or ("" if ok else why)
-        rows.append((tests_ok, f"④hermetic {passed}/{total}"))
+        rows.append((tests_ok, f"④hermetic {passed}/{total}" + (f" | {hermetic_note}" if hermetic_note else "")))
         fail = fail or ("" if tests_ok else f"hermetic {passed}/{total}")
         ok, why = check_criteria(ears_rows, passed, total) if ears_rows else (False, "PR 内无清单验收行")
         rows.append((ok, f"⑤判据机械化 {why}"))
