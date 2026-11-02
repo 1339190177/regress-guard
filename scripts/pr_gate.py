@@ -166,7 +166,14 @@ def review_pr(repo, number, cfg, json_out=False):
         # 无声明走 test_runner CLI=与提交门禁同一事实源）
         test_cmd = pr_review_cfg.get("test_cmd", "")
         if test_cmd:
-            tr = subprocess.run(test_cmd, shell=True, cwd=wt,
+            # systemd 服务环境 PATH 极简（无 nvm/corepack/pnpm）——富集常用 bin 路径
+            env = dict(os.environ)
+            extra = [os.path.expanduser(p) for p in (
+                "~/.local/bin", "/usr/local/bin")]
+            extra += sorted(__import__("glob").glob(
+                os.path.expanduser("~/.nvm/versions/node/*/bin"))) or []
+            env["PATH"] = os.pathsep.join(extra + [env.get("PATH", "")])
+            tr = subprocess.run(test_cmd, shell=True, cwd=wt, env=env,
                                 capture_output=True, text=True, timeout=3600)
             try:
                 tres = json.loads(tr.stdout or "{}")
