@@ -1,8 +1,10 @@
 [Unit]
-Description=pr-gate 定时（每 3 分钟兜底：PR 事件驱动机器层，人类授权 2026-11-02）
+Description=pr-gate 定时（90 秒兜底：PR 事件驱动机器层，人类授权 2026-11-02 全开加速）
 
 [Timer]
-OnCalendar=*:0/3
+OnBootSec=120
+OnUnitActiveSec=90
+AccuracySec=10
 Persistent=true
 
 [Install]
