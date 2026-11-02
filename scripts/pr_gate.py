@@ -70,8 +70,8 @@ def _journal(fields):
     try:
         subprocess.run(
             ["python3", os.path.join(GUARD_ROOT, "lib", "journal.py"),
-             WORKSPACE, "add", "pr_review"],
-            input=json.dumps(fields, ensure_ascii=False),
+             WORKSPACE, "add", "pr_review",
+             json.dumps(fields, ensure_ascii=False)],
             capture_output=True, text=True, timeout=15)
     except Exception:
         pass
