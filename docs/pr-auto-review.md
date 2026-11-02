@@ -101,6 +101,27 @@ super-agent 的 worker 已经受提交门禁约束（测试绿才能 commit）�
 - 不自动关闭/拒绝 PR；不处理冲突状态（mergeable=false 的 PR 直接升级）。
 - 评审自动化不修改 super-agent 服务与其 prompts（分权：它只读 PR 面）。
 
+## 事件化架构（批174，v2.7.4）
+
+机械层与判断层分离，触发源可替换：
+
+```
+PR 事件 ──> 触发源（当前=每 3 分钟 systemd timer 兜底扫描 pr_gate --sweep；
+            未来=GitHub webhook 经 VPS 中继，pr_gate 入口不变）
+      ──> pr_gate.py 机械全判据（零 LLM：①③④⑤机械化⑥）
+            ├─ 全过 + auto-merge 档 ──> 合并+关单+journal(pr_review mode:machine)+WeCom 推送
+            └─ 红/含糊 ──> 升级评论+journal+推送（人裁；LLM 判断层量大再议）
+```
+
+**⑤判据机械化口径**（保守，"该升不升"=假阴性通道）：清单验收行含已验
+标记（门禁盖过 ✅/已验）=过；含 N/N 且与 hermetic 结果一致=过、不一致=
+矛盾升级；含"全绿/全过"且测试全过=过；**其余一律含糊升级不猜**。
+
+**仓级分档 `pr_review.mode`（舰队化）**：`auto-merge`（缺省，阻断项全过
+即合并）/ `human-merge`（机械全过也只评论建议，人执行合并）/
+`review-only`（只落账不评论）。配置随仓分发（.regress/config.json），
+评审器从 hermetic clone 读权威值。
+
 ## 修订说明
 
 - 2026-11-02 批172 建立：六步判据+两态决策+影子模式纪律+三步接入指南，
@@ -108,3 +129,7 @@ super-agent 的 worker 已经受提交门禁约束（测试绿才能 commit）�
 
 - 2026-11-02 批173：合并策略升级（人类口谕"不冲突默认合并"）——体量②降级
   记录性，决策改阻断项表述；阻断=边界/描述/hermetic/判据对照/人类信号/冲突。
+
+- 2026-11-02 批174：事件化架构（机械层 pr_gate 产品化+3 分钟 timer 兜底
+  +⑤判据机械化+仓级分档）；webhook（秒级）列 Phase 2（需 VPS 入站中继，
+  现 VPS 仅出网代理）。

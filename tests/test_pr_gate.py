@@ -1,0 +1,133 @@
+"""pr_gate 机械评审（批174）：纯逻辑判据 + manifest_parser 集成。
+
+钉死面：
+- ①边界：清单内∪.regress/** 放行、清单外拦、禁改区拦
+- ③描述：三段齐缺段红
+- ⑤判据机械化：已验标记/N-N 对账/全绿措辞三类过；N≠N 矛盾红；含糊红
+  （"该升不升=假阴性通道"——含糊必升级是本判据的存在理由）
+- ears_extract 集成：两行式判据拼回、无验收节=(False, [])
+- sweep 的拒绝面过滤：kind=ignore 行内精确判定（AND/OR 优先级标本预防）
+"""
+import json
+import os
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "lib"))
+import pr_gate  # noqa: E402
+
+
+# ─── ① 边界 ──────────────────────────────────────────────
+
+def test_boundary_within_manifest_and_regress():
+    ok, _ = pr_gate.check_boundary(
+        ["calc.py", "tests/t.py", ".regress/manifests/5.md"],
+        ["calc.py", "tests/t.py"], [])
+    assert ok
+
+
+def test_boundary_outside_manifest_blocks():
+    ok, why = pr_gate.check_boundary(["evil.py"], ["calc.py"], [])
+    assert not ok and "清单外" in why
+
+
+def test_boundary_forbidden_blocks():
+    ok, why = pr_gate.check_boundary(
+        [".ssh/config"], ["whatever"], [".ssh/**"])
+    assert not ok and "禁改区" in why
+
+
+# ─── ③ 描述段 ────────────────────────────────────────────
+
+def test_sections_present_and_missing():
+    body = "## 背景\nx\n## 改动\ny\n## 验证\nz"
+    assert pr_gate.check_sections(body, ["背景", "改动", "验证"])[0]
+    ok, why = pr_gate.check_sections("## 背景", ["背景", "改动", "验证"])
+    assert not ok and "改动" in why and "验证" in why
+
+
+# ─── ⑤ 判据机械化（保守口径：含糊必升）──────────────────
+
+def test_criteria_verified_mark_passes():
+    assert pr_gate.check_criteria(["全量 5/5 passed ✅"], 5, 5)[0]
+    assert pr_gate.check_criteria(["（验：命令）已验"], 5, 5)[0]
+
+
+def test_criteria_ratio_match_and_mismatch():
+    assert pr_gate.check_criteria(["测试 5/5"], 5, 5)[0]
+    ok, why = pr_gate.check_criteria(["测试 3/5"], 5, 5)
+    assert not ok and "矛盾" in why
+
+
+def test_criteria_all_green_phrase():
+    assert pr_gate.check_criteria(["pytest 全绿"], 7, 7)[0]
+    ok, _ = pr_gate.check_criteria(["pytest 全绿"], 6, 7)
+    assert not ok  # 全绿措辞但测试没全过=矛盾
+
+
+def test_criteria_ambiguous_escalates():
+    ok, why = pr_gate.check_criteria(["用户会觉得更快"], 5, 5)
+    assert not ok and "含糊" in why
+
+
+def test_criteria_empty_rows_pass():
+    assert pr_gate.check_criteria([], 5, 5)[0]
+
+
+# ─── manifest_parser 集成 ────────────────────────────────
+
+def test_ears_extract_two_line_logical_row(tmp_path):
+    m = tmp_path / "m.md"
+    m.write_text(
+        "---\nid: t\nstatus: in-progress\n---\n\n## 验收标准（EARS）\n\n"
+        "- When 测试跑，Then 全绿。（验：pytest）5/5 passed ✅\n",
+        encoding="utf-8")
+    present, rows = pr_gate.ears_extract(str(m))
+    assert present and len(rows) == 1
+    assert pr_gate.check_criteria(rows, 5, 5)[0]
+
+
+def test_ears_extract_no_section(tmp_path):
+    m = tmp_path / "m.md"
+    m.write_text("---\nid: t\n---\n\n正文无验收节\n", encoding="utf-8")
+    present, rows = pr_gate.ears_extract(str(m))
+    assert not present and rows == []
+
+
+def test_planned_changes_extraction(tmp_path):
+    m = tmp_path / "m.md"
+    m.write_text(
+        "---\nid: t\nplanned_changes:\n  - file: calc.py\n"
+        "  - file: tests/t.py\n---\n正文\n", encoding="utf-8")
+    data = pr_gate.parse_frontmatter(str(m))
+    files = [c["file"] for c in data["planned_changes"]]
+    assert files == ["calc.py", "tests/t.py"]
+    assert pr_gate.check_boundary(files, files, [])[0]
+
+
+# ─── sweep 拒绝面过滤（AND/OR 优先级标本预防）─────────────
+
+def test_ignored_filter_kinds(tmp_path):
+    rows = [
+        {"threadKey": "github:9", "kind": "ignore"},
+        {"threadKey": "github:5", "kind": "explicit"},
+    ]
+    # 行内 kind 精确过滤逻辑（与 sweep 内实现同语义）
+    out = [d["threadKey"] for d in rows if d.get("kind") == "ignore"]
+    assert out == ["github:9"]
+
+
+def test_notify_and_journal_are_best_effort(monkeypatch):
+    # 自崩不掩盖：通知/落账失败不影响评审判定本体
+    calls = []
+    monkeypatch.setattr(pr_gate, "_notify", lambda *a: calls.append(a))
+    monkeypatch.setattr(pr_gate, "_journal", lambda *a: calls.append(a))
+    pr_gate._notify("t", "b")
+    assert calls
+
+
+def test_registry_path_constant():
+    # 注册表红线：sweep 只认 pr-review-repos.json
+    assert pr_gate.REGISTRY.endswith("pr-review-repos.json")

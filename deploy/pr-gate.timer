@@ -1,0 +1,9 @@
+[Unit]
+Description=pr-gate 定时（每 3 分钟兜底：PR 事件驱动机器层，人类授权 2026-11-02）
+
+[Timer]
+OnCalendar=*:0/3
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,8 @@
+[Unit]
+Description=regress-guard PR 机械评审闸门（事件化兜底扫描，协议属主 docs/pr-auto-review.md）
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.zcode/workspace/default/regress-guard/scripts/pr_gate.py --sweep
+# 退出码：0=无升级；1=有升级（已推送人类）；2=自崩——timer 侧均不重试轰炸，
+# 自愈依赖人类/哨兵轮（升级即推 WeCom，静默失败才是失察）
