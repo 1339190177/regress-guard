@@ -296,6 +296,12 @@ def review_pr(repo, number, cfg, json_out=False):
             extra += sorted(__import__("glob").glob(
                 os.path.expanduser("~/.nvm/versions/node/*/bin"))) or []
             env["PATH"] = os.pathsep.join(extra + [env.get("PATH", "")])
+            # 批189：ffmpeg-static postinstall 每轮全新 clone 重下 80MB 且 GitHub
+            # CDN 爬行（2026-11-03 实证悬挂 15 分钟×2；package.json 权威 env 名=
+            # FFMPEG_BIN 跳过下载/BINARIES_URL 镜像会回源）——指宿主二进制直跳
+            import shutil as _sh
+            if _sh.which("ffmpeg"):
+                env.setdefault("FFMPEG_BIN", _sh.which("ffmpeg"))
             tr = subprocess.run(test_cmd, shell=True, cwd=wt, env=env,
                                 capture_output=True, text=True, timeout=3600)
             try:
