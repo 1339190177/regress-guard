@@ -176,3 +176,28 @@ def test_testonly_detection():
     assert is_testonly(["device-access-platform/packages/database/tests/secrets.test.mjs"])
     assert not is_testonly(["src/app.ts", "tests/a.test.ts"])
     assert not is_testonly([])  # 纯 .regress 变更不触发快道
+
+
+# ─── ④ hermetic 计数口径（批177：-1/-1 展示缺口）──────────
+
+def test_fmt_hermetic_counts():
+    assert pr_gate.fmt_hermetic(7, 7) == "7/7"
+
+
+def test_fmt_hermetic_missing_counts_as_exit0():
+    # tongtu test_cmd（pnpm 链）输出尾行无 passed/total JSON——诚实口径=exit0
+    # 而非误导性的 -1/-1；⑤的"全绿+exit0 放行"路径不受影响（另有测试钉住）
+    assert pr_gate.fmt_hermetic(-1, -1) == "exit0"
+
+
+# ─── 升级评论教学行（run60 批182：昨夜七单标本）──────────
+
+def test_escalation_hint_teaches_for_criteria_fail():
+    h = pr_gate.escalation_hint("判据含糊(不可机械化): 「When xxx，则 yyy」")
+    assert "✅" in h and "骨架" in h and "N/N" in h
+
+
+def test_escalation_hint_silent_for_other_failures():
+    # 非判据类（如清单缺失）不加教学——评论与旧文等价，教学只进判据信道
+    assert pr_gate.escalation_hint("PR 内无清单验收行") == ""
+    assert pr_gate.escalation_hint("") == ""

@@ -88,7 +88,10 @@ super-agent 的 worktree 基线与 CI 观察都锚定 origin/HEAD，默认分支
 **`pr_review.test_cmd` 覆盖**：多项目仓/非标测试栈（test_runner 自动探测
 不可用）在仓 `.regress/config.json` 声明 `pr_review.test_cmd`——评审 ④
 在 hermetic clone 内执行该命令（shell 语义），exit 0=过，输出尾行进
-journal 作证据。未声明则维持 test_runner 自动探测。
+journal 作证据。未声明则维持 test_runner 自动探测。**计数口径（批177）**：
+test_cmd 输出尾行若非 `{passed,total}` JSON（如 pnpm 多步链），④与合并
+主题行标 **`exit0`**（以 exit code 为准的诚实口径）而非误导性的 `-1/-1`；
+⑤的"全绿"措辞行在此口径下仍按 exit code 对账。
 
 **治理随仓分发模式**（worker 的 hermetic clone 里守卫由此生效）：
 - 提交 `.regress/config.json`（执行阀/禁改区/pr_review 配置）与

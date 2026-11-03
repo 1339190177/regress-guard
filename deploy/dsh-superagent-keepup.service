@@ -1,0 +1,21 @@
+[Unit]
+Description=dsh-superagent 两档保活（superagent=3082 / tongtu=3083，官方 launcher 管理 tmux）
+# 开机自启 + 每小时兜底：进程死了拉起；人工 stop 神圣（--respect-stop 跳过）；
+# 在跑但不健康不处理——那是 09:50 健康巡检（官方配方 restart --respect-stop）的职责。
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# KillMode=process 是关键：oneshot 结束时 systemd 默认会回收 cgroup 残留进程，
+# 而 boot 时 launcher 拉起的 tmux server 正是它的子进程——只杀主进程（python），
+# tmux server/dsh 才能活过单元退出（2026-11-02 重启持久化批）。
+KillMode=process
+# launcher 用 shutil.which 找 dsh/tmux；nvm 的 dsh 不在 systemd 默认 PATH
+Environment=PATH=/home/yelisheng/.nvm/versions/node/v22.23.2/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=/home/yelisheng/项目/deepseek/dsh-superagent-prototype
+# 幂等：已跑→no-dup exit 0；死→拉起等健康；人工停→respect-stop 跳过。
+# 两条 ExecStart 顺序执行，各 120s 健康超时。
+TimeoutStartSec=300
+ExecStart=/usr/bin/python3 /home/yelisheng/项目/deepseek/dsh-superagent-prototype/scripts/dsh-superagent --profile superagent --url http://127.0.0.1:3082 --respect-stop --timeout 120 start
+ExecStart=/usr/bin/python3 /home/yelisheng/项目/deepseek/dsh-superagent-prototype/scripts/dsh-superagent --profile tongtu --url http://127.0.0.1:3083 --respect-stop --timeout 120 start

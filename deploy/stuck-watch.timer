@@ -1,0 +1,10 @@
+[Unit]
+Description=卡滞哨节拍（开机 3 分钟首发，此后每 15 分钟）
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

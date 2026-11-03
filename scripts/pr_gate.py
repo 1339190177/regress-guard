@@ -102,6 +102,22 @@ def check_sections(body, required):
     return (not missing), ("缺段: " + ",".join(missing) if missing else "")
 
 
+def fmt_hermetic(passed, total):
+    """④/主题行计数口径：计数不可得(-1)时以 exit code 口径标 exit0，不显示误导性 -1/-1。"""
+    return f"{passed}/{total}" if passed >= 0 else "exit0"
+
+
+def escalation_hint(fail_reason):
+    """判据类升级的教学行（run60 批182，昨夜 PR#20-26 标本：worker 收升级评论后
+    不知格式反复重推 15 次零合并）。措辞=须补可核证据（顾问护栏：不是"写这些即过"）。
+    非判据类返回空串——评论与旧文等价，教学只进判据信道。"""
+    if "判据" not in (fail_reason or ""):
+        return ""
+    return ("\n\n判据行过关须补可核证据（三式任一）：行尾 ✅（已验/通过）｜"
+            "行含 N/N 计数且与 hermetic 实跑一致｜行含「全绿/全过」。"
+            "禁贴骨架模板原文（占位符未填必拦）——照抄验收节模板行不算判据。")
+
+
 def check_criteria(ears_rows, passed, total, tests_ok=True):
     """⑤机械化：验收行逐条找机器可对账的证据；含糊/矛盾 → 升级。
 
@@ -204,6 +220,10 @@ def review_pr(repo, number, cfg, json_out=False):
             tests_ok = tr.returncode == 0 and tres.get("status") == "pass"
             hermetic_note = ""
 
+        # 计数不可得（test_cmd 输出尾行无 passed/total JSON，如 tongtu pnpm 链）时
+        # 以 exit code 口径诚实标注 "exit0"，不再显示误导性的 -1/-1
+        count_txt = fmt_hermetic(passed, total)
+
         rows, fail = [], ""
         ok, why = check_boundary([f["path"] for f in meta["files"]],
                                  manifest_files, forbidden)
@@ -214,8 +234,8 @@ def review_pr(repo, number, cfg, json_out=False):
         ok, why = check_sections(meta.get("body"), sections)
         rows.append((ok, f"③描述 {why}"))
         fail = fail or ("" if ok else why)
-        rows.append((tests_ok, f"④hermetic {passed}/{total}" + (f" | {hermetic_note}" if hermetic_note else "")))
-        fail = fail or ("" if tests_ok else f"hermetic {passed}/{total}")
+        rows.append((tests_ok, f"④hermetic {count_txt}" + (f" | {hermetic_note}" if hermetic_note else "")))
+        fail = fail or ("" if tests_ok else f"hermetic {count_txt}")
         ok, why = (check_criteria(ears_rows, passed, total, tests_ok)
                    if ears_rows else (False, "PR 内无清单验收行"))
         rows.append((ok, f"⑤判据机械化 {why}"))
@@ -229,6 +249,7 @@ def review_pr(repo, number, cfg, json_out=False):
         verdict = {
             "repo": repo, "pr": number, "author": meta["author"]["login"],
             "size": size, "passed": passed, "total": total,
+            "count_txt": count_txt,
             "mode": pr_review_cfg.get("mode", "auto-merge"),
             "mechanical_pass": not fail, "fail_reason": fail,
             "ears_rows": ears_rows, "rows": [[("✓" if ok else "✗"), msg] for ok, msg in rows],
@@ -311,12 +332,14 @@ def sweep():
                 escalated.append(f"{repo}#{n}: {v['fail_reason']}")
                 _save_review(state, state_path, repo, n, head, "escalate")
                 _gh(["pr", "comment", str(n), "-R", repo, "--body",
-                     f"机械评审升级：{v['fail_reason']}（判据逐项见 journal pr_review）——留人类/LLM 裁决。"])
+                     f"机械评审升级：{v['fail_reason']}（判据逐项见 journal pr_review）——留人类/LLM 裁决。"
+                     + escalation_hint(v["fail_reason"])])
                 continue
             if mode == "auto-merge":
+                count = v.get("count_txt") or f"{v['passed']}/{v['total']}"
                 _gh(["pr", "merge", str(n), "-R", repo, "--merge", "--subject",
-                     f"auto-review: passed (机械判据全绿·hermetic {v['passed']}/{v['total']})"])
-                merged.append(f"{repo}#{n}（{v['passed']}/{v['total']}）")
+                     f"auto-review: passed (机械判据全绿·hermetic {count})"])
+                merged.append(f"{repo}#{n}（{v.get('count_txt', v['passed'])}）")
                 _save_review(state, state_path, repo, n, head, "merged")
                 # 关联 issue 闭环：body 里的 Issue #N
                 meta_body = json.loads(_gh(["pr", "view", str(n), "-R", repo,

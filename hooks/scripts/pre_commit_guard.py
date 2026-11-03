@@ -992,6 +992,11 @@ def main():
             for p, mid in mine_list:
                 if (parse_frontmatter(p) or {}).get("provisional"):
                     return (p, mid)
+            # 修复（055/056 标本）：fallback 不落 planning——planning 清单未临行、
+            # 边界不含实施文件，落上去必然 untracked 误拦（归因到 044 拼音计划实证）。
+            for p, mid in mine_list:
+                if str((parse_frontmatter(p) or {}).get("status") or "") != "planning":
+                    return (p, mid)
             return mine_list[0]
 
         manifest, manifest_id = _attribute_mine(mine, _staged_list())

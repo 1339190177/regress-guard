@@ -1,0 +1,10 @@
+[Unit]
+Description=regress-guard 智能体效果跟踪轮次（批180 协议v1：六巡检+反馈+小修）
+
+[Service]
+Type=oneshot
+# systemd 环境无 nvm/用户 bin——gh 在 /usr/bin，zstd/docker 同；保险起见富集
+Environment=PATH=/home/yelisheng/.nvm/versions/node/v22.23.2/bin:/home/yelisheng/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 %h/.zcode/workspace/default/regress-guard/scripts/effect_track.py
+# 退出码：0=全绿；1=有发现（已推送）；2=自崩——均不重试（静默失败归 09:20 哨兵发现面）
+TimeoutStartSec=900

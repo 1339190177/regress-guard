@@ -1,0 +1,11 @@
+[Unit]
+Description=效果跟踪节拍（每日 21:10——当日工单流已沉淀，避开 09:20/09:50 两档）
+
+[Timer]
+OnCalendar=*-*-* 21:10:00
+# 错过（关机）则开机补跑一轮
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

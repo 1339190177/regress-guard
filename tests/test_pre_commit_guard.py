@@ -1950,3 +1950,24 @@ def test_string_tool_input_commit_blocked(project):
         input=_json.dumps(payload), capture_output=True, text=True, env=env,
         timeout=300)
     assert r.returncode == 2 and "不在回归清单" in r.stderr
+
+
+def test_fallback_attribution_skips_planning(project):
+    """批178（055/056 标本）：归因回退不落 planning——交集归因无命中且无
+    provisional 戳时，旧序回退抓文件名倒序首个，若那是 planning 清单（未临行、
+    边界不含实施文件）必然 untracked 误拦；应优先非 planning 清单，其
+    boundary.include 可正当覆盖 staged 文件（044 拼音计划实证的机制收口）。"""
+    _passing_runner(project)
+    # R2 文件名倒序在前 → mine_list[0]=R2(planning)：旧回退必中它
+    _write_manifest_named(project, "R2.md",
+        "---\nid: R2\nstatus: planning\ntier: S\n"
+        "rollback: git revert\nplanned_changes: []\nactual_changes: []\n---\n")
+    _write_manifest(project,
+        "---\nid: R1\nstatus: in-progress\ntier: S\n"
+        "rollback: git revert 即回滚\n"
+        "planned_changes:\n  - id: F1\n    file: src/app.js\n"
+        "boundary:\n  include:\n    - 'src/**'\n"
+        "actual_changes: []\n---\n")
+    _stage(project, "src/other.js", "x\n")  # 与两者 planned_changes 均无交集
+    code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
+    assert code == 0, err

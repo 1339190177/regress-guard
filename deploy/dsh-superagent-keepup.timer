@@ -1,0 +1,11 @@
+[Unit]
+Description=dsh-superagent 保活节拍（开机 1 分钟首发 + 每小时兜底）
+
+[Timer]
+# 开机后 1 分钟先跑一次（重启持久化的第一拍）；此后每小时兜底
+OnBootSec=1min
+OnUnitActiveSec=1h
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

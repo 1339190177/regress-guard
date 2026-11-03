@@ -1,0 +1,11 @@
+[Unit]
+Description=regress-guard superagent 工单卡滞哨（批181：静默20分钟/悬空/停摆三判据，只报不杀）
+
+[Service]
+Type=oneshot
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 %h/.zcode/workspace/default/regress-guard/scripts/stuck_watch.py
+# 退出码：0=无卡滞；1=有发现（已 WeCom+journal）；2=自崩——均不重试
+TimeoutStartSec=120
+# exit 1=有发现（已推送）不算失败——2=自崩才算（避免每 15 分钟 Failed 噪音）
+SuccessExitStatus=0 1
