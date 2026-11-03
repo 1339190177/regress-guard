@@ -337,6 +337,12 @@ def is_exempt(fp_rel, fp_abs):
         return True
     if fp_rel.endswith("AGENTS.md") or "regress-guard" in fp_abs:
         return True
+    # 批190（公网 issue#1②）：ZCode 自动记忆目录——跨会话治理资产，与被
+    # 保护的插件配置面（~/.zcode/hooks|skills|plugins 等）不同族。项目
+    # forbidden 常含 ~/.zcode/** 罩配置面，误伤会话记忆写入。
+    _mem = os.path.expanduser("~/.zcode/cli/memories")
+    if os.path.abspath(fp_abs).startswith(_mem + os.sep):
+        return True
     return False
 
 

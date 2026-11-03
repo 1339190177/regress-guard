@@ -41,7 +41,11 @@ def make_project(tmp_path, with_boundary=True, status="in-progress",
 
 
 def run_guard(proj, file_path, tool="Edit", extra_env=None):
-    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}
+    # 批183 换序后 ZCODE_ 压过 CLAUDE_——交互环境 session 带 ZCODE_PROJECT_DIR
+    # 指真仓，测试必须剥离两根变量再设自己的（与 test_pre_commit_guard 同律）
+    env = {**os.environ}
+    env.pop("ZCODE_PROJECT_DIR", None)
+    env["CLAUDE_PROJECT_DIR"] = str(proj)
     env.update(extra_env or {})
     return subprocess.run(
         ["python3", GUARD],
@@ -331,7 +335,10 @@ def test_long_body_manifest_still_detected(tmp_path):
 # ── v1.29：Bash 写目标旁路收口（病例：rm 删边界内文件零拦截）──
 
 def run_bash_guard(proj, command):
-    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}
+    # 批183 换序同律：剥 session 泄漏的 ZCODE_PROJECT_DIR（见 run_guard 注释）
+    env = {**os.environ}
+    env.pop("ZCODE_PROJECT_DIR", None)
+    env["CLAUDE_PROJECT_DIR"] = str(proj)
     return subprocess.run(
         ["python3", GUARD],
         input=json.dumps({"tool_name": "Bash", "tool_input": {"command": command}}),
@@ -565,3 +572,16 @@ def test_write_targets_coreutils_install_kept():
     m = _bg()
     ts = m.extract_write_targets("install -m 755 src/server dst/bin", "/proj")
     assert ts == ["/proj/dst/bin"]
+
+
+def test_memories_dir_exempt_from_project_forbidden():
+    """批190（公网 issue#1②）：~/.zcode/cli/memories/** 是跨会话治理资产，
+    项目 forbidden 含 ~/.zcode/** 罩配置面时不误伤记忆写入。"""
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
+    import boundary_guard as bg
+    mem = os.path.expanduser("~/.zcode/cli/memories")
+    assert bg.is_exempt("x", os.path.join(mem, "projects", "t", "memory", "MEMORY.md"))
+    # 注意：regress-guard 路径本就被 is_exempt 放行（"regress-guard" in fp_abs
+    # 既有行为），本测试只钉"memories 目录被豁免"——正例即可，负例用别的路径
+    assert not bg.is_exempt("x", os.path.expanduser("~/.zcode/other-config.json"))

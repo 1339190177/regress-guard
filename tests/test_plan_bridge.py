@@ -423,3 +423,30 @@ def test_pure_old_and_year_dirs_unchanged(tmp_path):
     _mk_manifest(d2, "REGRESS-2026-177")
     mid2, _ = pb.next_id_and_name(str(d2), "t")
     assert mid2 == "REGRESS-2026-178"
+
+
+# ─── 批190：号段 4→8 hex + 4 位历史号兼容 ───
+
+def test_new_format_regex_accepts_4_and_8_hex():
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
+    import plan_bridge as pb
+    assert pb._ID_NEW.match("REGRESS-261103-3ab90d8a")  # 8-hex 新制
+    assert pb._ID_NEW.match("REGRESS-261103-8f3a")      # 4-hex 历史（当日已落 3 个）
+    assert pb._ID_NEW.match("REGRESS-261103-3ab90d8a")      # 8 位
+    assert not pb._ID_NEW.match("REGRESS-261103-3AB90D8A")  # 大写不匹配
+    # {4,8} 是量词范围不是精确长度——7 位前缀也会被匹配（贪婪吸收 7 位后剩余
+    # 'd8' 无法消费——实际上 re.match 在此失败；防御性改断言为 fullmatch 语义
+    assert pb._ID_NEW.fullmatch("REGRESS-261103-3ab90d8a") is not None
+
+
+def test_mints_8_hex_in_new_space(tmp_path):
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
+    import plan_bridge as pb
+    d = tmp_path / "m"
+    d.mkdir()
+    _mk_manifest(d, "REGRESS-261103-3ab90d8a")
+    mid, stem = pb.next_id_and_name(str(d), "t")
+    m = pb._ID_NEW.match(mid)
+    assert m and len(m.group(2)) == 8, mid  # 新铸号=8 hex
