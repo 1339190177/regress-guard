@@ -95,6 +95,25 @@ def kw_of(page, bitem):
     return [k for k in (first, bitem.split("/")[0] if bitem else "") if k]
 
 
+def code_evidence(row):
+    """代码证据核对（批186 修补：首批 5 案全误标本）——差距列中文关键词
+    （≥3 字连续段）在 origin/dev 里 git grep，命中即「疑似已实现」不建案。
+    文档现状列会过时，代码不会说谎；宁可漏提（下轮文档刷新后再提），
+    不可误提（浪费人类裁决注意力）。"""
+    gap = row[3]
+    kws = []
+    for kw in re.findall(r"[\u4e00-\u9fff]{3,8}", gap):
+        if kw not in kws and not any(kw in k or k in kw for k in kws):
+            kws.append(kw)
+    hits = []
+    for kw in kws[:4]:
+        r = _run(["git", "-C", SEED, "grep", "-l", kw, "origin/dev", "--",
+                  "device-access-platform"], timeout=30)
+        if r.returncode == 0 and r.stdout.strip():
+            hits.append((kw, r.stdout.strip().splitlines()[0][:80]))
+    return hits
+
+
 def already_covered(titles, row):
     page, bitem = row[0], row[1]
     for kw in kw_of(page, bitem):
@@ -157,6 +176,13 @@ def main():
         hit = already_covered(titles, row)
         if hit:
             st["proposed"][key] = {"title": row[0], "at": "", "covered_by": hit}
+            continue
+        ev = code_evidence(row)
+        if ev:
+            st["proposed"][key] = {"title": row[0], "at": "",
+                                   "suspect_done": ev[:2],
+                                   "note": "文档现状列疑似过时——请人刷新"}
+            print(f"[跳过·疑似已实现] {row[0]}：{ev[0][0]} → {ev[0][1]}")
             continue
         title, body = draft_issue(row)
         if dry:
