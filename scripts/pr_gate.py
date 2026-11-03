@@ -407,10 +407,18 @@ def sweep():
             # 去重：同 head sha 且已有终态判定（escalate 类滞留 PR 不重评；新推送=新 sha 自动复评）
             try:
                 head = json.loads(_gh(["pr", "view", str(n), "-R", repo,
-                                       "--json", "headRefOid"]))["headRefOid"]
+                                       "--json", "headRefOid,mergeable"]))["headRefOid"]
                 prev = state.get(f"{repo}#{n}") or {}
+                # 批184 例外：mergeable 随 dev 移动而变——同 head 滞留 escalate 的
+                # 冲突 PR 必须重估（去重为省克隆，mergeable 一跳 gh 调用即可判）
                 if prev.get("head") == head and prev.get("verdict") in ("merged", "escalate"):
-                    continue
+                    try:
+                        mv = json.loads(_gh(["pr", "view", str(n), "-R", repo,
+                                             "--json", "mergeable"]))["mergeable"]
+                    except Exception:
+                        mv = "MERGEABLE"
+                    if mv == "MERGEABLE":
+                        continue
             except Exception:
                 head = ""
             try:
