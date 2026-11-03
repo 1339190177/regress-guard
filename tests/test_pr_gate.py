@@ -201,3 +201,28 @@ def test_escalation_hint_silent_for_other_failures():
     # 非判据类（如清单缺失）不加教学——评论与旧文等价，教学只进判据信道
     assert pr_gate.escalation_hint("PR 内无清单验收行") == ""
     assert pr_gate.escalation_hint("") == ""
+
+
+# ─── 批184：⑥拆家 + 冲突引擎纯件 ──────────────────────
+
+def test_human_signal_split_conflict_vs_review():
+    ok, why, c = pr_gate._judge_human_signal([], 'CONFLICTING')
+    assert not ok and c and '冲突' in why
+    ok, why, c = pr_gate._judge_human_signal(['CHANGES_REQUESTED'], 'MERGEABLE')
+    assert not ok and not c and '人审' in why
+    assert pr_gate._judge_human_signal([], 'MERGEABLE')[0]
+
+
+def test_conflict_directive_hygiene_and_playbook():
+    d = pr_gate.conflict_directive("some-agent-login")
+    assert '<' not in d and '>' not in d and 'yelisheng' not in d
+    assert '@some-agent-login' in d
+    for kw in ('归因', '意图调和', 'merge dev', '禁 force', '冲突熔断', '最小 PR 号'):
+        assert kw in d
+
+
+def test_break_marker_only_from_others():
+    cs = [{'body': pr_gate.conflict_directive('a-bot'), 'author': {'login': 'me'}},
+          {'body': '冲突熔断：交棒', 'author': {'login': 'worker-1'}}]
+    assert pr_gate._has_break_marker(cs, 'me')
+    assert not pr_gate._has_break_marker(cs[:1], 'me')

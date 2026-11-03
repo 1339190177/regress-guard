@@ -198,6 +198,7 @@ def check_firstpass(findings, since):
     """⑤ since 后 pr_review 新增行首过率（escalate 占比）。"""
     jf = os.path.join(WORKSPACE, ".regress", "journal", "events.jsonl")
     merged = escalated = 0
+    conflicts = {}
     try:
         with open(jf, encoding="utf-8", errors="ignore") as f:
             for line in f:
@@ -212,9 +213,11 @@ def check_firstpass(findings, since):
                         merged += 1
                     elif d.get("decision") == "escalate":
                         escalated += 1
+                    elif d.get("decision", "").startswith("conflict_"):
+                        conflicts[d.get("decision")] = conflicts.get(d.get("decision"), 0) + 1
     except OSError:
         return
-    return merged, escalated
+    return merged, escalated, conflicts
 
 
 def main():
@@ -233,7 +236,8 @@ def main():
                f"容器{'清' + str(len(fixed)) if fixed else '无遗留'} | "
                f"磁盘 {st['disk_history'][-1][1] if st['disk_history'] else '?'}G | "
                f"新会话摩擦 {[(s[:18], n) for s, n in (friction or [])] or '无'} | "
-               f"首过 {fp[0]}/{(fp[0] or 0) + (fp[1] or 0) if fp else '-'}")
+               f"首过 {fp[0]}/{(fp[0] or 0) + (fp[1] or 0) if fp else '-'}"
+               + (f" | 冲突指令{fp[2].get('conflict_dispatch', 0)}轮/等槽{fp[2].get('conflict_wait', 0)}/接力{fp[2].get('conflict_resolver', 0)}" if fp and len(fp) > 2 and fp[2] else ""))
     _journal(summary + (f" | 已修:{fixed}" if fixed else "")
              + (f" | 发现:{len(findings)}项" if findings else " | 全绿"))
     if findings:

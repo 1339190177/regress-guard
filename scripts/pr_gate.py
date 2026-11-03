@@ -107,6 +107,104 @@ def fmt_hermetic(passed, total):
     return f"{passed}/{total}" if passed >= 0 else "exit0"
 
 
+def _judge_human_signal(bad_reviews, mergeable_state):
+    """⑥拆家（批184）：冲突与人审意见分道——CONFLICTING 走冲突自处理引擎，
+    CHANGES_REQUESTED 才是等人审。旧文案两者混为「人类信号红」，worker 收到的
+    升级评论无针对性指引（昨夜七单+今晨三 CONFLICTING 实证）。"""
+    if mergeable_state != "MERGEABLE":
+        return False, "冲突（CONFLICTING）", True
+    if bad_reviews:
+        return False, "人审意见（CHANGES_REQUESTED）——等人类评论", False
+    return True, "", False
+
+
+def conflict_directive(agent):
+    """解法指令模板（agent 登录名取自注册表配置=权威源；发版卫生禁用户名字面量）。"""
+    return _CONFLICT_TMPL.format(agent=agent)
+
+
+_CONFLICT_TMPL = (
+    "@{agent} 本 PR 与 dev 冲突（机械评审⑥），按冲突自解协议处理（AGENTS.md 机器通道第 10 条）：\n"
+    "1 归因：git log 本分支..dev 找新合入项，映射工单号\n"
+    "2 意图调和：读上游 PR 三段与清单——同特性链=下游适配上游；独立特性=语义并集保留\n"
+    "3 merge dev 入本分支（禁 force push）；涉页面文件按 UI 取证范式补证\n"
+    "4 本地 test_cmd 全绿后 push——hermetic 门禁自动复审，通过即自动合并\n"
+    "串行规则：同仓多 PR 冲突按最小 PR 号先解，非目标请等待（解完自动轮到）。\n"
+    "两轮未解：在本 PR 评论含「冲突熔断」四字，系统自动开接力工单（新 agent 接手）。")
+
+
+def _has_break_marker(comments, self_login):
+    """熔断标记：agent 在 PR 评论声明「冲突熔断」（本人发出的指令评论不算）。"""
+    for c in comments or []:
+        if "冲突熔断" in (c.get("body") or ""):
+            author = (c.get("author") or {}).get("login", "")
+            if author and author != self_login:
+                return True
+    return False
+
+
+def _conflict_engine(repo, n, state, state_path, head, agent):
+    """冲突自处理引擎（批184）：pero 单槽串行 × Mergify 冲突评论 × agent 意图合并。
+
+    人类零参与（用户令）：⑥拆家后 CONFLICTING 独走——同仓同时只解最小 PR 号
+    一张（单槽，解完 90s sweep 自动易主）；目标 PR 按轮次发解法指令（head 变化=
+    新一轮）；worker 两轮不成评论「冲突熔断」→ 自动开 resolver 接力工单
+    （agent 找 agent，人类只收 WeCom 知情不需行动）。"""
+    import time as _t
+    rounds = state.setdefault("conflict_rounds", {})
+    rk = f"{repo}#{n}"
+    r = rounds.setdefault(rk, {"heads": [], "round": 0,
+                               "directive_heads": [], "resolver": False})
+    if head and head not in r["heads"]:
+        r["heads"] = (r["heads"] + [head])[-6:]
+        r["round"] = len(r["heads"])
+    # 熔断→resolver 接力工单（一次性）
+    if not r["resolver"] and r["round"] >= 2:
+        try:
+            comments = json.loads(_gh(["pr", "view", str(n), "-R", repo,
+                                       "--json", "comments"]))["comments"]
+        except Exception:
+            comments = []
+        if _has_break_marker(comments, self_login="1339190177"):
+            title = f"[conflict-solver] PR#{n} 冲突解决接力工单"
+            _gh(["issue", "create", "-R", repo, "--title", title, "--body",
+                 f"@{agent} 冲突熔断自动接力（前 worker 两轮未解）：\n"
+                 f"- PR#{n} 与 dev 冲突，前 worker 已声明熔断（评论链可考古归因）\n"
+                 "- 解法同冲突自解协议第 1-4 步；此单合入后原 PR 复审自动合并\n"
+                 "- 全新视角优先：先读双方清单与验收判据再动手"])
+            r["resolver"] = True
+            _journal({"repo": repo, "pr": n, "mode": "machine",
+                      "decision": "conflict_resolver", "tier": "conflict"})
+            return "resolver"
+    # 单槽：目标=该仓当前冲突 PR 中最小号
+    try:
+        open_prs = json.loads(_gh(["pr", "list", "-R", repo,
+            "--state", "open", "--json", "number,mergeable"]))
+        conflicting = sorted(p["number"] for p in open_prs
+                             if p.get("mergeable") == "CONFLICTING")
+    except Exception:
+        conflicting = [n]
+    if not conflicting:
+        return None
+    target = conflicting[0]
+    if n != target:
+        _journal({"repo": repo, "pr": n, "mode": "machine",
+                  "decision": "conflict_wait", "tier": "conflict",
+                  "fail_reason": f"等槽（目标 PR#{target}）"})
+        return "wait"
+    # 目标：每轮（新 head）发一次解法指令；第 2 轮起附熔断提示
+    if head and head not in r["directive_heads"]:
+        d = conflict_directive(agent)
+        body = d if r["round"] < 2 else (d + "\n（已两轮未解——若仍无法调和意图，请评论「冲突熔断」交棒）")
+        _gh(["pr", "comment", str(n), "-R", repo, "--body", body])
+        r["directive_heads"] = (r["directive_heads"] + [head])[-6:]
+        _journal({"repo": repo, "pr": n, "mode": "machine",
+                  "decision": "conflict_dispatch", "tier": "conflict",
+                  "fail_reason": f"round {r['round']}"})
+        return "dispatch"
+    return "hold"
+
+
 def escalation_hint(fail_reason):
     """判据类升级的教学行（run60 批182，昨夜 PR#20-26 标本：worker 收升级评论后
     不知格式反复重推 15 次零合并）。措辞=须补可核证据（顾问护栏：不是"写这些即过"）。
@@ -242,14 +340,13 @@ def review_pr(repo, number, cfg, json_out=False):
         fail = fail or ("" if ok else why)
         bad_reviews = [r["state"] for r in meta.get("reviews", [])
                        if r.get("state") == "CHANGES_REQUESTED"]
-        mergeable = meta.get("mergeable") == "MERGEABLE"
-        ok = (not bad_reviews) and mergeable
-        rows.append((ok, f"⑥人类信号 reviews={bad_reviews or '无'} mergeable={meta.get('mergeable')}"))
-        fail = fail or ("" if ok else "人类信号红（changes-requested 或冲突）")
+        ok6, why6, is_conflict = _judge_human_signal(bad_reviews, meta.get("mergeable"))
+        rows.append((ok6, f"⑥人类信号 reviews={bad_reviews or '无'} mergeable={meta.get('mergeable')}"))
+        fail = fail or ("" if ok6 else why6)
         verdict = {
             "repo": repo, "pr": number, "author": meta["author"]["login"],
             "size": size, "passed": passed, "total": total,
-            "count_txt": count_txt,
+            "count_txt": count_txt, "conflict": is_conflict,
             "mode": pr_review_cfg.get("mode", "auto-merge"),
             "mechanical_pass": not fail, "fail_reason": fail,
             "ears_rows": ears_rows, "rows": [[("✓" if ok else "✗"), msg] for ok, msg in rows],
@@ -329,6 +426,11 @@ def sweep():
                       "fail_reason": v["fail_reason"], "tier": mode}
             _journal(fields)
             if not v["mechanical_pass"]:
+                if v.get("conflict") and mode == "auto-merge":
+                    # 批184：冲突独走（人类零参与）——单槽串行+解法指令+熔断接力
+                    _conflict_engine(repo, n, state, state_path, head, agent)
+                    _save_review(state, state_path, repo, n, head, "escalate")
+                    continue
                 escalated.append(f"{repo}#{n}: {v['fail_reason']}")
                 _save_review(state, state_path, repo, n, head, "escalate")
                 _gh(["pr", "comment", str(n), "-R", repo, "--body",
@@ -341,6 +443,8 @@ def sweep():
                      f"auto-review: passed (机械判据全绿·hermetic {count})"])
                 merged.append(f"{repo}#{n}（{v.get('count_txt', v['passed'])}）")
                 _save_review(state, state_path, repo, n, head, "merged")
+                # 批184：冲突轮次态自愈清零（合并=冲突终局）
+                state.get("conflict_rounds", {}).pop(f"{repo}#{n}", None)
                 # 关联 issue 闭环：body 里的 Issue #N
                 meta_body = json.loads(_gh(["pr", "view", str(n), "-R", repo,
                     "--json", "body"]))["body"]
