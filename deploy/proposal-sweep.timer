@@ -1,0 +1,10 @@
+[Unit]
+Description=提案轮次节拍（每日 12:10——人类在场的午间窗口便于当天裁决）
+
+[Timer]
+OnCalendar=*-*-* 12:10:00
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

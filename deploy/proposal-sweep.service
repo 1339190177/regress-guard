@@ -1,0 +1,10 @@
+[Unit]
+Description=regress-guard agent 提案轮次（批185 P1：Agents propose, people approve——规划文档→提案 issue）
+
+[Service]
+Type=oneshot
+Environment=PATH=/home/yelisheng/.nvm/versions/node/v22.23.2/bin:/home/yelisheng/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 %h/.zcode/workspace/default/regress-guard/scripts/proposal_sweep.py
+# 有新提案才推 WeCom（脚本内 best-effort）；exit 1=有建单不算失败
+SuccessExitStatus=0 1
+TimeoutStartSec=300
