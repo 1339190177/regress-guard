@@ -124,6 +124,33 @@ def check_containers(findings, fixed):
             findings.append(f"②非规范容器遗留：{name}（{created.strip()[:16]}）——命名纪律未生效标本")
 
 
+def gc_ended_worktrees(fixed):
+    """终态工单 worktree 自动回收（run61 批183，人类授权根治）：>3 天 +
+    无活跃清单 → ui-evidence 先存档 evidence/<树名>/ → 删树 → 种子仓 prune。
+    夜树（PR 未决、assignment running）不动——_worktree_holds 拦住。"""
+    import shutil
+    cutoff = datetime.datetime.now().timestamp() - 3 * 86400
+    for wt in glob.glob(os.path.join(WORK_DIR, "*")):
+        if os.path.getmtime(wt) > cutoff:
+            continue
+        name = os.path.basename(wt)
+        if _worktree_holds(name[-12:]):
+            continue
+        ev_src = os.path.join(wt, "ui-evidence")
+        if os.path.isdir(ev_src):
+            ev_dst = os.path.join(os.path.dirname(WORK_DIR), "evidence", name)
+            os.makedirs(ev_dst, exist_ok=True)
+            for f in glob.glob(os.path.join(ev_src, "*")):
+                if os.path.isfile(f):
+                    shutil.copy2(f, ev_dst)
+        shutil.rmtree(wt, ignore_errors=True)
+        fixed.append(f"worktree 回收 {name[:44]}（>3天终态，取证已存档）")
+    seed = os.path.expanduser("~/src/tongtu-anquan-ai-workspace")
+    if os.path.isdir(seed):
+        subprocess.run(["git", "-C", seed, "worktree", "prune"],
+                       capture_output=True, timeout=30)
+
+
 def check_disk(findings, st):
     """③ worktree 磁盘趋势：总量入史；超阈值列可清清单（不自动删）。"""
     r = _run(["du", "-s", WORK_DIR], timeout=300)
@@ -195,6 +222,7 @@ def main():
     since, findings, fixed = st["since"], [], []
     exit0_n = check_exit0(findings)
     check_containers(findings, fixed)
+    gc_ended_worktrees(fixed)
     check_disk(findings, st)
     friction = check_friction(findings, since)
     fp = check_firstpass(findings, since)

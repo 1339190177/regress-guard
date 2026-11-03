@@ -150,8 +150,8 @@ def _fail_closed(reason):
     赦免——判定只读 env+config，不碰载荷解析。
     """
     try:
-        pd = (os.environ.get("CLAUDE_PROJECT_DIR")
-              or os.environ.get("ZCODE_PROJECT_DIR") or os.getcwd())
+        pd = (os.environ.get("ZCODE_PROJECT_DIR")
+              or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
         search = pd
         for _ in range(10):
             cfg = os.path.join(search, ".regress", "config.json")
@@ -229,8 +229,8 @@ def main():
 
     # 读配置（支持 monorepo：从多个位置查找 .regress/）
     project_dir = (
-        os.environ.get("CLAUDE_PROJECT_DIR")
-        or os.environ.get("ZCODE_PROJECT_DIR")
+        os.environ.get("ZCODE_PROJECT_DIR")
+        or os.environ.get("CLAUDE_PROJECT_DIR")
         or os.getcwd()
     )
     # 向上查找 .regress/config.json

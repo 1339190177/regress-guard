@@ -25,8 +25,8 @@ SCHEMA_VERSION = 1
 def _find_project_dir(start_dir=None):
     """从 start_dir（默认 env 或 cwd）向上找含 .regress/ 的目录。"""
     d = start_dir or (
-        os.environ.get("CLAUDE_PROJECT_DIR")
-        or os.environ.get("ZCODE_PROJECT_DIR")
+        os.environ.get("ZCODE_PROJECT_DIR")
+        or os.environ.get("CLAUDE_PROJECT_DIR")
         or os.getcwd()
     )
     d = os.path.abspath(d)

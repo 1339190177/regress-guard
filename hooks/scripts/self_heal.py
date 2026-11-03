@@ -219,8 +219,8 @@ def verify_content_integrity(source):
 def _current_regress_dir():
     """定位当前项目的 .regress/（向上最多 10 级）。"""
     d = (
-        os.environ.get("CLAUDE_PROJECT_DIR")
-        or os.environ.get("ZCODE_PROJECT_DIR")
+        os.environ.get("ZCODE_PROJECT_DIR")
+        or os.environ.get("CLAUDE_PROJECT_DIR")
         or os.getcwd()
     )
     d = os.path.abspath(d)

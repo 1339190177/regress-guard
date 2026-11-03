@@ -51,7 +51,11 @@ def sandbox_aware_state_dir():
     override = os.environ.get("RG_STATE_DIR")
     if override:
         return override
-    proj = os.environ.get("CLAUDE_PROJECT_DIR")
+    # run61 批183：ZCODE_ 先于 CLAUDE_（宿主原生优先，兼容别名在后）——
+    # 双变量异值时（会话带 CLAUDE_ 指真项目 + 测试覆写 ZCODE_ 指 tmp）
+    # 旧序把探针事件吸进真项目账本（12 条串位标本）
+    proj = (os.environ.get("ZCODE_PROJECT_DIR")
+            or os.environ.get("CLAUDE_PROJECT_DIR"))
     if proj and os.path.isdir(os.path.join(proj, ".regress")):
         d = os.path.join(proj, ".regress", "tmp")
         try:

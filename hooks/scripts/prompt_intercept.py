@@ -50,8 +50,8 @@ def _state_path():
     """状态文件路径——按项目隔离（避免跨项目污染重复检测）。"""
     import hashlib
     project_dir = (
-        os.environ.get("CLAUDE_PROJECT_DIR")
-        or os.environ.get("ZCODE_PROJECT_DIR")
+        os.environ.get("ZCODE_PROJECT_DIR")
+        or os.environ.get("CLAUDE_PROJECT_DIR")
         or os.getcwd()
     )
     key = hashlib.md5(project_dir.encode()).hexdigest()[:8]
@@ -194,8 +194,8 @@ def correction_reminder(text):
 
 def _project_has_regress():
     """本项目（或祖先目录）是否接入治理（有 .regress）——3.5 档门控。"""
-    d = (os.environ.get("CLAUDE_PROJECT_DIR")
-         or os.environ.get("ZCODE_PROJECT_DIR") or os.getcwd())
+    d = (os.environ.get("ZCODE_PROJECT_DIR")
+         or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
     for _ in range(10):
         if os.path.isdir(os.path.join(d, ".regress")):
             return True
@@ -286,8 +286,8 @@ def analyze_prompt(text):
             or HEAVY_TASK_RE.search(clean)):
         # 检查是否有 .regress/
         project_dir = (
-            os.environ.get("CLAUDE_PROJECT_DIR")
-            or os.environ.get("ZCODE_PROJECT_DIR")
+            os.environ.get("ZCODE_PROJECT_DIR")
+            or os.environ.get("CLAUDE_PROJECT_DIR")
             or os.getcwd()
         )
         # 向上查找
@@ -425,8 +425,8 @@ def main():
     # 供 plan_approve 盖 session 戳。早于 "/" 命令早退：命令轮也是本会话的轮。
     try:
         from session_relay import write_relay
-        write_relay(os.environ.get("CLAUDE_PROJECT_DIR")
-                    or os.environ.get("ZCODE_PROJECT_DIR") or os.getcwd())
+        write_relay(os.environ.get("ZCODE_PROJECT_DIR")
+                    or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
     except Exception:
         pass
 
@@ -453,8 +453,8 @@ def main():
     gov_lines = []
     if os.environ.get("RG_PROMPT_CONTEXT", "").lower() not in ("off", "0", "false"):
         # v1.80（069）治理上下文前置：活跃清单边界+规律召回——防线从拦截点前移到开工前
-        pd = (os.environ.get("CLAUDE_PROJECT_DIR")
-              or os.environ.get("ZCODE_PROJECT_DIR") or os.getcwd())
+        pd = (os.environ.get("ZCODE_PROJECT_DIR")
+              or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
         gov_lines = _active_manifests(pd) + _rule_recall_line(pd, prompt_text)
     parts = []
     if gov_lines:

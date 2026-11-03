@@ -51,8 +51,8 @@ _ID_N = re.compile(r"^(REGRESS-)(\d+)$")
 
 def find_project_dir():
     """三段式定位（与 boundary_guard 同惯例）：PROJECT_DIR env → cwd → 向上找 .regress。"""
-    start = (os.environ.get("CLAUDE_PROJECT_DIR")
-             or os.environ.get("ZCODE_PROJECT_DIR")
+    start = (os.environ.get("ZCODE_PROJECT_DIR")
+             or os.environ.get("CLAUDE_PROJECT_DIR")
              or os.getcwd())
     d = os.path.abspath(start)
     for _ in range(10):

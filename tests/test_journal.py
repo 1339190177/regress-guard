@@ -318,3 +318,25 @@ def test_prompt_constraint_no_direction_not_journaled(tmp_path):
     _feed(PROMPT_HOOK, {"prompt": "必须努力工作才能成功"}, proj, tmpdir)
     events = load_journal(str(proj))
     assert not any(e["kind"] == "user_constraint" for e in events)
+
+
+# ─── 环境优先级：ZCODE 压过 CLAUDE（run61 批183）──────────
+
+def test_env_precedence_zcode_over_claude(tmp_path):
+    """标本：会话环境带 CLAUDE_PROJECT_DIR 指真项目 + 测试覆写 ZCODE_PROJECT_DIR
+    指 tmp——探针事件必须落 tmp。旧序 CLAUDE 优先时事件被吸进真项目账本
+    （生产账本 12 条串位 + 六测试抖红三天的根因）。诱饵必须是合法治理项目
+    （含 .regress），证明 ZCODE 赢在优先级而非路径有效性。"""
+    decoy, proj, tmpdir = tmp_path / "decoy", tmp_path / "proj", tmp_path / "tmp"
+    (decoy / ".regress" / "journal").mkdir(parents=True)
+    (proj / ".regress").mkdir(parents=True)
+    tmpdir.mkdir()
+    env = {**os.environ, "ZCODE_PROJECT_DIR": str(proj),
+           "CLAUDE_PROJECT_DIR": str(decoy),
+           "TMPDIR": str(tmpdir), "REGRESS_JOURNAL": "on"}
+    subprocess.run(["python3", FAIL_WATCH],
+                   input=json.dumps({"tool_name": "Bash",
+                                     "tool_input": {"command": "npm test --json"}}),
+                   capture_output=True, text=True, env=env, timeout=10)
+    assert any(e["kind"] == "tool_fail" for e in load_journal(str(proj)))
+    assert not (decoy / ".regress" / "journal" / "events.jsonl").exists()

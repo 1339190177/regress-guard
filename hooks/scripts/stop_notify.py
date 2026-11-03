@@ -50,8 +50,8 @@ COOLDOWN_S = 90
 
 
 def _project_dir():
-    return (os.environ.get("CLAUDE_PROJECT_DIR")
-            or os.environ.get("ZCODE_PROJECT_DIR")
+    return (os.environ.get("ZCODE_PROJECT_DIR")
+            or os.environ.get("CLAUDE_PROJECT_DIR")
             or os.getcwd())
 
 

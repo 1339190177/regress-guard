@@ -47,8 +47,8 @@ _SEGMENT_SPLIT = re.compile(r"&&|\|\||;|\n")
 
 def _project_dir():
     d = (
-        os.environ.get("CLAUDE_PROJECT_DIR")
-        or os.environ.get("ZCODE_PROJECT_DIR")
+        os.environ.get("ZCODE_PROJECT_DIR")
+        or os.environ.get("CLAUDE_PROJECT_DIR")
         or os.getcwd()
     )
     return os.path.abspath(d)

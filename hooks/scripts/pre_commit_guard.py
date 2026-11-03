@@ -420,8 +420,8 @@ def find_regress_dir():
     # 收集候选目录
     candidates = []
     env_dir = (
-        os.environ.get("CLAUDE_PROJECT_DIR")
-        or os.environ.get("ZCODE_PROJECT_DIR")
+        os.environ.get("ZCODE_PROJECT_DIR")
+        or os.environ.get("CLAUDE_PROJECT_DIR")
     )
     if env_dir:
         candidates.append(env_dir)
