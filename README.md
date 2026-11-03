@@ -133,7 +133,7 @@ MIT. Third-party: none at runtime (stdlib only).
 
 **实况（由 gen_reference.py 生成，勿手改本区）**
 
-- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：936 个
+- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：938 个
 
 | 命令 | 说明 |
 |---|---|
@@ -155,3 +155,7 @@ MIT. Third-party: none at runtime (stdlib only).
 | `/regress:verify` | 跑测试预览结果（提交时 hook 也会自动跑；测试失败 AI 应自行修复重跑） |
 
 <!-- generated: reference end -->
+
+## 编号空间注记（批187）
+
+插件自家开发号 `REGRESS-2026-NNN`（年-序）与接入仓工单号（如 tongtu 旧 `REGRESS-NNN`/新 `REGRESS-YYMMDD-hex4`，2026-11-03 改制 commit 6078f33）是**三个独立编号空间**，互不统一续编。plan_bridge 铸号按清单目录在场格式自适配：年格式续年、新格式按当日+随机 hex 铸、纯旧格式续旧、旧空间在新格式在场后视为冻结。

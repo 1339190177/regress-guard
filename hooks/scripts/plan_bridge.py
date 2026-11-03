@@ -47,6 +47,9 @@ _PATH_TICK = re.compile(r"`([^`\n]{1,120})`")
 _PATH_BARE = re.compile(r"(?<![\w./~-])((?:[\w-]+/)+[\w.-]+\.[A-Za-z0-9]{1,6})")
 _ID_Y = re.compile(r"^(REGRESS-\d{4}-)(\d+)$")
 _ID_N = re.compile(r"^(REGRESS-)(\d+)$")
+# tongtu 2026-11-03 改制（commit 6078f33）：REGRESS-YYMMDD-hex4（尾段随机）。
+# 独立编号空间——不与旧 NNN 续编，按其约定铸号（当日+随机尾+存在性防撞）。
+_ID_NEW = re.compile(r"^REGRESS-(\d{6})-([0-9a-f]{4})$")
 
 
 def find_project_dir():
@@ -107,9 +110,24 @@ def next_id_and_name(manifests_dir, title):
         if mid:
             ids.append(mid)
     year_fmt = [i for i in ids if _ID_Y.match(i)]
+    new_fmt = [i for i in ids if _ID_NEW.match(i)]
     if year_fmt:
         m = max((_ID_Y.match(i) for i in year_fmt), key=lambda x: int(x.group(2)))
         prefix, n = m.group(1), int(m.group(2)) + 1
+    elif new_fmt:
+        # 批187（tongtu 改制兼容审计必改项）：混合目录下原逻辑 all(_ID_N) 为
+        # False 落 else 铸 REGRESS-001——与冻结旧空间撞车。新格式在场即按
+        # 新约定铸号：当日 YYMMDD + 随机 hex4 + 存在性双查防撞。
+        import glob as _g
+        import random
+        import time as _t
+        for _ in range(8):
+            hex4 = "%04x" % random.randint(0, 0xFFFF)
+            ymd = _t.strftime("%y%m%d")
+            stem = f"{ymd}-{hex4}-native-plan"
+            if not _g.glob(os.path.join(manifests_dir, stem + ".md")):
+                return f"REGRESS-{ymd}-{hex4}", stem
+        raise RuntimeError("新格式编号 8 次随机均撞——清单目录异常")
     elif ids and all(_ID_N.match(i) for i in ids):
         n = max(int(_ID_N.match(i).group(2)) for i in ids) + 1
         prefix = "REGRESS-"

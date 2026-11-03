@@ -379,3 +379,47 @@ def test_post_reentry_repair_is_idempotent(tmp_path, monkeypatch):
     _run(pb, PAYLOAD1)
     _run(pb, PAYLOAD1)                              # 再重入
     assert _journal(proj).count("plan_approved") == 1
+
+
+# ─── 批187：tongtu 新号格式（REGRESS-YYMMDD-hex4）铸号兼容 ───
+
+def _mk_manifest(d, mid, name=None):
+    name = name or (mid.replace("REGRESS-", "") + "-native-plan.md")
+    p = d / name
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(f"---\nid: {mid}\nstatus: planning\n---\n正文", encoding="utf-8")
+    return p
+
+
+def test_mixed_dir_mints_new_format_not_reset(tmp_path, monkeypatch):
+    """必改标本：旧 NNN+新格式混合目录——原逻辑落 else 铸 REGRESS-001 撞冻结
+    空间；修后按新约定铸号（当日+随机 hex4+存在性防撞）。"""
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
+    import plan_bridge as pb
+    d = tmp_path / "manifests"
+    d.mkdir()
+    _mk_manifest(d, "REGRESS-056")
+    _mk_manifest(d, "REGRESS-261103-8f3a")
+    mid, stem = pb.next_id_and_name(str(d), "任意标题")
+    assert pb._ID_NEW.match(mid), mid
+    assert mid != "REGRESS-001"
+    assert stem.endswith("-native-plan") and not (d / (stem + ".md")).exists()
+
+
+def test_pure_old_and_year_dirs_unchanged(tmp_path):
+    """纯旧目录续 NNN、纯年目录续 YYYY-NNN——既有行为零回归。"""
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
+    import plan_bridge as pb
+    d1 = tmp_path / "old"
+    d1.mkdir()
+    _mk_manifest(d1, "REGRESS-005")
+    _mk_manifest(d1, "REGRESS-017")
+    mid, _ = pb.next_id_and_name(str(d1), "t")
+    assert mid == "REGRESS-018"
+    d2 = tmp_path / "year"
+    d2.mkdir()
+    _mk_manifest(d2, "REGRESS-2026-177")
+    mid2, _ = pb.next_id_and_name(str(d2), "t")
+    assert mid2 == "REGRESS-2026-178"
