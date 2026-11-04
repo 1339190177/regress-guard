@@ -164,7 +164,8 @@ class RegressGuardInterceptor:
         try:
             p = subprocess.run(
                 [sys.executable, self.guard_path], input=payload,
-                capture_output=True, text=True, errors="replace",
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace",
                 cwd=self.project_dir, env=env, timeout=self.timeout)
             rc, err = p.returncode, p.stderr or ""
         except subprocess.TimeoutExpired:

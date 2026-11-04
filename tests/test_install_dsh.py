@@ -62,8 +62,10 @@ def test_ensure_bridge_pkg_already_present_via_lock(tmp_path):
         d.mkdir(parents=True)
         (d / "package.json").write_text('{"name":"x"}', encoding="utf-8")
     import unittest.mock as mock
+    # 批196：显式传 home——Windows expanduser 走 USERPROFILE，patch HOME 不生效
     with mock.patch.dict(os.environ, {"HOME": str(tmp_path)}):
-        ok, msg = ids.ensure_bridge_pkg("web", dsh_bin="/nonexistent-dsh")
+        ok, msg = ids.ensure_bridge_pkg("web", dsh_bin="/nonexistent-dsh",
+                                        home=str(tmp_path / ".dsh"))
     assert ok and "已在位" in msg
 
 

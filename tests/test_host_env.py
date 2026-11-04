@@ -99,7 +99,10 @@ def test_path_within_prefix_trap_and_identity():
 def test_path_within_case_fold_is_platform_semantics():
     """大小写折叠属平台语义：POSIX 区分（断言区分），Windows 折叠由 CI 腿证。"""
     from host_env import path_within
-    assert not path_within("/A/B", "/a"), "POSIX 大小写敏感语义被破坏"
+    if sys.platform != "win32":  # 批196：大小写折叠属平台语义，各自钉各自
+        assert not path_within("/A/B", "/a"), "POSIX 大小写敏感语义被破坏"
+    else:
+        assert path_within("/A/B", "/a"), "Windows 盘符大小写归一失效"
 
 
 def test_ensure_utf8_stdio_never_raises():

@@ -440,9 +440,13 @@ def test_config_standing_include_whitelists_machine_paths(tmp_path):
     病例（2026-09-05 020 装机）：boundary.forbidden 一直被读而 include 从不被读，
     /etc/systemd 装机只能走 5 分钟 bypass 赦免记债。"""
     proj = make_project(tmp_path)
+    # 批196：机器路径平台中立（POSIX 的 /etc 在 Windows 解析到盘根外；
+    # 守卫对项目外绝对路径按 / 归一匹配，include 模式用 / 形态）
+    mroot = str((tmp_path / "machine" / "etc").resolve()).replace(os.sep, "/")
     (proj / ".regress" / "config.json").write_text(
-        json.dumps({"boundary": {"include": ["/etc/systemd/system/**"]}}), encoding="utf-8")
-    r = run_guard(proj, "/etc/systemd/system/regress-watchdog.service")
+        json.dumps({"boundary": {"include": [mroot + "/system/**"]}}), encoding="utf-8")
+    r = run_guard(proj, str((tmp_path / "machine" / "etc" / "system").resolve()
+                            / "regress-watchdog.service"))
     assert r.returncode == 0
 
 
@@ -456,11 +460,13 @@ def test_outside_project_without_include_still_blocks(tmp_path):
 def test_forbidden_wins_over_include(tmp_path):
     """deny 优先于 allow：同一路径既在 forbidden 又在 include → 拦。"""
     proj = make_project(tmp_path)
+    mroot = str((tmp_path / "machine" / "etc").resolve()).replace(os.sep, "/")
     (proj / ".regress" / "config.json").write_text(
-        json.dumps({"boundary": {"include": ["/etc/**"],
-                                 "forbidden": ["/etc/shadow"]}}), encoding="utf-8")
-    assert run_guard(proj, "/etc/systemd/x.service").returncode == 0
-    assert run_guard(proj, "/etc/shadow").returncode == 2
+        json.dumps({"boundary": {"include": [mroot + "/**"],
+                                 "forbidden": [mroot + "/shadow"]}}), encoding="utf-8")
+    assert run_guard(proj, str((tmp_path / "machine" / "etc").resolve()
+                               / "system" / "x.service")).returncode == 0
+    assert run_guard(proj, str((tmp_path / "machine" / "etc" / "shadow").resolve())).returncode == 2
 
 
 def _stamp_manifest(proj, mid, session):
@@ -572,7 +578,8 @@ def test_write_targets_coreutils_install_kept():
     """反向钉（批165 FP1 防过宽）：coreutils install 的目标文件仍被捕。"""
     m = _bg()
     ts = m.extract_write_targets("install -m 755 src/server dst/bin", "/proj")
-    assert ts == ["/proj/dst/bin"]
+    # 批196：extract 返回 os.sep 原生形态（后续 fp_rel 才归一 /）；平台各自钉
+    assert ts == ["/proj" + os.sep + "dst" + os.sep + "bin"]
 
 
 def test_memories_dir_exempt_from_project_forbidden():

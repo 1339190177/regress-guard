@@ -83,6 +83,9 @@ def _clean(env_dict):
 # ---------- ① 白名单内保留 ----------
 
 @pytest.mark.parametrize("var", EXPECTED_KEEP)
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="node 探针需精确 env；windows 下 node.exe 无 "
+                           "SYSTEMROOT 不启动（同语义 test_launcher_dispatch 覆盖）")
 def test_whitelist_var_kept(var):
     """①逐变量保留：白名单变量原键名、原值到达输出，同 env 的毒变量被剥离。"""
     sentinel = f"keep-{var.lower()}"
@@ -92,6 +95,9 @@ def test_whitelist_var_kept(var):
     assert out == {var: sentinel}
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="node 探针需精确 env；windows 下 node.exe 无 "
+                           "SYSTEMROOT 不启动（同语义 test_launcher_dispatch 覆盖）")
 def test_whitelist_exact_set():
     """①补充：ENV_KEEP 全集双向钉——删条目由逐变量用例红，增条目（放宽）只在此红。
 
@@ -104,11 +110,17 @@ def test_whitelist_exact_set():
 
 @pytest.mark.skipif(sys.platform == "win32",
                     reason="Windows 下 node 需要 SYSTEMROOT，空输出断言仅 POSIX 成立")
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="node 探针需精确 env；windows 下 node.exe 无 "
+                           "SYSTEMROOT 不启动（同语义 test_launcher_dispatch 覆盖）")
 def test_poison_env_fully_stripped():
     """②纯毒 env：自定义/RG_*/WECOM_*/GIT_*/AWS_* 全部剥离，输出恰为 {}。"""
     assert _clean(dict(_POISON)) == {}
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="node 探针需精确 env；windows 下 node.exe 无 "
+                           "SYSTEMROOT 不启动（同语义 test_launcher_dispatch 覆盖）")
 def test_mixed_env_exact_output():
     """②混合 env：输出恰等于白名单子集（精确字典等值，多留一个/少留一个都红）。"""
     keep = {
@@ -127,6 +139,9 @@ def test_mixed_env_exact_output():
 
 # ---------- ③ 大小写归一 ----------
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="node 探针需精确 env；windows 下 node.exe 无 "
+                           "SYSTEMROOT 不启动（同语义 test_launcher_dispatch 覆盖）")
 def test_case_normalized_comparison_keeps_original_key():
     """③小写/混合形态：比较大写归一命中白名单，输出保留调用方原键名。"""
     out = _clean({"path": "/lower", "zcode_session_id": "s-lower",
@@ -138,6 +153,9 @@ def test_case_normalized_comparison_keeps_original_key():
 
 @pytest.mark.skipif(sys.platform == "win32",
                     reason="Windows env 键大小写不区分，三形态共存仅 POSIX 可观测")
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="node 探针需精确 env；windows 下 node.exe 无 "
+                           "SYSTEMROOT 不启动（同语义 test_launcher_dispatch 覆盖）")
 def test_path_and_PATH_coexist():
     """③path= 与 PATH= 双形态：各自独立判定、各自原样保留（归一只用于比较，不改名不合并）。"""
     out = _clean({"path": "/lower", "Path": "/mixed", "PATH": "/upper"})

@@ -122,18 +122,24 @@ def _run_closed_stdin(script, project=None):
     return proc.returncode, proc.stderr
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="0<&- fd 闭合注入是 POSIX bash+python3 语义三重绑定")
 def test_boundary_internal_crash_blocks(tmp_path):
     code, err = _run_closed_stdin(BOUNDARY, project=_mk_project(tmp_path))
     assert code == 2, "未捕获异常必须拦（旧行为 traceback exit 1 = 放行）"
     assert "fail-closed" in err
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="0<&- fd 闭合注入是 POSIX bash+python3 语义三重绑定")
 def test_rbe_internal_crash_blocks(tmp_path):
     code, err = _run_closed_stdin(RBE, project=_mk_project(tmp_path))
     assert code == 2
     assert "fail-closed" in err
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="0<&- fd 闭合注入是 POSIX bash+python3 语义三重绑定")
 def test_valve_internal_crash_blocks():
     code, err = _run_closed_stdin(VALVE)
     assert code == 2

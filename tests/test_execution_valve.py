@@ -1,5 +1,6 @@
 """execution_valve（公理四：执行阀/令牌制）的单元测试。"""
 import sys
+import tempfile
 import os
 import json
 import subprocess
@@ -42,7 +43,7 @@ def test_catastrophic_patterns_block():
 def test_benign_commands_pass():
     for cmd in ["npm test", "git push origin main", "chmod 644 a.txt",
                 "truncate this word", "rm -f single.txt",
-                "rm -rf node_modules", "rm -rf /tmp/build-cache",
+                "rm -rf node_modules", f"rm -rf {tempfile.gettempdir()}/build-cache",
                 f"rm -rf {PROJ}/tests"]:
         assert not evaluate(cmd, PROJ), f"不应阻断: {cmd}"
 
