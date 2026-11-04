@@ -37,7 +37,7 @@ def make_project(tmp_path, with_boundary=True, status="in-progress",
     (proj / ".regress" / "manifests" / "R1.md").write_text(
         MANIFEST_TMPL.format(mid="R1", status=status,
                              boundary=BOUNDARY_BLOCK if with_boundary else "")
-        + extra_actual)
+        + extra_actual, encoding="utf-8")
     return proj
 
 
@@ -105,9 +105,9 @@ def test_track_write_extends_boundary(tmp_path):
     assert run_guard(proj, target).returncode == 2
     # 模拟 /regress-track 回写
     mf = proj / ".regress" / "manifests" / "R1.md"
-    mf.write_text(mf.read_text().replace(
+    mf.write_text(mf.read_text(encoding="utf-8").replace(
         "actual_changes: []",
-        'actual_changes:\n  - id: F3\n    file: "src/shared.ts"\n    type: new-file'))
+        'actual_changes:\n  - id: F3\n    file: "src/shared.ts"\n    type: new-file'), encoding="utf-8")
     assert run_guard(proj, target).returncode == 0
 
 
@@ -141,7 +141,7 @@ def test_union_of_active_manifests(tmp_path):
     proj = make_project(tmp_path)  # R1: src/auth/**, tests/auth/**
     (proj / ".regress" / "manifests" / "R2.md").write_text(
         MANIFEST_TMPL.format(mid="R2", status="in-progress", boundary="").replace(
-            'file: "src/auth/login.ts"', 'file: "src/other/db.ts"'))
+            'file: "src/auth/login.ts"', 'file: "src/other/db.ts"'), encoding="utf-8")
     assert run_guard(proj, proj / "src/other/db.ts").returncode == 0  # R2 界内
     assert run_guard(proj, proj / "src/db2.ts").returncode == 2        # 两界之外
 
@@ -181,7 +181,7 @@ def test_approved_sibling_allows_while_other_planning(tmp_path):
     proj = make_project(tmp_path, status="planning")     # R1 planning
     (proj / ".regress" / "manifests" / "R2.md").write_text(
         MANIFEST_TMPL.format(mid="R2", status="in-progress", boundary="").replace(
-            'file: "src/auth/login.ts"', 'file: "src/other/db.ts"'))
+            'file: "src/auth/login.ts"', 'file: "src/other/db.ts"'), encoding="utf-8")
     assert run_guard(proj, proj / "src/other/db.ts").returncode == 0  # R2 已批准
     assert run_guard(proj, proj / "src/auth/login.ts").returncode == 2  # 仅 R1(planning) 命中
 
@@ -192,9 +192,9 @@ def test_planning_with_approved_at_allows(tmp_path):
     """产物直通：人类直接填 approved.at → 边界守卫视同已批准（不经过对话）。"""
     proj = make_project(tmp_path, status="planning")
     mf = proj / ".regress" / "manifests" / "R1.md"
-    mf.write_text(mf.read_text().replace(
+    mf.write_text(mf.read_text(encoding="utf-8").replace(
         "status: planning",
-        'status: planning\napproved:\n  at: "2026-08-26T10:00:00"\n  note: ""'))
+        'status: planning\napproved:\n  at: "2026-08-26T10:00:00"\n  note: ""'), encoding="utf-8")
     assert run_guard(proj, proj / "src/auth/login.ts").returncode == 0
 
 
@@ -202,9 +202,9 @@ def test_planning_with_empty_approved_still_blocks(tmp_path):
     """approved.at 为空串 = 未批准，照样拦（空值不误放行）。"""
     proj = make_project(tmp_path, status="planning")
     mf = proj / ".regress" / "manifests" / "R1.md"
-    mf.write_text(mf.read_text().replace(
+    mf.write_text(mf.read_text(encoding="utf-8").replace(
         "status: planning",
-        'status: planning\napproved:\n  at: ""\n  note: ""'))
+        'status: planning\napproved:\n  at: ""\n  note: ""'), encoding="utf-8")
     r = run_guard(proj, proj / "src/auth/login.ts")
     assert r.returncode == 2
     assert "计划待批准" in r.stderr
@@ -221,9 +221,9 @@ def test_cancelled_manifest_not_active(tmp_path):
 def test_blocked_blocks_inside_boundary_with_reason(tmp_path):
     proj = make_project(tmp_path, status="blocked")
     mf = proj / ".regress" / "manifests" / "R1.md"
-    mf.write_text(mf.read_text().replace(
+    mf.write_text(mf.read_text(encoding="utf-8").replace(
         "status: blocked",
-        'status: blocked\nblocked:\n  reason: "远端 Redis 不通"\n  need: "开白名单"'))
+        'status: blocked\nblocked:\n  reason: "远端 Redis 不通"\n  need: "开白名单"'), encoding="utf-8")
     r = run_guard(proj, proj / "src/auth/login.ts")
     assert r.returncode == 2
     assert "任务受阻" in r.stderr and "远端 Redis 不通" in r.stderr
@@ -242,7 +242,7 @@ def test_blocked_sibling_still_blocks_but_inprogress_allows(tmp_path):
     proj = make_project(tmp_path, status="blocked")  # R1 blocked: src/auth/**
     (proj / ".regress" / "manifests" / "R2.md").write_text(
         MANIFEST_TMPL.format(mid="R2", status="in-progress", boundary="").replace(
-            'file: "src/auth/login.ts"', 'file: "src/other/db.ts"'))
+            'file: "src/auth/login.ts"', 'file: "src/other/db.ts"'), encoding="utf-8")
     assert run_guard(proj, proj / "src/other/db.ts").returncode == 0   # R2 界内放行
     assert run_guard(proj, proj / "src/auth/login.ts").returncode == 2  # 仅 R1(blocked) 命中
 
@@ -251,10 +251,10 @@ def test_approved_then_blocked_still_blocks(tmp_path):
     """live 冒烟抓到的回归：先批准后受阻——approved.at 不得短路 blocked 拦截。"""
     proj = make_project(tmp_path, status="planning")
     mf = proj / ".regress" / "manifests" / "R1.md"
-    mf.write_text(mf.read_text().replace(
+    mf.write_text(mf.read_text(encoding="utf-8").replace(
         "status: planning",
         'status: blocked\napproved:\n  at: "2026-08-26T10:00:00"\n  note: "d"'
-        '\nblocked:\n  reason: "Redis 不通"\n  need: "开白名单"'))
+        '\nblocked:\n  reason: "Redis 不通"\n  need: "开白名单"'), encoding="utf-8")
     r = run_guard(proj, proj / "src/auth/login.ts")
     assert r.returncode == 2
     assert "任务受阻" in r.stderr and "Redis 不通" in r.stderr
@@ -441,7 +441,7 @@ def test_config_standing_include_whitelists_machine_paths(tmp_path):
     /etc/systemd 装机只能走 5 分钟 bypass 赦免记债。"""
     proj = make_project(tmp_path)
     (proj / ".regress" / "config.json").write_text(
-        json.dumps({"boundary": {"include": ["/etc/systemd/system/**"]}}))
+        json.dumps({"boundary": {"include": ["/etc/systemd/system/**"]}}), encoding="utf-8")
     r = run_guard(proj, "/etc/systemd/system/regress-watchdog.service")
     assert r.returncode == 0
 
@@ -458,15 +458,15 @@ def test_forbidden_wins_over_include(tmp_path):
     proj = make_project(tmp_path)
     (proj / ".regress" / "config.json").write_text(
         json.dumps({"boundary": {"include": ["/etc/**"],
-                                 "forbidden": ["/etc/shadow"]}}))
+                                 "forbidden": ["/etc/shadow"]}}), encoding="utf-8")
     assert run_guard(proj, "/etc/systemd/x.service").returncode == 0
     assert run_guard(proj, "/etc/shadow").returncode == 2
 
 
 def _stamp_manifest(proj, mid, session):
     mf = proj / ".regress" / "manifests" / f"{mid}.md"
-    mf.write_text(mf.read_text().replace(
-        "status:", f"session: {session}\nstatus:", 1))
+    mf.write_text(mf.read_text(encoding="utf-8").replace(
+        "status:", f"session: {session}\nstatus:", 1), encoding="utf-8")
 
 
 def test_cross_session_edit_blocked(tmp_path):

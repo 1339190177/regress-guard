@@ -58,7 +58,7 @@ def make_project(tmp_path, fps_yaml, strict=True, stage_journal=False):
     (rdir / "manifests").mkdir(parents=True)
     (rdir / "config.json").write_text(json.dumps({"strict": strict}), encoding="utf-8")
     (rdir / "manifests" / "REGRESS-2026-001.md").write_text(
-        MANIFEST_TMPL.format(fps=fps_yaml))
+        MANIFEST_TMPL.format(fps=fps_yaml), encoding="utf-8")
     src = proj / "src"
     src.mkdir()
     (src / "app.js").write_text("console.log(1)\n", encoding="utf-8")
@@ -92,7 +92,7 @@ def test_open_fragile_point_blocks_commit(tmp_path):
     assert code == 2, f"open 脆弱点应阻断提交, exit={code}\n{err}"
     assert "脆弱点" in err and "V1" in err
     # 阻断事件入历史（审计可追溯）
-    history = (proj / ".regress" / "history.jsonl").read_text()
+    history = (proj / ".regress" / "history.jsonl").read_text(encoding="utf-8")
     assert "fragile_point_open" in history
 
 
@@ -127,7 +127,7 @@ def test_locked_verify_fails_blocks(tmp_path):
     code, err = run_guard(proj)
     assert code == 2, f"locked 复验失败应阻断, exit={code}\n{err}"
     assert "复验失败" in err and "V1" in err
-    history = (proj / ".regress" / "history.jsonl").read_text()
+    history = (proj / ".regress" / "history.jsonl").read_text(encoding="utf-8")
     assert "fragile_verify" in history
 
 

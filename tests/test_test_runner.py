@@ -21,7 +21,7 @@ def test_detect_jest(tmp_path):
     (tmp_path / "package.json").write_text(json.dumps({
         "name": "test",
         "devDependencies": {"jest": "^29.0.0"}
-    }))
+    }), encoding="utf-8")
     runner, cmd = detect_runner(str(tmp_path))
     assert runner == "jest"
     assert "jest" in cmd
@@ -30,7 +30,7 @@ def test_detect_jest(tmp_path):
 def test_detect_vitest(tmp_path):
     (tmp_path / "package.json").write_text(json.dumps({
         "devDependencies": {"vitest": "^1.0.0"}
-    }))
+    }), encoding="utf-8")
     runner, _ = detect_runner(str(tmp_path))
     assert runner == "vitest"
 
@@ -157,7 +157,7 @@ def test_parse_jest_with_coverage(tmp_path):
     cov_dir.mkdir(parents=True)
     (cov_dir / "coverage-summary.json").write_text(_json.dumps(
         {"total": {"lines": {"pct": 87.5}}}
-    ))
+    ), encoding="utf-8")
     result = _parse_jest("", 0, project_dir=str(tmp_path))
     assert result.get("coverage_pct") == 88
 

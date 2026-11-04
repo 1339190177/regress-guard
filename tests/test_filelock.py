@@ -47,7 +47,7 @@ def test_lock_concurrent_writes(tmp_path):
     for t in threads:
         t.join()
 
-    result = int(f.read_text().strip())
+    result = int(f.read_text(encoding="utf-8").strip())
     # 5 线程 × 50 次 = 250（锁保护下应精确）
     # 注：flock 在同进程内可能不互斥，但跨进程互斥
     # 这里主要验证不死锁 + 不丢到离谱

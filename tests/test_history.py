@@ -479,7 +479,7 @@ def test_feature_health_iso_shipped_at(tmp_path):
     from datetime import datetime as _dtm
     (rg / "history.jsonl").write_text(_json.dumps(
         {"timestamp": _dtm.now().isoformat(),
-         "event": "commit_passed"}) + "\n")
+         "event": "commit_passed"}) + "\n", encoding="utf-8")
     r = h.feature_fire_health(str(rg))  # regress_dir=.regress 本身（CLI 同参）
     row = [f for f in r["features"] if f["slug"] == "iso-feat"]
     assert row and row[0]["fires"] >= 1  # ISO 行不崩且事件可数

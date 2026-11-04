@@ -53,7 +53,7 @@ def project(tmp_path):
     (rg / "config.json").write_text('{"strict": true}', encoding="utf-8")
     (rg / "manifests" / "R1.md").write_text(
         "---\nid: R1\nstatus: in-progress\ntier: S\nrollback: git revert 即回滚\n"
-        "planned_changes: []\nactual_changes: []\n---\n"
+        "planned_changes: []\nactual_changes: []\n---\n", encoding="utf-8"
     )  # 批155 起 tier 缺失视为 M——夹具显式 S（fail-closed 规格传播）
     return p
 
@@ -62,7 +62,7 @@ def read_history(project):
     events = []
     hf = project / ".regress" / "history.jsonl"
     if hf.exists():
-        for line in hf.read_text().splitlines():
+        for line in hf.read_text(encoding="utf-8").splitlines():
             if line.strip():
                 events.append(json.loads(line))
     return events
@@ -121,7 +121,7 @@ def test_untracked_file_blocks_and_records(project):
 def test_terminal_status_passes_without_runner(project):
     """清单 status=done 且无测试运行器 → 放行 + 记录。"""
     (project / ".regress" / "manifests" / "R1.md").write_text(
-        "---\nid: R1\nstatus: done\nplanned_changes: []\n---\n"
+        "---\nid: R1\nstatus: done\nplanned_changes: []\n---\n", encoding="utf-8"
     )
     code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0
@@ -132,7 +132,7 @@ def test_terminal_status_passes_without_runner(project):
 def test_completed_is_terminal(project):
     """completed 与 done 同为终态（历史 bug 回归测试）。"""
     (project / ".regress" / "manifests" / "R1.md").write_text(
-        "---\nid: R1\nstatus: completed\nplanned_changes: []\n---\n"
+        "---\nid: R1\nstatus: completed\nplanned_changes: []\n---\n", encoding="utf-8"
     )
     code, _, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0
@@ -148,7 +148,7 @@ def test_monorepo_finds_parent_regress(project, tmp_path):
     (rg / "manifests").mkdir(parents=True)
     (rg / "config.json").write_text('{"strict": true}', encoding="utf-8")
     (rg / "manifests" / "R1.md").write_text(
-        "---\nid: R1\nstatus: in-progress\nplanned_changes: []\n---\n"
+        "---\nid: R1\nstatus: in-progress\nplanned_changes: []\n---\n", encoding="utf-8"
     )
     # 把 git 项目移进 monorepo 子目录
     sub = parent / "server"
@@ -174,7 +174,7 @@ def test_no_regress_dir_passes(tmp_path):
 def test_commit_event_has_anchors(project):
     """放行事件必须含 session_id 证据锚点。"""
     (project / ".regress" / "manifests" / "R1.md").write_text(
-        "---\nid: R1\nstatus: done\nplanned_changes: []\n---\n"
+        "---\nid: R1\nstatus: done\nplanned_changes: []\n---\n", encoding="utf-8"
     )
     code, _, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0
@@ -186,7 +186,7 @@ def test_commit_event_has_anchors(project):
 def test_invented_status_not_active(project):
     """语义反转回归：AI 自造 status（analysis-done）不算活跃，不卡提交。"""
     (project / ".regress" / "manifests" / "R1.md").write_text(
-        "---\nid: R1\nstatus: analysis-done\nplanned_changes: []\n---\n"
+        "---\nid: R1\nstatus: analysis-done\nplanned_changes: []\n---\n", encoding="utf-8"
     )
     code, _, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0
@@ -209,7 +209,7 @@ MY_SID = "sess-mine-00002"
 def _stamp(project, mid, session):
     """给清单盖 session 戳（模拟 plan_approve 的转写）。"""
     mf = project / ".regress" / "manifests" / f"{mid}.md"
-    text = mf.read_text()
+    text = mf.read_text(encoding="utf-8")
     mf.write_text(text.replace("status:", f"session: {session}\nstatus:", 1), encoding="utf-8")
 
 
@@ -240,7 +240,7 @@ def test_foreign_clash_with_declared_file_blocks(project):
     (project / ".regress" / "manifests" / "R1.md").write_text(
         "---\nid: R1\nstatus: in-progress\nsession: %s\n"
         "planned_changes:\n  - id: F1\n    file: src/app.js\n    type: method-logic\n"
-        "actual_changes: []\n---\n" % FOREIGN_SID)
+        "actual_changes: []\n---\n" % FOREIGN_SID, encoding="utf-8")
     (project / "src" / "app.js").write_text("x = 2\n", encoding="utf-8")
     import subprocess as sp
     sp.run(["git", "add", "-A"], cwd=str(project), check=True)
@@ -257,7 +257,7 @@ def test_own_manifest_governs_despite_foreign(project):
     (project / ".regress" / "manifests" / "R2.md").write_text(
         "---\nid: R2\nstatus: in-progress\nsession: %s\ntier: S\n"
         "rollback: git revert 即回滚\nplanned_changes: []\n"
-        "actual_changes: []\n---\n" % MY_SID)
+        "actual_changes: []\n---\n" % MY_SID, encoding="utf-8")
     code, err, _ = run_guard("git commit -m 改动（R1）", project,
                              extra_env={"CLAUDE_SESSION_ID": MY_SID})
     # 选中我的 R2（空清单无脆弱点）→ 走到无 runner 阻断，而不是被 R1 挡
@@ -293,7 +293,7 @@ def test_garbage_yaml_manifest_blocks(project):
     旧行为：fallback 返回 {} 非 None → 判"无活跃清单"静默放行，
     与 fail-safe 注释方向相反。"""
     (project / ".regress" / "manifests" / "R1.md").write_text(
-        "---\n: : : 乱写一气\n!@#$ 没有 id 也没有 status\n---\nbody")
+        "---\n: : : 乱写一气\n!@#$ 没有 id 也没有 status\n---\nbody", encoding="utf-8")
     code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2
 
@@ -1220,7 +1220,7 @@ def _stage_final_doc(project, name, body, in_manifest=True):
     if in_manifest:
         (project / ".regress" / "manifests" / "R1.md").write_text(
             "---\nid: R1\nstatus: done\n"
-            f"planned_changes: ['docs/{name}']\n---\n"
+            f"planned_changes: ['docs/{name}']\n---\n", encoding="utf-8"
         )
     return f
 
@@ -1273,7 +1273,7 @@ def test_docgate_small_change_not_triggered(project):
     sp.run(["git", "add", str(f)], cwd=str(project), check=True)
     (project / ".regress" / "manifests" / "R1.md").write_text(
         "---\nid: R1\nstatus: done\n"
-        "planned_changes: ['docs/物联网卡-需求定稿-v1.md']\n---\n")
+        "planned_changes: ['docs/物联网卡-需求定稿-v1.md']\n---\n", encoding="utf-8")
     code, err, _ = run_guard("git commit -m 文档（R1）", project)
     assert code == 0, f"小改不触发, exit={code}, err={err[-200:]}"
 
@@ -1294,7 +1294,7 @@ def test_docgate_non_final_outside_docs_not_triggered(project):
     f.write_text("# 笔记\n" + _PAD, encoding="utf-8")
     sp.run(["git", "add", str(f)], cwd=str(project), check=True)
     (project / ".regress" / "manifests" / "R1.md").write_text(
-        "---\nid: R1\nstatus: done\nplanned_changes: ['NOTES.md']\n---\n")
+        "---\nid: R1\nstatus: done\nplanned_changes: ['NOTES.md']\n---\n", encoding="utf-8")
     code, err, _ = run_guard("git commit -m 笔记（R1）", project)
     assert code == 0, f"非定稿类不触发, exit={code}, err={err[-200:]}"
 

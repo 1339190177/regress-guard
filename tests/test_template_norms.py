@@ -62,7 +62,7 @@ def _run_block(tmp_path, hook_body=None):
     r = subprocess.run(["sh", "-c", _hook_block()], cwd=tmp_path,
                        capture_output=True, text=True, timeout=30)
     assert r.returncode == 0, r.stderr
-    return (tmp_path / ".git" / "hooks" / "post-commit").read_text()
+    return (tmp_path / ".git" / "hooks" / "post-commit").read_text(encoding="utf-8")
 
 
 def test_init_hook_installs_when_absent(tmp_path):

@@ -56,20 +56,22 @@ def test_preflight_rejects_old_python(tmp_path, monkeypatch, capsys):
     批191 安装器 Python 化：版本门查的是运行 install.py 的解释器自身——
     PATH 注入假 python 的老测法对原生安装器不成立（假 python 跑不了
     install.py），改为进程内钉 preflight 契约。"""
+    # 批193：env 必须先于模块加载——install.py 的 ZCODE_HOME 在 import 期
+    # 定型（模块级读 env），CI 无 ~/.zcode 会死在 isdir 检查而非版本门
+    # （本机有 ~/.zcode 掩盖了时序）。
+    zh = tmp_path / "zh"
+    zh.mkdir()
+    monkeypatch.setenv("REGRESS_ZCODE_HOME", str(zh))
+    # CI runner 无 node——前置 node 检查先于版本门退出；stub 掉 which
+    import shutil as _sh
+    _real = _sh.which
+    monkeypatch.setattr(_sh, "which", lambda n, path=None: "/fake/node" if n == "node" else _real(n, path=path))
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "install_py_under_test", os.path.join(ROOT, "install.py"))
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)  # 模块级只算路径，无副作用
+    spec.loader.exec_module(mod)  # 模块级只算路径（env 已就位）
     monkeypatch.setattr(sys, "version_info", (3, 9, 2))
-    zh = tmp_path / "zh"
-    zh.mkdir()
-    monkeypatch.setenv("REGRESS_ZCODE_HOME", str(zh))
-    # 批193：CI runner 无 node——前置 node 检查先于版本门退出会让本测
-    # 断在错误信息上（本机有 node 掩盖）。stub 掉 which 让版本门必然到达。
-    import shutil as _sh
-    _real = _sh.which
-    monkeypatch.setattr(_sh, "which", lambda n, path=None: "/fake/node" if n == "node" else _real(n, path=path))
     with pytest.raises(SystemExit):
         mod.preflight()
     out = capsys.readouterr().out

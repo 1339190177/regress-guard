@@ -152,7 +152,7 @@ def test_sentinel_provisional(tmp_path, monkeypatch):
     sh = _load_heal(tmp_path, monkeypatch)
     proj = _mk_proj_manifest(tmp_path)
     mf = proj / ".regress" / "manifests" / "R1.md"
-    mf.write_text(mf.read_text().replace(
+    mf.write_text(mf.read_text(encoding="utf-8").replace(
         "status: in-progress",
         'status: in-progress\nprovisional:\n  at: "2026-08-26T11:00:00"\n  advisor: "无异议"'),
         encoding="utf-8")

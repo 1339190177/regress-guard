@@ -84,7 +84,7 @@ def test_approve_flips_status_and_stamps(tmp_path):
 def test_approve_non_planning_rejected(tmp_path):
     proj = make_proj(tmp_path)
     mf = proj / ".regress" / "manifests" / "R1.md"
-    mf.write_text(mf.read_text().replace("status: planning", "status: in-progress"),
+    mf.write_text(mf.read_text(encoding="utf-8").replace("status: planning", "status: in-progress"),
                   encoding="utf-8")
     r = run_approve(proj)
     assert r.returncode == 1
@@ -107,7 +107,7 @@ def test_double_approve_no_duplicate_journal(tmp_path):
     assert run_approve(proj, journal="on").returncode == 0
     # 人类产物直通后再对齐（重置 status 但保留 approved）→ 不重复埋
     mf = proj / ".regress" / "manifests" / "R1.md"
-    mf.write_text(mf.read_text().replace("status: in-progress", "status: planning"),
+    mf.write_text(mf.read_text(encoding="utf-8").replace("status: in-progress", "status: planning"),
                   encoding="utf-8")
     assert run_approve(proj, journal="on").returncode == 0
     assert len([e for e in journal_events(proj)
@@ -118,7 +118,7 @@ def test_preserves_human_direct_edit_timestamp(tmp_path):
     """产物直通：人类填的 approved.at 不被脚本时间戳覆盖。"""
     proj = make_proj(tmp_path)
     mf = proj / ".regress" / "manifests" / "R1.md"
-    mf.write_text(mf.read_text().replace('at: ""', 'at: "2026-01-01T00:00:00"'),
+    mf.write_text(mf.read_text(encoding="utf-8").replace('at: ""', 'at: "2026-01-01T00:00:00"'),
                   encoding="utf-8")
     assert run_approve(proj).returncode == 0
     content = mf.read_text(encoding="utf-8")
@@ -146,7 +146,7 @@ def test_drift_warning_when_head_moved(tmp_path):
     _commit(proj, "B")
 
     mf = proj / ".regress" / "manifests" / "R1.md"
-    mf.write_text(mf.read_text().replace('base_head: ""', f'base_head: "{base}"'),
+    mf.write_text(mf.read_text(encoding="utf-8").replace('base_head: ""', f'base_head: "{base}"'),
                   encoding="utf-8")
 
     r = run_approve(proj, journal="on")
@@ -164,7 +164,7 @@ def test_no_drift_when_base_head_matches(tmp_path):
     _commit(proj, "A")
     base = _git(proj, "rev-parse", "--short", "HEAD").stdout.strip()
     mf = proj / ".regress" / "manifests" / "R1.md"
-    mf.write_text(mf.read_text().replace('base_head: ""', f'base_head: "{base}"'),
+    mf.write_text(mf.read_text(encoding="utf-8").replace('base_head: ""', f'base_head: "{base}"'),
                   encoding="utf-8")
     r = run_approve(proj)
     assert r.returncode == 0
