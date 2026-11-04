@@ -11,6 +11,8 @@
 import os
 import sys
 
+import pytest
+
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "lib"))
@@ -143,6 +145,8 @@ def test_test_cmd_branch_semantics(tmp_path):
         assert (r.returncode == 0) == expect_ok
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="printf+shell 尾行语义 POSIX 绑定（pr_gate 为 Linux CI 侧件）")
 def test_test_cmd_tail_note():
     """输出尾行截 120 字符进 hermetic 证据行（人可读）。"""
     import subprocess
