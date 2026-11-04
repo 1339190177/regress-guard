@@ -8,11 +8,9 @@
 - ears_extract 集成：两行式判据拼回、无验收节=(False, [])
 - sweep 的拒绝面过滤：kind=ignore 行内精确判定（AND/OR 优先级标本预防）
 """
-import json
 import os
 import sys
 
-import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "lib"))

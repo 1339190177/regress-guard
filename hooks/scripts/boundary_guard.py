@@ -38,6 +38,7 @@ from manifest_fields import (  # noqa: E402
     ACTIVE_STATUS_RE, block_value, editable, parse_core,
 )
 from manifest_parser import read_frontmatter  # noqa: E402  长寿扫描：只读 frontmatter
+from host_env import ensure_utf8_stdio, path_within  # noqa: E402  批191：盘符大小写归一的包含判定
 
 # 自定位绝对路径（源/安装两种布局同构）——拦截消息不留给读者猜的相对引用
 APPROVE_SCRIPT = os.path.join(LIB_DIR, "plan_approve.py")
@@ -234,7 +235,9 @@ def _seg_write_targets(seg):
     # 摩擦权衡）；2>&1 无文件目标（(?![&<>]) 天然排除）。
     for m in re.finditer(r'(?<![<>=])\d>{1,2}(?![&<>])\s*([^\s;|&]+)', dq):
         t = m.group(1)
-        if not t.startswith("/"):
+        # 批191：绝对判定走 os.path.isabs——字面 startswith("/") 在 Windows
+        # 上把 C:\... 误判为相对路径（fail-closed 噪音方向）
+        if not os.path.isabs(t):
             targets.add(t)
     for m in re.finditer(r'&>{1,2}\s*([^\s;|&]+)', dq):
         targets.add(m.group(1))
@@ -341,7 +344,7 @@ def is_exempt(fp_rel, fp_abs):
     # 保护的插件配置面（~/.zcode/hooks|skills|plugins 等）不同族。项目
     # forbidden 常含 ~/.zcode/** 罩配置面，误伤会话记忆写入。
     _mem = os.path.expanduser("~/.zcode/cli/memories")
-    if os.path.abspath(fp_abs).startswith(_mem + os.sep):
+    if path_within(fp_abs, _mem):  # 批191：盘符大小写归一比较
         return True
     return False
 
@@ -389,6 +392,7 @@ def _fail_closed(reason):
 
 
 def main():
+    ensure_utf8_stdio()  # 批191：cp936 流垫片（emoji/中文输出根治）
     raw = sys.stdin.read() if not sys.stdin.isatty() else ""
     if not raw:
         sys.exit(0)

@@ -21,6 +21,7 @@
 import hashlib
 import json
 import os
+import tempfile
 import sys
 import time
 import urllib.parse
@@ -48,7 +49,7 @@ def _conf(project_dir):
 
 def _token_path(c):
     h = hashlib.sha1((str(c.get("corpid", "")) + str(c.get("secret", ""))).encode()).hexdigest()[:10]
-    return os.path.join(os.environ.get("WECOM_TOKEN_DIR", "/tmp"), f"wecom_token_{h}.json")
+    return os.path.join(os.environ.get("WECOM_TOKEN_DIR") or tempfile.gettempdir(), f"wecom_token_{h}.json")
 
 
 def _opener(c):

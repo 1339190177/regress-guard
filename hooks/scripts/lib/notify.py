@@ -379,8 +379,10 @@ def notify(project_dir, event, title, body="", source_id="", coalesce_key=""):
         # 合并后的 wecom 块经 env 传给子进程——wecom_notify 自己只读项目级文件，
         # 不传则机器级回退在子进程失效（2026-09-05 演示项目静默失败病例）。
         lib = os.path.dirname(os.path.abspath(__file__))
-        channels.insert(0, 'python3 "%s" "%s" {title} {body}'
-                        % (os.path.join(lib, "wecom_notify.py"), project_dir))
+        # 批191：解释器用 sys.executable（Windows 无 python3 命令）；
+        # 双引号包路径在 POSIX sh 与 cmd.exe 下同合法
+        channels.insert(0, '"%s" "%s" "%s" {title} {body}'
+                        % (sys.executable, os.path.join(lib, "wecom_notify.py"), project_dir))
         env["RG_NOTIFY_WECOM_JSON"] = json.dumps(wc, ensure_ascii=False)
     ran = 0
     for tpl in channels:

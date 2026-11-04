@@ -1,11 +1,11 @@
 """授权门控轮末推送（v1.32）：授权词推送/非授权静音/冷却防双响。"""
 import json
 import os
-import stat
 import sys
 from pathlib import Path
 
 import pytest
+from conftest import make_exec_stub  # 批191：跨平台 stub
 
 HERE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
 LIB = os.path.join(HERE, "lib")
@@ -27,10 +27,11 @@ def _run_main():
 
 
 def _channel_stub(tmp_path, marker):
-    stub = tmp_path / "stub.sh"
-    stub.write_text("#!/bin/sh\necho \"$@\" >> %s\n" % marker, encoding="utf-8")
-    stub.chmod(stat.S_IRWXU)
-    return str(stub)
+    # 批191：跨平台 stub——win32 出 .cmd 双胞胎（通道经 shell=True 执行）
+    return make_exec_stub(
+        tmp_path, "stub",
+        'echo "$@" >> %s\n' % marker,
+        f'@echo off\r\necho %* >> "{marker}"\r\n')
 
 
 def _mk_proj(tmp_path, mach_channels):
@@ -84,7 +85,9 @@ def test_empty_prompt_turn_still_pushes(tmp_path, monkeypatch):
     assert "回复完成" in out and "[图片或无文本消息]" in out
 
 
-@pytest.mark.xfail(reason="批183 换序暴露的既有测试污染绿家族：冷却标记与 save_prompt 内联推送路径疑点——解缠独立批（decisions run61），原绿色靠 CLAUDE_ 优先解析到真仓的污染", strict=False)
+@pytest.mark.xfail(strict=False, reason="批183 换序暴露的既有测试污染绿家族：冷却标记与"
+                       " save_prompt 内联推送路径疑点——解缠独立批（decisions run61），"
+                       "原绿色靠 CLAUDE_ 优先解析到真仓的污染")
 def test_cooldown_prevents_double_buzz(tmp_path, monkeypatch):
     proj, mach = _mk_proj(tmp_path, [_channel_stub(tmp_path, tmp_path / "m3") + " {title}"])
     monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
@@ -99,15 +102,17 @@ def test_cooldown_prevents_double_buzz(tmp_path, monkeypatch):
     assert sn.should_notify("继续，放手做", cooled=False) is False
 
 
-@pytest.mark.xfail(reason="批183 换序暴露的既有测试污染绿家族：chat 事件双发疑点（未受信回退分支）——解缠独立批（decisions run61），原绿色靠 CLAUDE_ 优先解析到真仓的污染", strict=False)
+@pytest.mark.xfail(strict=False, reason="批183 换序暴露的既有测试污染绿家族：chat 事件"
+                       "双发疑点（未受信回退分支）——解缠独立批（decisions run61），"
+                       "原绿色靠 CLAUDE_ 优先解析到真仓的污染")
 def test_round_push_uses_chat_event_not_done(tmp_path, monkeypatch):
     """v1.38：轮末提醒是独立 chat 事件——不再冒充 done 污染发送台账统计
     （病例：done×375 几乎全是轮末提醒，真 done 仅 3 次）。"""
-    stub = tmp_path / "env-stub.sh"
     marker = tmp_path / "mev"
-    stub.write_text("#!/bin/sh\necho \"$RG_NOTIFY_EVENT\" >> %s\n" % marker,
-                    encoding="utf-8")
-    stub.chmod(stat.S_IRWXU)
+    stub = make_exec_stub(  # 批191：win32 .cmd 双胞胎（%VAR% 形态）
+        tmp_path, "env-stub",
+        'echo "$RG_NOTIFY_EVENT" >> %s\n' % marker,
+        f'@echo off\r\necho %RG_NOTIFY_EVENT% >> "{marker}"\r\n')
     proj, mach = _mk_proj(tmp_path, [str(stub)])
     monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))
     monkeypatch.setenv("ZCODE_PROJECT_DIR", str(proj))
@@ -154,7 +159,8 @@ def test_drift_new_pair_warns_once(tmp_path, monkeypatch, capsys):
     _drift_env(tmp_path, monkeypatch, ("1.0.0", "1.1.0"))
     _run_main()
     err = capsys.readouterr().err
-    assert "版本漂移" in err and "install.sh" in err
+    # 批191：修复提示 Python 化（python install.py，Windows 原生）
+    assert "版本漂移" in err and "install.py" in err
     # 批167：状态目录项目亲和化——接入项目（CLAUDE_PROJECT_DIR+.regress 在）
     # 的跨调用状态落 proj/.regress/tmp（dsh 私有 tmpfs 免疫），断言按规则取址
     import host_env

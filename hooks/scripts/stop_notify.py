@@ -5,7 +5,7 @@ try:
     import sys as _sys
     import time as _time
     import tempfile as _tf
-    with open(_os.path.join(_tf.gettempdir(), "regress-guard-stop-notify.log"), "a") as _f:
+    with open(_os.path.join(_tf.gettempdir(), "regress-guard-stop-notify.log"), "a", encoding="utf-8") as _f:
         _f.write(f"{_time.strftime('%m-%d %H:%M:%S')} CANARY argv={_sys.argv[1:3]}\n")
 except Exception:
     pass
@@ -39,11 +39,15 @@ if _LIB_DIR not in sys.path:
 from notify import notify  # noqa: E402
 try:
     from host_env import sandbox_aware_state_dir as _state_dir  # noqa: E402
+    from host_env import ensure_utf8_stdio  # noqa: E402
 except ImportError:
     import tempfile as _tf2
 
     def _state_dir():
         return _tf2.gettempdir()
+
+    def ensure_utf8_stdio() -> None:
+        pass  # lib 缺席兜底：no-op（既有降级语义）
 
 AUTONOMY_RE = re.compile(r"自决策|自决|你决定|自主决|自动做|直接做|放手做")
 COOLDOWN_S = 90
@@ -80,7 +84,7 @@ def _log(decision, extra=""):
     """决策日志（append-only）：下次沉默报告一眼定位断点。"""
     import tempfile
     try:
-        with open(os.path.join(tempfile.gettempdir(), "regress-guard-stop-notify.log"), "a") as f:
+        with open(os.path.join(tempfile.gettempdir(), "regress-guard-stop-notify.log"), "a", encoding="utf-8") as f:
             f.write(f"{time.strftime('%m-%d %H:%M:%S')} pd={_project_dir()[-24:]} "
                     f"cooled={_cooled()} {decision} {extra}\n")
     except OSError:
@@ -105,7 +109,7 @@ def _cooled():
 
 def _mark():
     try:
-        with open(_marker_path(), "w") as f:
+        with open(_marker_path(), "w", encoding="utf-8") as f:
             f.write(str(time.time()))
     except OSError:
         pass
@@ -142,7 +146,7 @@ def _drift_notice_once():
         except (OSError, ValueError):
             pass
         print(f"REGRESS-GUARD: ⚠️ 版本漂移（轮末巡检）：已装 v{installed} vs 源仓 "
-              f"v{source_v}——重启会话或跑 bash install.sh 激活；"
+              f"v{source_v}——重启会话或跑 python install.py 激活；"
               f"消除漂移前本轮警示不重复",
               file=sys.stderr)
         try:
@@ -180,6 +184,7 @@ def _pending_corrections_line(pd):
 
 
 def main():
+    ensure_utf8_stdio()  # 批191：cp936 流垫片（emoji/中文输出根治）
     try:
         _ = sys.stdin.read()
     except Exception:

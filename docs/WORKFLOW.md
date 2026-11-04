@@ -648,9 +648,11 @@ span 树可视化=观察位不做（OTel 思想借字段不借 SDK）。
   无远端对象——旧版只补本地考古 tag（v2.0.0@4b8fe40），远端 tag 从
   v2.1.0 起前向。
 
-- **平台支持矩阵（README 双语同步声明）**：Linux=CI 实证（3.10/3.12
-  matrix）；macOS=预期兼容未实证（Unix 专属面仅 fcntl/pwd）；Windows
-  不支持。
+- **平台支持矩阵（README 双语同步声明）**：批191 起 Linux=CI 实证 +
+  Windows 10+=CI 实证（ubuntu/windows × 3.10/3.12 四腿 matrix；钩子链
+  全走 node launcher 路由/安装器 Python 原生化/cp936 根治；真机 Windows
+  验收待补——CI windows-latest 为替代证据，post_install_check 供真机
+  自检）；macOS=预期兼容未实证（Unix 专属面仅 fcntl/pwd）。
 - **覆盖率基线（2026-10-30 首测：总 59%，7830 语句）**：观察位非门槛。
   读数须知：本套件大量用例走 **subprocess 执行**（进程隔离是 hermetic
   绿的设计基础），进程内 coverage 看不见——pre_commit_guard 18%/

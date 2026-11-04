@@ -14,6 +14,12 @@
 被 SessionStart hook 调用，输出 JSON 到 stdout。
 """
 import sys
+import os as _os
+_HERE = _os.path.dirname(_os.path.abspath(__file__))
+for _p in (_HERE, _os.path.join(_HERE, "lib")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+from host_env import ensure_utf8_stdio  # noqa: E402
 import os
 import re
 import json
@@ -88,7 +94,7 @@ def get_installed_version():
     meta_path = os.path.join(HOOK_HOME, ".source")
     if os.path.exists(meta_path):
         try:
-            with open(meta_path) as f:
+            with open(meta_path, encoding="utf-8") as f:
                 for line in f:
                     if line.startswith("source_version="):
                         return line.strip().split("=", 1)[1]
@@ -101,7 +107,7 @@ def get_source_version(source):
     """读取源目录版本号。"""
     pj = os.path.join(source, ".zcode-plugin", "plugin.json")
     try:
-        with open(pj) as f:
+        with open(pj, encoding="utf-8") as f:
             import json
             return json.load(f).get("version", "0.0.0")
     except (IOError, json.JSONDecodeError):
@@ -175,7 +181,7 @@ def do_upgrade(source):
 
     # 更新版本标记
     meta_path = os.path.join(HOOK_HOME, ".source")
-    with open(meta_path, "w") as f:
+    with open(meta_path, "w", encoding="utf-8") as f:
         f.write(f"source_path={source}\n")
         f.write(f"source_version={get_source_version(source)}\n")
         import datetime
@@ -401,7 +407,7 @@ def check_and_heal():
             drift = verify_content_integrity(source) if source else []
             for s, d in drift:
                 if d.endswith("lib/self_heal.py"):
-                    issues.append("self_heal 自身漂移（do_upgrade 不自举）→ 修复：bash install.sh")
+                    issues.append("self_heal 自身漂移（do_upgrade 不自举）→ 修复：python install.py")
                 else:
                     healed.append(f"内容对账漂移（已由升级拉平后仍不一致，疑手工编辑）: {os.path.basename(d)}")
             return issues, healed
@@ -462,9 +468,9 @@ def check_and_heal():
     if source:
         for s, d in verify_content_integrity(source):
             if d.endswith("lib/self_heal.py"):
-                issues.append("self_heal 自身漂移（do_upgrade 不自举）→ 修复：bash install.sh")
+                issues.append("self_heal 自身漂移（do_upgrade 不自举）→ 修复：python install.py")
             else:
-                issues.append(f"内容漂移（部署≠源仓）: {os.path.basename(d)} → 修复：bash install.sh")
+                issues.append(f"内容漂移（部署≠源仓）: {os.path.basename(d)} → 修复：python install.py")
 
     return issues, healed
 
@@ -565,6 +571,7 @@ def check_version_drift():
 
 
 def main():
+    ensure_utf8_stdio()  # 批191：cp936 流垫片（emoji/中文输出根治）
     # 快速检查：如果连 hook_home 都不存在，说明根本没装过，跳过
     if not os.path.isdir(HOOK_HOME):
         # 未安装状态，不干预
@@ -670,13 +677,13 @@ def _project_digest(max_lines=5):
     h = hashlib.md5(digest.encode()).hexdigest()[:10]
     prev = ""
     try:
-        prev = open(marker).read().strip()
+        prev = open(marker, encoding="utf-8").read().strip()
     except (IOError, OSError):
         pass
     if prev == h:
         return None  # 摘要未变化，不重复注入
     try:
-        open(marker, "w").write(h)
+        open(marker, "w", encoding="utf-8").write(h)
     except (IOError, OSError):
         pass
     return digest

@@ -24,6 +24,7 @@ import re
 import json
 import fnmatch
 import getpass
+import shutil as _shutil
 import subprocess
 import traceback
 from datetime import datetime
@@ -33,6 +34,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LIB_DIR = os.path.join(SCRIPT_DIR, "lib")
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
+from host_env import ensure_utf8_stdio  # noqa: E402
 
 from manifest_parser import (get_all_changed_files, get_manifest_status,  # noqa: E402
                              update_frontmatter, get_fragile_points,
@@ -436,9 +438,11 @@ def find_regress_dir():
         ).stdout.strip()
         if git_root:
             candidates.append(git_root)
-            # 向上查找（monorepo 场景：.regress/ 在父目录）
+            # 向上查找（monorepo 场景：.regress/ 在父目录）。批191 根终止
+            # 通用化：dirname(p)==p 即根——旧判 parent != "/" 在 Windows 上
+            # dirname("C:\\")=="C:\\" 恒真，上溯永不终止（死循环到超时/OOM）
             parent = os.path.dirname(git_root)
-            while parent and parent != "/":
+            while parent and parent != os.path.dirname(parent):
                 candidates.append(parent)
                 parent = os.path.dirname(parent)
     except Exception:
@@ -642,6 +646,7 @@ def _blast_radius_evaluate(config, project_dir, staged):
 
 
 def main():
+    ensure_utf8_stdio()  # 批191：cp936 流垫片（emoji/中文输出根治）
     # ─── 1. 是否 git commit？──────────────────────────
     raw_input = sys.stdin.read() if not sys.stdin.isatty() else ""
     # 批166（dsh 桥）：宿主不设会话 env 时从 payload 吸收 session_id
@@ -1527,8 +1532,16 @@ def main():
                and str(f.get("verify") or "").strip().strip('"')
                and not str(f.get("verify") or "").strip().startswith("human_check")][:5]:  # 上限5条防门禁拖延
         vcmd = str(fp["verify"]).strip()
+        # 批191：verify 是用户写的 shell 单行——win32 优先 Git for Windows
+        # 自带的 bash（git 本是本插件硬前置）；无 bash 降级 cmd /c（POSIX
+        # 元字符 $()/2>/dev/null 会失效，失败原因随 tail 证据可见）
+        if sys.platform == "win32":
+            _bash = _shutil.which("bash")
+            _shell = [_bash, "-c"] if _bash else ["cmd", "/c"]
+        else:
+            _shell = ["bash", "-c"]
         try:
-            r = _sp.run(["bash", "-c", vcmd], capture_output=True, text=True,
+            r = _sp.run(_shell + [vcmd], capture_output=True, text=True,
                         timeout=15, cwd=project_dir)
             ok = r.returncode == 0
             tail = (r.stderr or r.stdout or "")[-150:].strip()
@@ -1671,7 +1684,7 @@ def main():
                 _hg_path = next((p for p in _hg_cands if os.path.exists(p)),
                                 _hg_cands[0])
                 _hr = subprocess.run(
-                    ["python3", _hg_path,
+                    [sys.executable, _hg_path,
                      "--project", str(project_dir)],
                     capture_output=True, text=True, timeout=180, cwd=_root)
                 if _hr.returncode == 3:

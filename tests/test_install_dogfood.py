@@ -7,6 +7,7 @@ stub python 注入（快，缺省跑）。
 import os
 import stat
 import subprocess
+import sys
 
 import pytest
 
@@ -27,7 +28,8 @@ def test_dogfood_full_chain_green():
 
 
 def test_preflight_rejects_missing_python(tmp_path):
-    """python3 缺失：明白话退出（旧=warn 后死于 heredoc 晦涩报错）。"""
+    """python3 缺失：明白话退出（批191 后 install.sh 是薄委托——exec 找不到
+    python3 时 bash 报 command not found 非零退出，同语义成立）。"""
     import shutil
     py = shutil.which("python3")
     if not py:
@@ -48,26 +50,29 @@ def test_preflight_rejects_missing_python(tmp_path):
     assert "python3" in (r.stderr + r.stdout)
 
 
-def test_preflight_rejects_old_python(tmp_path):
-    """低于 3.10：版本门硬拦（README 契约），报错含升级路径。"""
-    stub_dir = tmp_path / "bin"
-    stub_dir.mkdir()
-    py = stub_dir / "python3"
-    py.write_text("#!/bin/sh\necho 'Python 3.9.2'\nexit 0\n", encoding="utf-8")
-    py.chmod(0o755)
+def test_preflight_rejects_old_python(tmp_path, monkeypatch, capsys):
+    """低于 3.10：版本门硬拦（README 契约），报错含升级路径。
+
+    批191 安装器 Python 化：版本门查的是运行 install.py 的解释器自身——
+    PATH 注入假 python 的老测法对原生安装器不成立（假 python 跑不了
+    install.py），改为进程内钉 preflight 契约。"""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "install_py_under_test", os.path.join(ROOT, "install.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # 模块级只算路径，无副作用
+    monkeypatch.setattr(sys, "version_info", (3, 9, 2))
     zh = tmp_path / "zh"
     zh.mkdir()
-    r = subprocess.run(["bash", INSTALL], capture_output=True, text=True,
-                       timeout=60, env={
-                           "PATH": str(stub_dir) + os.pathsep
-                                   + os.environ["PATH"],
-                           "HOME": str(tmp_path),
-                           "REGRESS_ZCODE_HOME": str(zh),
-                       })
-    assert r.returncode != 0, "3.9 必须被版本门拦"
-    assert "3.10" in (r.stderr + r.stdout)
+    monkeypatch.setenv("REGRESS_ZCODE_HOME", str(zh))
+    with pytest.raises(SystemExit):
+        mod.preflight()
+    out = capsys.readouterr().out
+    assert "3.10" in out, "版本门报错须点名 3.10 契约"
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="win32: 执行位概念不存在（狗粮脚本是 POSIX bash 件）")
 def test_dogfood_script_executable_bit():
     """狗粮脚本须带执行位（install.sh 不拷它——手工/哨兵直跑入口）。"""
     assert os.stat(DOGFOOD).st_mode & stat.S_IXUSR

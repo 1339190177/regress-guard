@@ -1,9 +1,9 @@
 """人类介入通知（v1.30）：正负路径——通道参数化/事件开关/best-effort/test 事件。"""
 import json
 import os
-import stat
 import subprocess
 import sys
+from conftest import make_exec_stub  # 批191：跨平台 stub
 
 LIB = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "lib"))
 NOTIFY = os.path.join(LIB, "notify.py")
@@ -28,11 +28,12 @@ def _mk(tmp_path, conf=None, name="proj"):
 
 def _channel_stub(tmp_path, marker):
     # 文件名含 marker——一测多 stub 时互不覆盖（057 迁移时暴露：原共享
-    # stub.sh 名，先建全部再发送的顺序会把前一个 marker 顶掉）
-    stub = tmp_path / f"stub-{marker.name}.sh"
-    stub.write_text("#!/bin/sh\necho \"$@\" >> %s\n" % marker, encoding="utf-8")
-    stub.chmod(stat.S_IRWXU)
-    return str(stub)
+    # stub 名，先建全部再发送的顺序会把前一个 marker 顶掉）。
+    # 批191：跨平台 stub——win32 出 .cmd 双胞胎（通道经 shell=True 执行）
+    return make_exec_stub(
+        tmp_path, f"stub-{marker.name}",
+        'echo "$@" >> %s\n' % marker,
+        f'@echo off\r\necho %* >> "{marker}"\r\n')
 
 
 def _trusted(nt, tmp_path, *projects):

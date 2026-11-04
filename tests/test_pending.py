@@ -1,7 +1,7 @@
 """决策推送待决台账（v1.34 推送闭环）：add/resolve/list/stats + notify 决策事件落账。"""
 import json
 import os
-import stat
+from conftest import make_exec_stub  # 批191：跨平台 stub
 
 LIB = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "lib"))
 PENDING = os.path.join(LIB, "pending.py")
@@ -17,10 +17,11 @@ def _load(path, name):
 
 
 def _stub_channel(tmp_path, marker):
-    stub = tmp_path / "stub.sh"
-    stub.write_text("#!/bin/sh\necho \"$@\" >> %s\n" % marker, encoding="utf-8")
-    stub.chmod(stat.S_IRWXU)
-    return str(stub)
+    # 批191：跨平台 stub——win32 出 .cmd 双胞胎（通道经 shell=True 执行）
+    return make_exec_stub(
+        tmp_path, "stub",
+        'echo "$@" >> %s\n' % marker,
+        f'@echo off\r\necho %* >> "{marker}"\r\n')
 
 
 def _mk_proj(tmp_path, channels):

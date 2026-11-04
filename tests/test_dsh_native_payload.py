@@ -15,6 +15,7 @@ CC 形态的名幂等）。
   "moved to background" 中间态——resultFailed 判 false（记为成功），
   fail_watch 迟到失败不可见。已知限制（docs/dsh-support.md 留档）。
 """
+import sys
 import json
 import os
 import re
@@ -43,7 +44,7 @@ def _run(script, payload, argv=None, project=None, env_extra=None):
         env["CLAUDE_PROJECT_DIR"] = str(project)
     env.update(env_extra or {})
     proc = subprocess.run(
-        ["python3", script] + (argv or []), input=json.dumps(payload),
+        [sys.executable, script] + (argv or []), input=json.dumps(payload),
         capture_output=True, text=True, env=env, timeout=15,
     )
     return proc.returncode, proc.stderr

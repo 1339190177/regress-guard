@@ -198,7 +198,7 @@ def main():
         json.dump(st, open(STATE, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         if created:
             try:
-                _run(["python3", os.path.join(GUARD_ROOT, "lib", "notify.py"),
+                _run([sys.executable, os.path.join(GUARD_ROOT, "lib", "notify.py"),
                       ".", "chat", "--title", f"提案轮次：{len(created)} 项待裁决",
                       "--body", "\n".join(created[:6]) +
                       f"\n批准=对应 issue 评论 @{_agent_login()} 开工；否决=关闭。"],

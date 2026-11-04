@@ -1,0 +1,9 @@
+# 批191（v2.8.0）：Windows CI 保护——GitHub windows runner 默认 core.autocrlf
+# 会在 checkout 时把文本文件 CRLF 化，咬伤 bash shebang、node --check 与
+# 字节级断言。全仓统一 LF（当前仓本就全 LF，renormalize 零 churn）。
+* text=auto eol=lf
+
+# 二进制区（如有新增请归此）
+*.png binary
+*.jpg binary
+*.ico binary

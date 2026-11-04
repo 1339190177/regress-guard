@@ -17,19 +17,23 @@
 安装 regress-guard——钩子经宿主运行时合并自动生效，可随插件开关启停与升级
 （git pin 自带完整性校验）。自检脚本已适配双轨（版本面：.source 戳或已装 plugin.json 任一形态）。
 
-**开发轨（现行）**：克隆本仓后 `bash install.sh`（或对 AI 说 `/regress:install`）
+**开发轨（现行）**：克隆本仓后 `python3 install.py`（Windows：`python install.py`；POSIX 亦可 `bash install.sh`；或对 AI 说 `/regress:install`）
 ——脚本拷贝钩子到 `~/.zcode/regress-guard-hooks` 并写用户级注册，附带三查自检。
 两轨只取其一，同装会双份钩子。
 
 ## 五分钟上手
 
-1. **环境**：ZCode 客户端（hooks/commands 机制）+ Python 3.10+
-   （支持矩阵·批164 声明：**Linux 为 CI 实证平台**（3.10/3.12 双版本
-   matrix，见 `.github/workflows/ci.yml`）；macOS 预期兼容——Unix 专属面
-   仅 stdlib 的 fcntl/pwd——但未 CI 实证；Windows 不支持（Unix 钩子链）。
-   运行时零三方依赖；发布物带 git tag（里程碑自 v2.0.0 起留痕，远端
-   tag 自 v2.1.0 前向））
-2. **安装**：`bash install.sh`（或对 AI 说 `/regress:install`）
+1. **环境**：ZCode 客户端（hooks/commands 机制）+ Python 3.10+ + Node
+   （支持矩阵·批191 声明：**Linux 与 Windows 10+ 为 CI 实证平台**
+   （ubuntu/windows × 3.10/3.12 四腿 matrix，见
+   `.github/workflows/ci.yml`）；v2.8.0 起钩子链全部经 `node launcher.js`
+   路由（零 python3 命令依赖——Windows 只装 python.exe/py.exe）、安装器
+   Python 原生化（`python install.py`）、cp936 编码根治；建议 Git for
+   Windows（git 本是硬前置，其自带 bash 亦服务清单 verify 命令）；macOS
+   预期兼容未实证。运行时零三方依赖；发布物带 git tag（里程碑自 v2.0.0
+   起留痕，远端 tag 自 v2.1.0 前向））
+2. **安装**：`python3 install.py`（Windows：`python install.py`；POSIX
+   亦可 `bash install.sh` 薄委托，或对 AI 说 `/regress:install`）
 3. **接入项目**：任意项目里对 AI 说 `/regress:init`
 4. **日常**：说需求 → AI 出计划卡片 → 你「批准/修改/取消」→ 开工；
    提交时 hook 自动跑测试拦问题；卡住看项目里的 `.regress/README.md`

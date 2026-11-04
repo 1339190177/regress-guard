@@ -105,12 +105,17 @@ def _state_path():
     """状态文件放工作区 .regress（治理状态的家）——不进嵌套仓：
     未跟踪文件会进 test_cache.tree_key，写状态即改缓存键=永不命中死循环。"""
     d = os.getcwd()
-    while d != "/":
+    # 批191 根终止通用化：dirname(p)==p 即根（POSIX "/"、Windows 盘符 "C:\"、
+    # UNC 皆然）——旧判 d != "/" 在 Windows 上 dirname("C:\\")=="C:\\" 恒真，
+    # 上溯永不终止（死循环到超时/OOM）
+    while True:
         cand = os.path.join(d, ".regress")
         if os.path.isdir(cand):
             return os.path.join(cand, "publish-state.json")
-        d = os.path.dirname(d)
-    return None
+        parent = os.path.dirname(d)
+        if parent == d:
+            return None
+        d = parent
 
 
 def read_state():

@@ -25,7 +25,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import urllib.parse
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 _LIB = os.path.join(REPO_ROOT, "hooks", "scripts", "lib")
@@ -59,7 +58,7 @@ def _notify(title, body):
     """best-effort WeCom 推送（观察层：每合并/升级必推）。"""
     try:
         subprocess.run(
-            ["python3", os.path.join(GUARD_ROOT, "lib", "notify.py"), ".", "chat",
+            [sys.executable, os.path.join(GUARD_ROOT, "lib", "notify.py"), ".", "chat",
              "--title", title, "--body", body],
             cwd=WORKSPACE, capture_output=True, timeout=30)
     except Exception:
@@ -69,7 +68,7 @@ def _notify(title, body):
 def _journal(fields):
     try:
         subprocess.run(
-            ["python3", os.path.join(GUARD_ROOT, "lib", "journal.py"),
+            [sys.executable, os.path.join(GUARD_ROOT, "lib", "journal.py"),
              WORKSPACE, "add", "pr_review",
              json.dumps(fields, ensure_ascii=False)],
             capture_output=True, text=True, timeout=15)
@@ -150,7 +149,6 @@ def _conflict_engine(repo, n, state, state_path, head, agent):
     一张（单槽，解完 90s sweep 自动易主）；目标 PR 按轮次发解法指令（head 变化=
     新一轮）；worker 两轮不成评论「冲突熔断」→ 自动开 resolver 接力工单
     （agent 找 agent，人类只收 WeCom 知情不需行动）。"""
-    import time as _t
     rounds = state.setdefault("conflict_rounds", {})
     rk = f"{repo}#{n}"
     r = rounds.setdefault(rk, {"heads": [], "round": 0,
@@ -311,9 +309,10 @@ def review_pr(repo, number, cfg, json_out=False):
             passed = tres.get("passed", -1)
             total = tres.get("total", -1)
             tests_ok = tr.returncode == 0
-            hermetic_note = (tr.stdout or tr.stderr or "").strip().splitlines()[-1][:120] if (tr.stdout or tr.stderr).strip() else ""
+            _tail = (tr.stdout or tr.stderr or "").strip()
+            hermetic_note = _tail.splitlines()[-1][:120] if _tail else ""
         else:
-            tr = subprocess.run(["python3",
+            tr = subprocess.run([sys.executable,
                                  os.path.join(GUARD_ROOT, "lib", "test_runner.py"), wt],
                                 capture_output=True, text=True, timeout=1800)
             try:
@@ -365,7 +364,7 @@ def review_pr(repo, number, cfg, json_out=False):
             print(f"判定: {'机械全过' if not fail else '升级——' + fail}")
         return verdict
     finally:
-        if tmp.startswith(tempfile.gettempdir() + "/prgate-"):
+        if tmp.startswith(os.path.join(tempfile.gettempdir(), "prgate-")):
             shutil.rmtree(tmp, ignore_errors=True)  # 只清自建前缀目录
 
 
@@ -477,7 +476,7 @@ def sweep():
                 "select at || '|' || value from decision "
                 "where at >= datetime('now','-1 day')"],
                 capture_output=True, text=True, timeout=15)
-            now_ignored = True  # 行内过滤见下（kind=ignore 精确判定）
+            # kind=ignore 精确判定：行内过滤（见下），不在此预筛
             for line in (r.stdout or "").splitlines():
                 if '"ignore"' not in line:
                     continue

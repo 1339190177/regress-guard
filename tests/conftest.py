@@ -10,6 +10,38 @@ if LIB not in sys.path:
     sys.path.insert(0, LIB)
 
 
+def make_exec_stub(tmp_path, name, sh_body, cmd_body):
+    """按平台生成可执行 stub（批191 Windows CI）。
+
+    POSIX：shebang 脚本 + 执行位。win32：同名 .cmd（无执行位概念，
+    cmd 经 shell=True 直接跑 .cmd）。sh_body/cmd_body 由调用方各给一份
+    语义等价体（notify 通道 stub 走 shell=True，两平台都能执行）。
+    按名 spawn（无 shell）依赖 PATHEXT/exec 语义的 stub 不适用本助手，
+    那类测试用 skipif(win32) 带理由跳过。"""
+    if sys.platform == "win32":
+        p = tmp_path / (name + ".cmd")
+        p.write_text(cmd_body, encoding="utf-8")
+        return str(p)
+    p = tmp_path / name
+    p.write_text("#!/bin/sh\n" + sh_body, encoding="utf-8")
+    p.chmod(0o755)
+    return str(p)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _strip_host_session_env():
+    """剥离宿主会话 env（批191）：ZCode 桌面进程导出的 ZCODE_PROJECT_DIR/
+    CLAUDE_PROJECT_DIR/ZCODE_SESSION_ID 会随 {**os.environ} 泄进测试子进程
+    ——守卫按 ZCODE_ 优先解析项目目录（批183 换序），把开发会话的活跃清单
+    当成测试项目的边界（51 例集体误拦的活体标本：REGRESS-2026-179 开发期
+    全量跑，lease/self_heal/journal 全族红）。CI 无这些 env，此垫片让
+    本机=CI。测试内 monkeypatch.setenv 晚于本夹具生效，不受影响。"""
+    for k in ("ZCODE_PROJECT_DIR", "CLAUDE_PROJECT_DIR",
+              "ZCODE_SESSION_ID", "CLAUDE_SESSION_ID", "ZCODE_HOME"):
+        os.environ.pop(k, None)
+    yield
+
+
 @pytest.fixture(autouse=True)
 def _no_auto_consult(monkeypatch):
     """单测默认关闭钩子自动咨询（不打真实 dsh 端点）；专项测试自行覆写。"""

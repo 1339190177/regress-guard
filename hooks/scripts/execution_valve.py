@@ -25,6 +25,13 @@ import re
 import json
 import tempfile
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+LIB_DIR = os.path.join(SCRIPT_DIR, "lib")
+if LIB_DIR not in sys.path:
+    sys.path.insert(0, LIB_DIR)
+
+from host_env import ensure_utf8_stdio, is_root, path_within  # noqa: E402  批191：跨平台根/包含判定
+
 TOKEN = "REGRESS_CONFIRM=YES"
 
 # 灾难级模式：几乎无合法未确认用途 → 无令牌即阻断
@@ -83,12 +90,15 @@ def _rm_targets_dangerous(segment, project_dir):
             continue  # 相对路径 = 项目内，git 可恢复
         real = (os.path.realpath(t_exp) if os.path.exists(t_exp)
                 else os.path.normpath(t_exp))
-        if real == "/":
+        # 批191：根/包含判定走 host_env 助手——is_root 通吃 POSIX/盘符/UNC
+        # （字面 == "/" 在 Windows 恒假=阀根保护失效）；path_within 折盘符
+        # 大小写（env 与 realpath 给的 "C:"/"c:" 不一致时项目内误判为外）
+        if is_root(real):
             dangerous.append(t)
             continue
-        if real == tmp_root or real.startswith(tmp_root + os.sep):
-            continue  # /tmp 清理可接受
-        if real == project_dir or real.startswith(project_dir + os.sep):
+        if path_within(real, tmp_root):
+            continue  # 临时区清理可接受
+        if path_within(real, project_dir):
             continue  # 项目内，git 可恢复
         dangerous.append(t)
     return dangerous or None
@@ -197,6 +207,7 @@ def _fail_closed(reason):
 
 
 def main():
+    ensure_utf8_stdio()  # 批191：cp936 流垫片（emoji/中文输出根治）
     raw = sys.stdin.read() if not sys.stdin.isatty() else ""
     if not raw:
         sys.exit(0)

@@ -25,7 +25,7 @@ def _detect_in(project_dir):
     pkg = os.path.join(project_dir, "package.json")
     if os.path.exists(pkg):
         try:
-            with open(pkg) as f:
+            with open(pkg, encoding="utf-8") as f:
                 data = json.load(f)
             deps = {}
             deps.update(data.get("dependencies", {}))
@@ -47,7 +47,7 @@ def _detect_in(project_dir):
             pass  # package.json 损坏 → 跳过 Node.js 探测
         # 有 package.json 但没 jest/vitest → 看 test script
         try:
-            with open(pkg) as f:
+            with open(pkg, encoding="utf-8") as f:
                 data = json.load(f)
             test_script = data.get("scripts", {}).get("test", "")
             if test_script and "no test" not in test_script.lower():
@@ -58,7 +58,7 @@ def _detect_in(project_dir):
     # Python / pytest
     for marker in ("pytest.ini", "conftest.py", "setup.cfg", "pyproject.toml"):
         if os.path.exists(os.path.join(project_dir, marker)):
-            cmd = ["python3", "-m", "pytest", "-q", "--tb=line"]
+            cmd = [sys.executable, "-m", "pytest", "-q", "--tb=line"]
             # v1.96.0（125）：机读面优先——junitxml 取代人读摘要正则（正则类
             # bug 的根治：顺序依赖/词序变体/词混淆一类全灭）。绝对路径防嵌套
             # 布局错位；.regress 不在（独立 CLI 场景）则走正则 fallback。
@@ -73,7 +73,12 @@ def _detect_in(project_dir):
     # Java / Gradle
     if os.path.exists(os.path.join(project_dir, "build.gradle")) or \
        os.path.exists(os.path.join(project_dir, "build.gradle.kts")):
-        return ("gradle", ["./gradlew", "test", "--quiet"])
+        # 批191：Windows wrapper 是 gradlew.bat（cmd 经 PATHEXT 找 .bat，
+        # 但列表直传 subprocess 不走 PATHEXT——须点名）
+        gradlew = ("gradlew.bat" if sys.platform == "win32"
+                   and os.path.exists(os.path.join(project_dir, "gradlew.bat"))
+                   else "./gradlew")
+        return ("gradle", [gradlew, "test", "--quiet"])
 
     # Go
     if os.path.exists(os.path.join(project_dir, "go.mod")):
@@ -327,7 +332,7 @@ def _read_jest_coverage(project_dir):
     """读取 jest coverage json-summary 的全量行覆盖率（无配置时返回 None）。"""
     summary = os.path.join(project_dir, ".regress", ".coverage", "coverage-summary.json")
     try:
-        with open(summary) as f:
+        with open(summary, encoding="utf-8") as f:
             data = json.load(f)
         total = data.get("total", {}).get("lines", {}).get("pct")
         return round(total) if isinstance(total, (int, float)) else None
@@ -345,7 +350,7 @@ def _parse_jest(output, exit_code, project_dir=None):
         jest_file = os.path.join(base, ".regress", _res_name)
         if os.path.exists(jest_file):
             try:
-                with open(jest_file) as f:
+                with open(jest_file, encoding="utf-8") as f:
                     data = json.load(f)
             except (json.JSONDecodeError, IOError):
                 data = None

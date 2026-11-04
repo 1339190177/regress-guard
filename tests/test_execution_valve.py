@@ -23,7 +23,7 @@ def run_valve(command, env_extra=None):
     env.update(env_extra or {})
     inp = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
     proc = subprocess.run(
-        ["python3", VALVE], input=inp, capture_output=True, text=True,
+        [sys.executable, VALVE], input=inp, capture_output=True, text=True,
         env=env, timeout=10,
     )
     return proc.returncode, proc.stderr
@@ -130,7 +130,7 @@ def test_main_config_kill_switch(tmp_path):
 def test_main_ignores_non_bash():
     env = dict(os.environ)
     inp = json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "/x"}})
-    proc = subprocess.run(["python3", VALVE], input=inp, capture_output=True,
+    proc = subprocess.run([sys.executable, VALVE], input=inp, capture_output=True,
                           text=True, env=env, timeout=10)
     assert proc.returncode == 0
 
@@ -143,6 +143,6 @@ def test_nondict_payload_blocks():
     旧行为：data.get 抛 AttributeError → exit 1 = 放行，与阀门语义相反
     （2026-09-08 评审 P0 活体路径）。"""
     for raw in ('"just a string"', "[1, 2, 3]"):
-        proc = subprocess.run(["python3", VALVE], input=raw,
+        proc = subprocess.run([sys.executable, VALVE], input=raw,
                               capture_output=True, text=True, timeout=10)
         assert proc.returncode == 2, f"{raw} 应阻断，得 {proc.returncode}"

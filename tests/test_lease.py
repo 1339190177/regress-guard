@@ -198,7 +198,7 @@ def _run_guard(proj, target, extra_env):
     env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}
     env.update(extra_env)
     return subprocess.run(
-        ["python3", GUARD],
+        [sys.executable, GUARD],
         input=json.dumps({"tool_name": "Edit",
                           "tool_input": {"file_path": str(target)}}),
         capture_output=True, text=True, env=env, timeout=15)

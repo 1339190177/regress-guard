@@ -72,3 +72,45 @@ def test_materialize_tool_input_string_to_dict():
     materialize_tool_input(ok)
     assert ok["tool_input"] == {"command": "ls"}
     assert materialize_tool_input(None) is None
+
+
+# ─── 批191（v2.8.0）：Windows 兼容路径/编码垫片 ────────────────────
+
+def test_is_root_posix_semantics():
+    """is_root：dirname(p)==p 即根——POSIX 断言（盘符/UNC 由 Windows CI 腿证）。"""
+    from host_env import is_root
+    assert is_root("/")
+    assert not is_root("/tmp")
+    assert not is_root("")
+    assert not is_root("/a/b")
+
+
+def test_path_within_prefix_trap_and_identity():
+    """path_within：含相等；前缀陷阱（/abc 不在 /a 内）；尾分隔容忍。"""
+    from host_env import path_within
+    assert path_within("/a/b", "/a")
+    assert path_within("/a", "/a")
+    assert not path_within("/abc", "/a"), "前缀假阳（/abc ≠ /a 下）"
+    assert path_within("/a/b/", "/a/")
+    assert not path_within("/b", "/a")
+    assert path_within(os.path.abspath("x"), os.path.abspath("."))
+
+
+def test_path_within_case_fold_is_platform_semantics():
+    """大小写折叠属平台语义：POSIX 区分（断言区分），Windows 折叠由 CI 腿证。"""
+    from host_env import path_within
+    assert not path_within("/A/B", "/a"), "POSIX 大小写敏感语义被破坏"
+
+
+def test_ensure_utf8_stdio_never_raises():
+    """ensure_utf8_stdio：流不可重配（StringIO/已关闭）静默跳过——守卫
+    输出 emoji 在 cp936 下崩溃的根治垫片，自身必须永不炸。"""
+    import io
+    from host_env import ensure_utf8_stdio
+    real_out, real_err = sys.stdout, sys.stderr
+    try:
+        sys.stdout = io.StringIO()  # 无 reconfigure 属性
+        sys.stderr = io.StringIO()
+        ensure_utf8_stdio()  # 不抛即过
+    finally:
+        sys.stdout, sys.stderr = real_out, real_err

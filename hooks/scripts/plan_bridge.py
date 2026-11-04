@@ -34,6 +34,7 @@ import sys
 _LIB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib")
 if _LIB_DIR not in sys.path:
     sys.path.insert(0, _LIB_DIR)
+from host_env import ensure_utf8_stdio  # noqa: E402
 
 try:
     from journal import journal_append  # noqa: E402
@@ -447,6 +448,7 @@ def _fossil(project_dir, plan, sid, kind="design_rejected"):
 
 
 def main(argv=None):
+    ensure_utf8_stdio()  # 批191：cp936 流垫片（emoji/中文输出根治）
     argv = list(sys.argv[1:] if argv is None else argv)
     mode = argv[0] if argv else "post"
     if os.environ.get("REGRESS_PLAN_BRIDGE", "").lower() in ("off", "0", "false"):

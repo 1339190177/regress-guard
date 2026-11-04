@@ -1,4 +1,13 @@
 """health_probe（131：巡检探针机器位）——崩/漏可见性，不做语义解读。"""
+import pytest
+import sys
+
+# 批191：health_probe 是 POSIX bash 工具链探测件（bash -c + 管道），
+# Windows 上无对应物——整模块带理由跳过（Linux 覆盖不减）
+pytestmark = pytest.mark.skipif(sys.platform == "win32",
+                                reason="health_probe 是 POSIX bash 工具链件")
+import sys
+
 import importlib.util as ilu
 import os
 

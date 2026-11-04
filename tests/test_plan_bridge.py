@@ -394,7 +394,8 @@ def _mk_manifest(d, mid, name=None):
 def test_mixed_dir_mints_new_format_not_reset(tmp_path, monkeypatch):
     """必改标本：旧 NNN+新格式混合目录——原逻辑落 else 铸 REGRESS-001 撞冻结
     空间；修后按新约定铸号（当日+随机 hex4+存在性防撞）。"""
-    import sys, os
+    import sys
+    import os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
     import plan_bridge as pb
     d = tmp_path / "manifests"
@@ -409,7 +410,8 @@ def test_mixed_dir_mints_new_format_not_reset(tmp_path, monkeypatch):
 
 def test_pure_old_and_year_dirs_unchanged(tmp_path):
     """纯旧目录续 NNN、纯年目录续 YYYY-NNN——既有行为零回归。"""
-    import sys, os
+    import sys
+    import os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
     import plan_bridge as pb
     d1 = tmp_path / "old"
@@ -428,7 +430,8 @@ def test_pure_old_and_year_dirs_unchanged(tmp_path):
 # ─── 批190：号段 4→8 hex + 4 位历史号兼容 ───
 
 def test_new_format_regex_accepts_4_and_8_hex():
-    import sys, os
+    import sys
+    import os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
     import plan_bridge as pb
     assert pb._ID_NEW.match("REGRESS-261103-3ab90d8a")  # 8-hex 新制
@@ -441,7 +444,8 @@ def test_new_format_regex_accepts_4_and_8_hex():
 
 
 def test_mints_8_hex_in_new_space(tmp_path):
-    import sys, os
+    import sys
+    import os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
     import plan_bridge as pb
     d = tmp_path / "m"

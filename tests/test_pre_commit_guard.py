@@ -3,10 +3,12 @@
 历史上 4 个 bug 都出在这个文件（||吞输出、completed终态、monorepo路径、
 no_active_manifest不记录），却没有单元测试。本文件把手工验证固化为可回归。
 """
+import sys
 import os
 import json
 import subprocess
 import pytest
+from conftest import make_exec_stub  # 批191：跨平台 stub
 
 GUARD = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "hooks", "scripts", "pre_commit_guard.py"))
@@ -25,7 +27,7 @@ def run_guard(tool_command, project_dir, cwd=None, extra_env=None):
     env.update(extra_env or {})
     inp = json.dumps({"tool_name": "Bash", "tool_input": {"command": tool_command}})
     proc = subprocess.run(
-        ["python3", GUARD],
+        [sys.executable, GUARD],
         input=inp, capture_output=True, text=True,
         env=env, cwd=str(cwd or project_dir), timeout=30
     )
@@ -303,11 +305,11 @@ def test_blocked_pushes_via_configured_channel(project, tmp_path, monkeypatch):
     期间 wecom 台账 0 条——record 只留本机痕，通道才是人所在的屏）。
     v1.68 起通道走机器级配置（项目级 channels 受 057 信任门约束，子进程
     测试无法 monkeypatch 模块属性——机器级本就是人写配置设计即信任）。"""
-    import stat as _stat
-    stub = tmp_path / "stub.sh"
     marker = tmp_path / "blocked-marker"
-    stub.write_text("#!/bin/sh\necho \"$@\" >> " + str(marker) + "\n", encoding="utf-8")
-    stub.chmod(_stat.S_IRWXU)
+    stub = make_exec_stub(  # 批191：win32 .cmd 双胞胎
+        tmp_path, "stub",
+        'echo "$@" >> ' + str(marker) + '\n',
+        '@echo off\r\necho %* >> "' + str(marker) + '"\r\n')
     mach = tmp_path / "machine.json"
     mach.write_text(json.dumps(
         {"notify": {"channels": [str(stub) + " {title}"]}}), encoding="utf-8")
@@ -538,6 +540,8 @@ def test_secret_clean_passes_rule(project):
     assert "密钥泄漏" not in err
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="win32: 按名 spawn 依赖 POSIX exec/PATHEXT 语义（批191 留待专项 .cmd 化）")
 def test_deps_vulnerable_blocks_via_stub(project, tmp_path):
     """npm audit 桩报 high → 拦（解析 --json 漏洞计数，不信 exit code）。"""
     import stat as _stat
@@ -1971,3 +1975,22 @@ def test_fallback_attribution_skips_planning(project):
     _stage(project, "src/other.js", "x\n")  # 与两者 planned_changes 均无交集
     code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 0, err
+
+
+def test_monorepo_climb_terminates(tmp_path):
+    """批191 根回溯终止：monorepo 上攀（.regress 在 git 根之上）须正常返回。
+
+    旧判 while parent != "/" 在 Windows 盘符根 dirname("C:\\")=="C:\\"
+    恒真 → 无限循环；POSIX 上本测试同时钉住"攀到顶能停"的通用语义
+    （subprocess timeout=15 兜住挂死=测试红）。"""
+    import subprocess as sp
+    outer = tmp_path / "outer"
+    inner = outer / "pkg" / "inner"
+    (outer / ".regress" / "manifests").mkdir(parents=True)
+    inner.mkdir(parents=True)
+    sp.run(["git", "init", "-q"], cwd=inner, check=True, timeout=10)
+    r = sp.run([sys.executable, GUARD], input="{}", capture_output=True,
+               text=True, timeout=15,
+               env={**os.environ, "CLAUDE_PROJECT_DIR": str(inner)},
+               cwd=inner)
+    assert r.returncode in (0, 2), r.stderr[-300:]

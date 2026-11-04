@@ -158,6 +158,8 @@ def test_require_does_not_spawn():
 
 # ─── 批135：信号击穿 fail-closed ────────────────────────────
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="win32: pgrep+SIGKILL 信号语义无对应物")
 def test_signal_killed_child_exits_2(tmp_path):
     """子进程被信号击杀（code=null）→ launcher 必须以 2 退出（fail-closed）。
 
@@ -179,7 +181,7 @@ def test_signal_killed_child_exits_2(tmp_path):
         'os.kill(int(kids[0]), signal.SIGKILL)\n'
         'rc = p.wait()\n'
         'print(rc)\n', encoding="utf-8")
-    proc = subprocess.run(["python3", str(mk), LAUNCHER],
+    proc = subprocess.run([sys.executable, str(mk), LAUNCHER],
                           capture_output=True, text=True, timeout=30)
     assert "NO_GRANDCHILD" not in proc.stderr, proc.stderr
     assert proc.stdout.strip() == "2", f"信号击穿应 exit 2，得 {proc.stdout!r}"

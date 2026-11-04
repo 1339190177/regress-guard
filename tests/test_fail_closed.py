@@ -12,6 +12,9 @@
 （如 PYTHONPATH 投毒）发生在 __main__ 兜底之前 → exit 1 = fail-open；
 对策=注册面 python3 -E（忽略 PYTHON* env）+ health_probe 钩子探针可见性。
 """
+import sys
+
+import pytest
 import json
 import os
 import subprocess
@@ -33,7 +36,7 @@ def _run(script, raw, argv=None, project=None, env_extra=None):
         env["CLAUDE_PROJECT_DIR"] = str(project)
     env.update(env_extra or {})
     proc = subprocess.run(
-        ["python3", script] + (argv or []), input=raw, capture_output=True,
+        [sys.executable, script] + (argv or []), input=raw, capture_output=True,
         text=True, env=env, timeout=15,
     )
     return proc.returncode, proc.stderr
@@ -94,6 +97,8 @@ def test_valve_malformed_blocks():
     assert code == 2
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="win32: 0<&- fd 重定向是 POSIX shell 语法")
 def test_gate_malformed_blocks():
     """is_git_commit 收窄：畸形 JSON 上抛进 P0-1a 全局兜底（旧=吞错放行）。"""
     code, err = _run(GUARD, "{bad json")

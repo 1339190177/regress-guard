@@ -9,10 +9,12 @@ allowed-tools: Bash, Read, Write
 
 ## 执行
 
-找到插件源目录（通常在当前工作区或已知路径），运行安装脚本：
+找到插件源目录（通常在当前工作区或已知路径），运行安装脚本。**批191 起安装器是
+Python（install.py），Windows 10+ 原生可用**；`.sh` 是 POSIX 薄委托等价入口。
 
 ```bash
-# 尝试找到 install.sh
+# 尝试找到 install.py（bash 块在 Windows 宿主的 Git Bash 下同可跑；
+# 纯 cmd/PowerShell 环境由 AI 等价翻译：dir 探测 + python install.py）
 PLUGIN_DIR=""
 
 # 常见位置
@@ -20,7 +22,7 @@ for candidate in \
     "${CLAUDE_PROJECT_DIR:-$(pwd)}/regress-guard" \
     "${HOME}/.zcode/workspace/default/regress-guard" \
     "$(pwd)/regress-guard"; do
-    if [ -f "${candidate}/install.sh" ]; then
+    if [ -f "${candidate}/install.py" ]; then
         PLUGIN_DIR="${candidate}"
         break
     fi
@@ -31,7 +33,7 @@ if [ -z "${PLUGIN_DIR}" ]; then
     exit 1
 fi
 
-bash "${PLUGIN_DIR}/install.sh"
+python3 "${PLUGIN_DIR}/install.py"
 ```
 
 ## 安装后
@@ -43,18 +45,16 @@ bash "${PLUGIN_DIR}/install.sh"
 
 现在可以在任意项目里用了。对 AI 说：
   /regress:init    ← 在项目中初始化回归工作流
-
-或者直接开始用——AI 会自动在需要时加载相关 skill。
 ```
 
 ## 如果已安装
 
-install.sh 是幂等的——重复运行只会更新，不会重复添加。所以直接跑就行。
+install.py 是幂等的——重复运行只会更新，不会重复添加。所以直接跑就行。
 
 ## 卸载
 
 用户想卸载时，运行：
 ```bash
-bash "${PLUGIN_DIR}/uninstall.sh"
+python3 "${PLUGIN_DIR}/uninstall.py"
 ```
 或对 AI 说 `/regress:uninstall`。

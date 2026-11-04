@@ -11,7 +11,54 @@
 错归属比无归属糟，垫片只补缺不覆盖（已有 env=宿主明示，尊重之）。
 """
 import os
+import sys
 import tempfile
+
+
+# ─── 批191（v2.8.0）：Windows 10+ 路径/编码垫片 ────────────────────
+
+def ensure_utf8_stdio() -> None:
+    """stdout/stderr 重配为 UTF-8（批191）。
+
+    中文 Windows 默认 cp936：GBK 编不了守卫输出的 emoji（21 处），
+    UnicodeEncodeError 不属 OSError 系——既有 except (IOError, OSError)
+    捕不住 → 钩子进程异常退出。errors="replace" 保证输出永不炸。
+    幂等无害；流不可重配（被测试替换/已关闭/非 TextIO）时静默跳过。
+    双保险另一层：launcher 给子进程注入 PYTHONUTF8=1（本函数覆盖
+    直调/测试路径）。"""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
+def is_root(p: str) -> bool:
+    """目录树根判定（批191）：dirname(p)==p 即根（空串不是任何根）。
+
+    POSIX "/"、Windows 盘符 "C:\\\\"、UNC "\\\\\\\\server\\\\share" 三态通用——
+    逐字串比较（p == "/"）在 Windows 上恒假。"""
+    return bool(p) and p == os.path.dirname(p)
+
+
+def normcase_abspath(p: str) -> str:
+    """绝对化 + 平台归一（批191）：Windows 上 normcase 折叠大小写与斜杠
+    （C:\\\\Foo ≡ c:/foo——env 给的盘符大小写与 realpath 实际大小写可能
+    不一致），POSIX 上恒等。供路径前缀比较统一入口。"""
+    return os.path.normcase(os.path.abspath(p))
+
+
+def path_within(child: str, parent: str) -> bool:
+    """child 是否在 parent 目录内（含相等）。
+
+    盘符大小写归一比较；parent 为根（"/"或"C:\\\\"）时任何绝对 child 都
+    在其内（根的前缀拼接 "C:\\\\" + os.sep 会得到幻影路径，须特判）。"""
+    c, p = normcase_abspath(child), normcase_abspath(parent)
+    if c == p:
+        return True
+    if p.endswith(os.sep):  # 根路径自带分隔符（POSIX "/"、盘符 "C:\\"）
+        return c.startswith(p)
+    return c.startswith(p + os.sep)
 
 
 def materialize_tool_input(payload):

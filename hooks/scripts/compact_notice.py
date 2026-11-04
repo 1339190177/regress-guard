@@ -6,10 +6,17 @@
 （v1.17 前指向 /handoff，已过时——第一入口是产物层单侧重建）。
 """
 import sys
+import os as _os
+_HERE = _os.path.dirname(_os.path.abspath(__file__))
+for _p in (_HERE, _os.path.join(_HERE, "lib")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+from host_env import ensure_utf8_stdio  # noqa: E402
 import json
 
 
 def main():
+    ensure_utf8_stdio()  # 批191：cp936 流垫片（emoji/中文输出根治）
     print(json.dumps({"additionalContext": (
         "【regress-guard 压缩警告】上下文刚被压缩——你的记忆是摘要不是原文：\n"
         "  • 断点续作优先 /regress:resume：从 .regress/ 产物层单侧重建现场"

@@ -15,10 +15,13 @@ try:
     if _ld not in _sys.path:
         _sys.path.insert(0, _ld)
     from host_env import sandbox_aware_state_dir as _state_dir
+    from host_env import ensure_utf8_stdio
 except ImportError:
     import tempfile as _tf
     def _state_dir():
         return _tf.gettempdir()
+    def ensure_utf8_stdio() -> None:
+        pass  # lib 缺席兜底：no-op（既有降级语义）
 import os
 import json
 import glob
@@ -150,7 +153,7 @@ def _auto_consult(question, ferry_body):
         tempfile.gettempdir(), f"regress-guard-lastconsult-{session}")
     now = time.time()
     try:
-        if now - float(open(cool_path).read().strip()) < AUTO_CONSULT_COOLDOWN_S:
+        if now - float(open(cool_path, encoding="utf-8").read().strip()) < AUTO_CONSULT_COOLDOWN_S:
             return None
     except (IOError, ValueError):
         pass
@@ -556,7 +559,7 @@ def check_context(project_dir):
                 tempfile.gettempdir(),
                 f"regress-guard-lastdecision-{session}-{kind}")
             try:
-                if time.time() - float(open(cool_p).read().strip()) < 1200:
+                if time.time() - float(open(cool_p, encoding="utf-8").read().strip()) < 1200:
                     continue  # 同类 20 分钟冷却，防唠叨
             except (IOError, ValueError):
                 pass
@@ -574,6 +577,7 @@ def _get_read_counter_path():
 
 
 def main():
+    ensure_utf8_stdio()  # 批191：cp936 流垫片（emoji/中文输出根治）
     raw = sys.stdin.read() if not sys.stdin.isatty() else ""
     if not raw:
         sys.exit(0)

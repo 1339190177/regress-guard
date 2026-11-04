@@ -19,6 +19,7 @@ import tempfile
 _LIB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib")
 if _LIB_DIR not in sys.path:
     sys.path.insert(0, _LIB_DIR)
+from host_env import ensure_utf8_stdio  # noqa: E402
 try:
     from journal import journal_append
 except ImportError:  # lib 缺失时地层降级关闭
@@ -73,10 +74,13 @@ def save_prompt(text):
     读空导致推送永远静默（2026-09-05 三报沉默根因），全局单文件最后写入者生效。
     v1.32.4：空文本也如实写入（推送决策已与文本解耦，空值让占位标题生效）。"""
     try:
-        with open(_state_path(), "w") as f:
+        # 批191：encoding="utf-8"——用户 prompt 原文（中文/emoji），cp936
+        # 默认编码下 UnicodeEncodeError 不属 OSError 系会穿透 except
+        with open(_state_path(), "w", encoding="utf-8") as f:
             f.write(text[:500])
         with open(os.path.join(tempfile.gettempdir(),
-                               "regress-guard-last-prompt.global.txt"), "w") as f:
+                               "regress-guard-last-prompt.global.txt"), "w",
+                  encoding="utf-8") as f:
             f.write(text[:500])
     except (IOError, OSError):
         pass
@@ -411,6 +415,7 @@ def _rule_recall_line(project_dir, prompt_text):
 
 
 def main():
+    ensure_utf8_stdio()  # 批191：cp936 流垫片（emoji/中文输出根治）
     raw = sys.stdin.read() if not sys.stdin.isatty() else ""
     if not raw:
         sys.exit(0)

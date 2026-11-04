@@ -70,8 +70,15 @@ function resultFailed(result) {
 	return /\[exit code: [1-9]\d*\]/.test(text) || text.trimStart().startsWith("Error:");
 }
 
-/** 进程内跑一个 guard 钩子：真实 fs 视图 + 正确 cwd/env，stdin=CC 形态 payload。 */
-function runGuardHook(scriptPath, hookArgs, payload, cwd, sessionId, timeoutMs) {
+/** Python 解释器候选（批191：Windows 无 python3——python.org 只装 python.exe/py.exe）。 */
+const PY_CANDIDATES = ["python3", "python", "py"];
+
+/** 进程内跑一个 guard 钩子：真实 fs 视图 + 正确 cwd/env，stdin=CC 形态 payload。
+ *
+ * 批191：解释器候选回退（python3→python→py）；-E 移除——env 本就是白名单式
+ * 最小集（无 PYTHON* 透传，投毒面为空），改注入 PYTHONUTF8=1 根治中文 Windows
+ * cp936 编码崩溃；SYSTEMROOT 补入（Windows 上 python.exe 缺它起不来）。 */
+function runGuardHook(scriptPath, hookArgs, payload, cwd, sessionId, timeoutMs, pyIdx = 0) {
 	return new Promise((resolve) => {
 		let settled = false;
 		const done = (code, stderr, stdout) => {
@@ -80,14 +87,20 @@ function runGuardHook(scriptPath, hookArgs, payload, cwd, sessionId, timeoutMs) 
 				resolve({ code: code ?? 0, stderr: stderr ?? "", stdout: stdout ?? "" });
 			}
 		};
+		if (pyIdx >= PY_CANDIDATES.length) {
+			done(0, `regress-guard(native): 找不到 Python 3（试过 ${PY_CANDIDATES.join("/")}，fail-open 适配层）`);
+			return;
+		}
 		try {
-			const child = spawn("python3", ["-E", scriptPath, ...hookArgs], {
+			const child = spawn(PY_CANDIDATES[pyIdx], [scriptPath, ...hookArgs], {
 				cwd,
 				env: {
 					PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
 					HOME: process.env.HOME ?? os.homedir(),
 					LANG: process.env.LANG ?? "C.UTF-8",
 					TZ: process.env.TZ,
+					SYSTEMROOT: process.env.SYSTEMROOT,
+					PYTHONUTF8: "1",
 					CLAUDE_PROJECT_DIR: cwd,
 					CLAUDE_SESSION_ID: sessionId
 				},
@@ -100,7 +113,14 @@ function runGuardHook(scriptPath, hookArgs, payload, cwd, sessionId, timeoutMs) 
 			child.stderr.on("data", (c) => { stderr = (stderr + c).slice(-4000); });
 			child.stdout.setEncoding("utf-8");
 			child.stdout.on("data", (c) => { stdout = (stdout + c).slice(-8192); });
-			child.on("error", () => done(0, "regress-guard(native): spawn python3 失败（fail-open 适配层）"));
+			child.on("error", (err) => {
+				if (err && err.code === "ENOENT" && pyIdx + 1 < PY_CANDIDATES.length) {
+					runGuardHook(scriptPath, hookArgs, payload, cwd, sessionId, timeoutMs, pyIdx + 1)
+						.then(resolve);
+				} else {
+					done(0, `regress-guard(native): spawn ${PY_CANDIDATES[pyIdx]} 失败（fail-open 适配层）`);
+				}
+			});
 			child.on("close", (code) => done(code, stderr, stdout));
 			child.stdin.write(JSON.stringify(payload));
 			child.stdin.end();

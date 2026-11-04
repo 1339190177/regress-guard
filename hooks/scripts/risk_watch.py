@@ -18,10 +18,13 @@ try:
     if _ld not in _sys.path:
         _sys.path.insert(0, _ld)
     from host_env import sandbox_aware_state_dir as _state_dir
+    from host_env import ensure_utf8_stdio
 except ImportError:
     import tempfile as _tf
     def _state_dir():
         return _tf.gettempdir()
+    def ensure_utf8_stdio() -> None:
+        pass  # lib 缺席兜底：no-op（既有降级语义）
 import os
 import json
 import re
@@ -174,6 +177,7 @@ def _manifest_event(tool, tool_input):
 
 
 def main():
+    ensure_utf8_stdio()  # 批191：cp936 流垫片（emoji/中文输出根治）
     raw = sys.stdin.read() if not sys.stdin.isatty() else ""
     if not raw:
         sys.exit(0)

@@ -22,7 +22,7 @@ def _feed(script, payload, project_dir, tmp_dir, extra_env=None):
            "TMPDIR": str(tmp_dir), "REGRESS_JOURNAL": "on"}
     env.update(extra_env or {})
     return subprocess.run(
-        ["python3", script], input=json.dumps(payload),
+        [sys.executable, script], input=json.dumps(payload),
         capture_output=True, text=True, env=env, timeout=10,
     )
 
@@ -334,7 +334,7 @@ def test_env_precedence_zcode_over_claude(tmp_path):
     env = {**os.environ, "ZCODE_PROJECT_DIR": str(proj),
            "CLAUDE_PROJECT_DIR": str(decoy),
            "TMPDIR": str(tmpdir), "REGRESS_JOURNAL": "on"}
-    subprocess.run(["python3", FAIL_WATCH],
+    subprocess.run([sys.executable, FAIL_WATCH],
                    input=json.dumps({"tool_name": "Bash",
                                      "tool_input": {"command": "npm test --json"}}),
                    capture_output=True, text=True, env=env, timeout=10)

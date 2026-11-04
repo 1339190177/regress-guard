@@ -1,4 +1,5 @@
 """boundary_guard（开发边界守卫）的单元测试。"""
+import sys
 import json
 import os
 import subprocess
@@ -48,7 +49,7 @@ def run_guard(proj, file_path, tool="Edit", extra_env=None):
     env["CLAUDE_PROJECT_DIR"] = str(proj)
     env.update(extra_env or {})
     return subprocess.run(
-        ["python3", GUARD],
+        [sys.executable, GUARD],
         input=json.dumps({"tool_name": tool, "tool_input": {"file_path": str(file_path)}}),
         capture_output=True, text=True, env=env, timeout=10,
     )
@@ -128,7 +129,7 @@ def test_config_disable(tmp_path):
 def test_non_edit_tools_pass(tmp_path):
     proj = make_project(tmp_path)
     r = subprocess.run(
-        ["python3", GUARD],
+        [sys.executable, GUARD],
         input=json.dumps({"tool_name": "Read", "tool_input": {"file_path": str(proj / "x.ts")}}),
         capture_output=True, text=True,
         env={**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}, timeout=10)
@@ -159,7 +160,7 @@ def test_planning_read_tools_not_affected(tmp_path):
     """Read 工具不经此守卫（计划阶段只读探索不受影响）。"""
     proj = make_project(tmp_path, status="planning")
     r = subprocess.run(
-        ["python3", GUARD],
+        [sys.executable, GUARD],
         input=json.dumps({"tool_name": "Read", "tool_input": {"file_path": str(proj / "src/auth/login.ts")}}),
         capture_output=True, text=True,
         env={**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}, timeout=10)
@@ -340,7 +341,7 @@ def run_bash_guard(proj, command):
     env.pop("ZCODE_PROJECT_DIR", None)
     env["CLAUDE_PROJECT_DIR"] = str(proj)
     return subprocess.run(
-        ["python3", GUARD],
+        [sys.executable, GUARD],
         input=json.dumps({"tool_name": "Bash", "tool_input": {"command": command}}),
         capture_output=True, text=True, env=env, timeout=10)
 
@@ -577,7 +578,8 @@ def test_write_targets_coreutils_install_kept():
 def test_memories_dir_exempt_from_project_forbidden():
     """批190（公网 issue#1②）：~/.zcode/cli/memories/** 是跨会话治理资产，
     项目 forbidden 含 ~/.zcode/** 罩配置面时不误伤记忆写入。"""
-    import sys, os
+    import sys
+    import os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
     import boundary_guard as bg
     mem = os.path.expanduser("~/.zcode/cli/memories")

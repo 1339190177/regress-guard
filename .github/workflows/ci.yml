@@ -24,12 +24,15 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 25 || 15 }}
     strategy:
       fail-fast: false
       matrix:
-        # 3.10=install.sh 契约下限，3.12=当前主流——两端各证一次
+        # 批191（v2.8.0）：加 Windows 腿——插件本体全面兼容 Windows 10+ 的
+        # CI 实证位（钩子链经 node launcher 路由，零 python3 直调依赖）。
+        os: [ubuntu-latest, windows-latest]
+        # 3.10=install.py 契约下限，3.12=当前主流——两端各证一次
         python-version: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4

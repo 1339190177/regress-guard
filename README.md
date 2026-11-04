@@ -50,7 +50,8 @@ toggled/upgraded natively.
 `github:1339190177/regress-guard` in ZCode settings, then install.
 
 **Dev track**: clone this repo (`git clone
-https://github.com/1339190177/regress-guard.git`), then `bash install.sh`
+https://github.com/1339190177/regress-guard.git`), then
+`python3 install.py` (Windows: `python install.py`; POSIX may also `bash install.sh`)
 (or tell the AI `/regress:install`). Use one track at a time.
 
 Requirements: ZCode client + Python 3.10+ (the installer checks and refuses
@@ -60,10 +61,15 @@ degrades to lock-free atomic write, v1.95.1). To run this repo's own test
 suite: `pip install -r requirements-dev.txt` (pytest / anyio / filelock /
 pyyaml / pytest-cov).
 
-**Supported environments** (declared, batch 164): Linux is the CI-verified
-platform (Python 3.10 & 3.12 matrix, `.github/workflows/ci.yml`). macOS is
-expected to work (only `fcntl`/`pwd` from stdlib are Unix-specific) but is
-not CI-verified. Windows is not supported (Unix hooks chain). Git tags
+**Supported environments** (batch 191): Linux and Windows 10+ are the
+CI-verified platforms (Python 3.10 & 3.12 × ubuntu/windows matrix,
+`.github/workflows/ci.yml`). Since v2.8.0 all hooks route through
+`node launcher.js` (zero `python3`-command dependency — Windows only ships
+`python.exe`/`py.exe`), the installer is native Python (`python install.py`),
+and stdio/file IO is UTF-8 hardened against cp936. Git for Windows is
+recommended (git is a hard prerequisite anyway; its bundled bash also serves
+manifest `verify` shell one-liners). macOS is expected to work (only
+`fcntl`/`pwd` from stdlib are Unix-specific) but is not CI-verified. Git tags
 (`v2.0.0`+ milestones, forward from `v2.1.0`) mark published releases.
 
 ### What your first interception looks like
@@ -133,7 +139,7 @@ MIT. Third-party: none at runtime (stdlib only).
 
 **实况（由 gen_reference.py 生成，勿手改本区）**
 
-- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：938 个
+- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：956 个
 
 | 命令 | 说明 |
 |---|---|
@@ -150,7 +156,7 @@ MIT. Third-party: none at runtime (stdlib only).
 | `/regress:stats` | 健康报表：门禁拦截/债务/规律命中/僵尸清单/钩子活性一屏读（观测期仪表盘，只读不改） |
 | `/regress:trace` | 查看交付链：需求→会话→事件→提交 的可追溯视图（文本版 Inspector） |
 | `/regress:track` | 对比 git diff 发现 F3 并直接回写（AI 完成修改后自动执行，不需用户手动触发） |
-| `/regress:uninstall` | 卸载 regress-guard（清理用户级配置 + hook + skill + 命令） |
+| `/regress:uninstall` | 卸载 regress-guard（清理用户级配置 + hook + 命令） |
 | `/regress:update` | 检查并更新 regress-guard 到最新版（手动触发；SessionStart 也会自动检测） |
 | `/regress:verify` | 跑测试预览结果（提交时 hook 也会自动跑；测试失败 AI 应自行修复重跑） |
 

@@ -99,7 +99,7 @@ def test_real_battery_integration(tmp_path):
     p = tmp_path / "proj"
     (p / ".regress").mkdir(parents=True)
     r = subprocess.run(
-        ["python3", os.path.join(SCRIPTS, "heldout_gate.py"),
+        [sys.executable, os.path.join(SCRIPTS, "heldout_gate.py"),
          "--project", str(p)],
         capture_output=True, text=True, timeout=180, cwd=SCRIPTS)
     assert r.returncode == 0, r.stderr

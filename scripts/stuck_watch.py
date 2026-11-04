@@ -25,8 +25,13 @@ import sys
 GUARD_ROOT = os.path.expanduser("~/.zcode/workspace/default/regress-guard")
 WORKSPACE = os.path.expanduser("~/.zcode/workspace/default")
 STATE = os.path.join(WORKSPACE, ".regress", "stuck-watch.json")
-DB = "file:" + os.path.expanduser(
-    "~/.dsh/state/superagent-tongtu/orchestrator.sqlite") + "?mode=ro"
+def _state_dirs():
+    """批192：glob 全部 superagent 实例（含未来新增）——含 orchestrator.sqlite 即一实例。"""
+    out = []
+    for d in sorted(glob.glob(os.path.expanduser("~/.dsh/state/superagent*"))):
+        if os.path.isfile(os.path.join(d, "orchestrator.sqlite")):
+            out.append(d)
+    return out
 SESSIONS = os.path.expanduser("~/.dsh/sessions")
 STALE_MIN = 20        # 转录静默阈值（分钟）
 QUEUE_STALL_H = 2     # 建单无派发阈值（小时）
@@ -36,7 +41,7 @@ REDEDUP_H = 2         # 同工单告警去重窗（小时）
 def _notify(title, body):
     try:
         subprocess.run(
-            ["python3", os.path.join(GUARD_ROOT, "lib", "notify.py"),
+            [sys.executable, os.path.join(GUARD_ROOT, "lib", "notify.py"),
              ".", "chat", "--title", title, "--body", body],
             cwd=WORKSPACE, capture_output=True, timeout=30)
     except Exception:
@@ -46,7 +51,7 @@ def _notify(title, body):
 def _journal(note):
     try:
         subprocess.run(
-            ["python3", os.path.join(GUARD_ROOT, "lib", "journal.py"),
+            [sys.executable, os.path.join(GUARD_ROOT, "lib", "journal.py"),
              WORKSPACE, "add", "ops_note",
              json.dumps({"note": note}, ensure_ascii=False)],
             capture_output=True, text=True, timeout=15)
@@ -93,12 +98,20 @@ def main():
     now_local = datetime.datetime.now()
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     st = _load()
-    db = sqlite3.connect(DB, uri=True)
-    rows = db.execute("SELECT id, value FROM ticket").fetchall()
+    tickets = []
+    for sd in _state_dirs():
+        try:
+            db = sqlite3.connect(
+                "file:" + os.path.join(sd, "orchestrator.sqlite") + "?mode=ro", uri=True)
+            for tid, raw in db.execute("SELECT id, value FROM ticket").fetchall():
+                tickets.append((tid, raw))
+            db.close()
+        except Exception:
+            continue  # 单库崩不拖全局
 
     running, findings, healthy = 0, [], []
     tickets = []
-    for tid, raw in rows:
+    for tid, raw in tickets:
         d = json.loads(raw)
         title = (d.get("title") or "")[:36]
         assigns = d.get("assignments") or []

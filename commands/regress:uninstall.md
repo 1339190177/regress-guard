@@ -1,5 +1,5 @@
 ---
-description: 卸载 regress-guard（清理用户级配置 + hook + skill + 命令）
+description: 卸载 regress-guard（清理用户级配置 + hook + 命令）
 allowed-tools: Bash
 ---
 
@@ -9,26 +9,26 @@ allowed-tools: Bash
 
 ## 执行
 
-找到卸载脚本并运行：
+找到卸载脚本并运行（**批191 起卸载器是 Python，Windows 10+ 原生可用**）：
 
 ```bash
-# 尝试找到 uninstall.sh
+# 尝试找到 uninstall.py
 for candidate in \
     "${HOME}/.zcode/workspace/default/regress-guard" \
     "${CLAUDE_PROJECT_DIR:-$(pwd)}/regress-guard"; do
-    if [ -f "${candidate}/uninstall.sh" ]; then
-        bash "${candidate}/uninstall.sh"
+    if [ -f "${candidate}/uninstall.py" ]; then
+        python3 "${candidate}/uninstall.py"
         exit 0
     fi
 done
-echo "找不到 uninstall.sh"
+echo "找不到 uninstall.py"
 ```
 
 ## 清理内容
 
 - 删除 `~/.zcode/commands/` 下的 16 个命令
 - 删除 `~/.zcode/regress-guard-hooks/` 目录
-- 从 `config.json` 移除 PreToolUse + SessionStart hook
+- 从 `config.json` 移除全部 regress-guard hook（统一过滤，零死钩子残留）
 - 从 `AGENTS.md` 移除回归契约块
 
 **安全**：不会删除用户的其他 skill/命令/配置。项目的 `.regress/` 保留。

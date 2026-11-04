@@ -80,7 +80,7 @@ def run_guard(proj, extra_env=None):
     inp = json.dumps({"tool_name": "Bash",
                       "tool_input": {"command": "git commit -m 改动（001）"}})
     proc = subprocess.run(
-        ["python3", GUARD], input=inp, capture_output=True, text=True,
+        [sys.executable, GUARD], input=inp, capture_output=True, text=True,
         env=env, timeout=30,
     )
     return proc.returncode, proc.stderr

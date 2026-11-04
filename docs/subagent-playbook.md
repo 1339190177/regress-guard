@@ -49,7 +49,7 @@ Edit 的 old_string 必须逐字符匹配（含缩进）。不中时禁止基于
 仍可能骗过你的眼睛，理解原理依然有用。
 
 ### #5 门禁跑的是已装副本：install.sh 先于门禁
-门禁钩子从安装位（~/.zcode/...）执行，不是从工作树。改了代码不 `bash install.sh`
+门禁钩子从安装位（~/.zcode/...）执行，不是从工作树。改了代码不 `python3 install.py`（安装位刷新）
 就 commit = 门禁拿旧代码验证新提交。纪律：全量绿 → install.sh → add → commit。
 标本：058 鸡生蛋问题（timeout 钮修完门禁还是旧值）。
 

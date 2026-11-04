@@ -26,6 +26,9 @@ ignore = ["E402"]
 # facts.py 内嵌 SKILL.md frontmatter 模板串：212 字符的 description 行是
 # 生成物内容本身，折行=改产物（YAML 语义变化）——长行是内容约束，豁免。
 "hooks/scripts/lib/facts.py" = ["E501"]
+# install.py（批191）：AGENTS.md 契约块逐字移植自 install.sh 时代的注入
+# 文本——13 条契约有长度冻结（v1.20），折行=改产物（注入内容漂移）。
+"install.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.10"

@@ -90,7 +90,7 @@ def run_guard(mode, tool_name, file_path, session_id=None, project_dir=None):
         env["CLAUDE_PROJECT_DIR"] = project_dir
     inp = json.dumps({"tool_name": tool_name, "tool_input": {"file_path": file_path}})
     proc = subprocess.run(
-        ["python3", GUARD, mode],
+        [sys.executable, GUARD, mode],
         input=inp, capture_output=True, text=True, env=env, timeout=10
     )
     return proc.returncode, proc.stderr
@@ -105,7 +105,7 @@ def run_full(mode, tool_name, tool_input, session_id=None,
         env["CLAUDE_PROJECT_DIR"] = project_dir
     inp = json.dumps({"tool_name": tool_name, "tool_input": tool_input})
     proc = subprocess.run(
-        ["python3", GUARD, mode],
+        [sys.executable, GUARD, mode],
         input=inp, capture_output=True, text=True, env=env, timeout=10
     )
     return proc.returncode, proc.stderr
@@ -477,7 +477,7 @@ def test_concurrent_same_session_no_lost_update():
     env = dict(os.environ)
     env["CLAUDE_SESSION_ID"] = sid
     procs = [subprocess.Popen(
-        ["python3", GUARD, "post"],
+        [sys.executable, GUARD, "post"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, text=True, env=env) for _ in files]
     for p, fp in zip(procs, files):

@@ -69,11 +69,11 @@ def generate_hooks_cc(root=None):
     root = root or _installed_root()
     text = _hooks_cc_source()
     # 两处方言替换：①变量 ZCODE→CLAUDE（桥契约）；②布局源仓→已装摊平
-    # （install.sh 把 hooks/scripts/* 拷到已装根——hooks/scripts/ 前缀须剥，
+    # （install.py 把 hooks/scripts/* 拷到已装根——hooks/scripts/ 前缀须剥，
     # 否则钩子进程找不到文件、桥静默含错放行=批166 e2e 活体标本）。
-    # 特例：self_heal.py 被 install.sh 搬进 lib/（注册位在 lib/，:98）
-    text = text.replace("${ZCODE_PLUGIN_ROOT}/hooks/scripts/self_heal.py",
-                        "${CLAUDE_PLUGIN_ROOT}/lib/self_heal.py")
+    # 批191 起命令全走 node launcher.js <script>——self_heal.py 之类脚本名
+    # 是 launcher 参数而非路径，摊平布局的 lib/ 落位由 launcher 的布局自愈
+    # 回退解析（__dirname/<s> 不存在则 __dirname/lib/<s>），此处无需特例。
     text = text.replace("${ZCODE_PLUGIN_ROOT}/hooks/scripts/",
                         "${CLAUDE_PLUGIN_ROOT}/")
     text = text.replace("${ZCODE_PLUGIN_ROOT}", "${CLAUDE_PLUGIN_ROOT}")

@@ -121,7 +121,7 @@ def _sh(script, command, project, argv=None, env_extra=None, payload=None,
                           "tool_input": {k: v for k, v in ti.items()
                                          if not k.startswith("_")}})
     proc = subprocess.run(
-        ["python3", script] + (argv or []), input=inp, capture_output=True,
+        [sys.executable, script] + (argv or []), input=inp, capture_output=True,
         text=True, env=env, cwd=str(project), timeout=30)
     return proc.returncode, proc.stderr
 
