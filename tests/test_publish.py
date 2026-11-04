@@ -89,7 +89,8 @@ def test_cli_dry_run_no_network(tmp_path):
         [sys.executable, SCRIPT, "--dry-run", "-m", "中文试发布（001）"],
         cwd=str(p), capture_output=True, text=True, encoding="utf-8", errors="replace",
         env={"PATH": os.environ["PATH"],
-             "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""), "HOME": str(p)}, timeout=60)
+             "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+             "PYTHONUTF8": "1", "HOME": str(p)}, timeout=60)
     assert r.returncode == 0, r.stderr
     assert "[dry-run]" in r.stdout and "未发布" in r.stdout
 
@@ -150,7 +151,8 @@ def test_mirror_default_takes_state(tmp_path, monkeypatch):
     r = subprocess.run([sys.executable, SCRIPT, "--dry-run"],
                        cwd=str(p), capture_output=True, text=True, encoding="utf-8", errors="replace",
                        env={"PATH": os.environ["PATH"],
-             "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""), "HOME": str(tmp_path)},
+             "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+             "PYTHONUTF8": "1", "HOME": str(tmp_path)},
                        timeout=60)
     assert r.returncode == 0, r.stderr
     assert "自动取状态" in r.stdout and "（002）" in r.stdout
@@ -165,7 +167,8 @@ def test_no_state_no_rev_teaches(tmp_path):
     r = subprocess.run([sys.executable, SCRIPT, "--dry-run"],
                        cwd=str(p), capture_output=True, text=True, encoding="utf-8", errors="replace",
                        env={"PATH": os.environ["PATH"],
-             "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""), "HOME": str(tmp_path)},
+             "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+             "PYTHONUTF8": "1", "HOME": str(tmp_path)},
                        timeout=60)
     assert r.returncode == 2 and "不空猜" in r.stderr
 
@@ -270,6 +273,7 @@ def test_cli_dry_run_shows_tag_plan(tmp_path):
         [sys.executable, SCRIPT, "--dry-run", "-m", "中文试发布（001）"],
         cwd=str(p), capture_output=True, text=True, encoding="utf-8", errors="replace",
         env={"PATH": os.environ["PATH"],
-             "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""), "HOME": str(p)}, timeout=60)
+             "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+             "PYTHONUTF8": "1", "HOME": str(p)}, timeout=60)
     assert r.returncode == 0, r.stderr
     assert "tag 计划" in r.stdout

@@ -327,7 +327,8 @@ def test_content_integrity_selfheal_lib_mapping(tmp_path, monkeypatch):
     mod, src_root, hook_home = _mk_integrity_env(tmp_path, monkeypatch)
     (hook_home / "lib" / "self_heal.py").write_text("x = 999\n", encoding="utf-8")
     drift = mod.verify_content_integrity(str(src_root))
-    assert any(d[1].endswith("lib/self_heal.py") for d in drift)
+    assert any(d[1].endswith(("lib/self_heal.py", "lib\\self_heal.py"))
+               for d in drift)
 
 
 # ─── 批142：降级残留可见性（h3 标本——ratio=0 挂 25 天无人知） ──

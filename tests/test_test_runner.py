@@ -291,7 +291,8 @@ def test_detect_vitest_output_file(tmp_path):
     runner, cmd = detect_runner(str(tmp_path))
     assert runner == "vitest"
     # v1.96.0（125）：绝对路径（锚定 project 的 .regress，防嵌套布局错位）
-    assert (f"--outputFile={tmp_path}/.regress/.vitest-result.json" in cmd)
+    assert ("--outputFile=" + os.path.join(str(tmp_path), ".regress",
+                                            ".vitest-result.json")) in cmd
 
 
 # ─── v1.96.0（125）：junitxml 机读面 ───

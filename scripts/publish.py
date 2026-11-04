@@ -238,6 +238,13 @@ def publish(msg, dry=False, token_file="~/.dsh/.credentials.yaml"):
 
 
 def main():
+    # 批201（Windows）：CLI 直调时 stdout/stderr 默认 cp1252——print 中文
+    # 即 UnicodeEncodeError。与钩子入口 ensure_utf8_stdio 同语义。
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
     ap = argparse.ArgumentParser(
         description="regress-guard 公网发布（Git Data API 全树替换）")
     ap.add_argument("-m", "--message", default="",
