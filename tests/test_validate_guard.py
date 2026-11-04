@@ -2,12 +2,18 @@
 import glob
 import json
 import os
+import sys
+
+import pytest
 import subprocess
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 TRAP = os.path.join(ROOT, "hooks", "scripts", "_zz_trap_guardtest.py")
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="validate.sh 架构守卫是 POSIX 工具链件（validate.sh 为 Bash，"
+                           "Linux CI 为硬执法位）")
 def test_architecture_guard_detects_planted_violation():
     """种一个 lib 之外的块解析正则 → validate 的 grep 必须检出（finally 清理防留 trap）。"""
     try:
