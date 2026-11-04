@@ -3,6 +3,9 @@ import json
 import os
 import subprocess
 import sys
+
+import pytest
+
 from conftest import make_exec_stub  # 批191：跨平台 stub
 
 LIB = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "lib"))
@@ -69,6 +72,8 @@ def test_channel_runs_with_quoted_placeholders(tmp_path):
     assert "待批准 REGRESS-1" in out and "改动 3 文件" in out
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="时间缀在 body 换行后，cmd.exe 通道 stub 无法透传含换行的参数（POSIX 语义）")
 def test_project_name_prefix_and_time_suffix(tmp_path):
     """v1.31.2 格式统一：标题带【项目名】（cfg.name 优先于目录名），正文缀 🕐 时间。"""
     import re as _re
@@ -584,6 +589,8 @@ def test_api_base_pinned(tmp_path, monkeypatch, capsys):
 
 # ─── v1.85.4 机器配置路径半收口（079）─────────────────
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="pwd 模块 POSIX 独占（notify 生产代码已有兜底，此处测的是注入语义本身)")
 def test_machine_conf_path_home_injection_neutralized(tmp_path, monkeypatch):
     """攻击回放（v1.68 同族）：注入 HOME 指向 /tmp/pwn，默认路径仍 passwd 派生。"""
     nt = _load()

@@ -363,8 +363,10 @@ def run_battery(scenarios=SCENARIOS, verbose=True):
                            or s["expect_none"] not in err))
                 outcomes[s["id"]] = "pass" if ok else "fail"
             except Exception as e:  # 束故障≠退化：记 fail 但调用方按 5 处理
-                # 批196：带上消息——windows 首跑 TypeError 仅凭类型名定位不了
-                outcomes[s["id"]] = f"error:{type(e).__name__}:{str(e)[:120]}"
+                # 批196/197：带消息+栈尾——windows 的 TypeError 静态定位不了
+                import traceback as _tb
+                outcomes[s["id"]] = (f"error:{type(e).__name__}:{str(e)[:80]}"
+                                     f"@{_tb.format_exc().strip().splitlines()[-1][:90]}")
             if verbose:
                 print(f"  {outcomes[s['id']]:>5}  {s['id']}", file=sys.stderr)
     return outcomes

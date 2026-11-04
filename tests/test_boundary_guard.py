@@ -578,8 +578,8 @@ def test_write_targets_coreutils_install_kept():
     """反向钉（批165 FP1 防过宽）：coreutils install 的目标文件仍被捕。"""
     m = _bg()
     ts = m.extract_write_targets("install -m 755 src/server dst/bin", "/proj")
-    # 批196：extract 返回 os.sep 原生形态（后续 fp_rel 才归一 /）；平台各自钉
-    assert ts == ["/proj" + os.sep + "dst" + os.sep + "bin"]
+    # 批196/197：extract 返回 os.path.join 原生形态（Windows 内段保留 /）
+    assert ts == [os.path.join("/proj", "dst/bin")]
 
 
 def test_memories_dir_exempt_from_project_forbidden():

@@ -43,7 +43,7 @@ def test_catastrophic_patterns_block():
 def test_benign_commands_pass():
     for cmd in ["npm test", "git push origin main", "chmod 644 a.txt",
                 "truncate this word", "rm -f single.txt",
-                "rm -rf node_modules", f"rm -rf {tempfile.gettempdir()}/build-cache",
+                "rm -rf node_modules", f"rm -rf {os.path.realpath(tempfile.gettempdir())}/build-cache",
                 f"rm -rf {PROJ}/tests"]:
         assert not evaluate(cmd, PROJ), f"不应阻断: {cmd}"
 
