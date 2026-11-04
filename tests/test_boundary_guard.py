@@ -122,7 +122,7 @@ def test_no_regress_dir_passes(tmp_path):
 
 def test_config_disable(tmp_path):
     proj = make_project(tmp_path)
-    (proj / ".regress" / "config.json").write_text('{"boundary_enforced": false}')
+    (proj / ".regress" / "config.json").write_text('{"boundary_enforced": false}', encoding="utf-8")
     assert run_guard(proj, proj / "src/other/db.ts").returncode == 0
 
 
@@ -172,7 +172,7 @@ def test_approval_flips_to_allow(tmp_path):
     proj = make_project(tmp_path, status="planning")
     assert run_guard(proj, proj / "src/auth/login.ts").returncode == 2
     mf = proj / ".regress" / "manifests" / "R1.md"
-    mf.write_text(mf.read_text().replace("status: planning", "status: in-progress"))
+    mf.write_text(mf.read_text().replace("status: planning", "status: in-progress"), encoding="utf-8")
     assert run_guard(proj, proj / "src/auth/login.ts").returncode == 0
 
 
@@ -233,7 +233,7 @@ def test_blocked_blocks_inside_boundary_with_reason(tmp_path):
 def test_unblocked_allows_again(tmp_path):
     proj = make_project(tmp_path, status="blocked")
     mf = proj / ".regress" / "manifests" / "R1.md"
-    mf.write_text(mf.read_text().replace("status: blocked", "status: in-progress"))
+    mf.write_text(mf.read_text().replace("status: blocked", "status: in-progress"), encoding="utf-8")
     assert run_guard(proj, proj / "src/auth/login.ts").returncode == 0
 
 
@@ -319,7 +319,7 @@ def test_done_manifest_body_status_quote_passes(tmp_path):
     不得诈尸回 active——旧实现 ACTIVE_STATUS_RE.search(全文) 会中招，导致神秘禁编。"""
     proj = make_project(tmp_path, status="done")
     mf = proj / ".regress" / "manifests" / "R1.md"
-    mf.write_text(mf.read_text() + "\n> 复盘备注：当时卡在 status: in-progress 的误判上\n")
+    mf.write_text(mf.read_text() + "\n> 复盘备注：当时卡在 status: in-progress 的误判上\n", encoding="utf-8")
     r = run_guard(proj, proj / "src" / "auth" / "login.ts")
     assert r.returncode == 0, f"done 清单被正文引用诈尸: {r.stdout}"
 
@@ -328,7 +328,7 @@ def test_long_body_manifest_still_detected(tmp_path):
     """对照：正文极长的真活跃清单仍被识别（head 读只截正文，不吞 frontmatter）。"""
     proj = make_project(tmp_path, status="in-progress")
     mf = proj / ".regress" / "manifests" / "R1.md"
-    mf.write_text(mf.read_text() + ("填充行\n" * 800))
+    mf.write_text(mf.read_text() + ("填充行\n" * 800), encoding="utf-8")
     r = run_guard(proj, proj / "src" / "other" / "x.ts")
     assert r.returncode == 2
 

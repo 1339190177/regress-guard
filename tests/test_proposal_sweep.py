@@ -40,8 +40,12 @@ def test_seq_extraction_and_coverage():
     assert ps.already_covered(titles, ("ledger 设备台账", "B2", "", "", "✅")) is None
 
 
-def test_draft_shape_no_angle_brackets():
+def test_draft_shape_no_angle_brackets(monkeypatch):
+    # 批193：agent 名源自 _agent_login（读本机评审注册表，CI 无此文件落
+    # 兜底值）——钉字面量=机器依赖测试（本机/CI 两头各挂一头）；patch
+    # 固定值封闭化，注册表路径与兜底行为另由 _agent_login 单测钉
+    monkeypatch.setattr(ps, "_agent_login", lambda: "fixture-agent")
     t, b = ps.draft_issue(("ledger 设备台账", "B2", "已有列表", "标段挂载+双视图", "✅ 执行序 14（1.6）"))
     assert t.startswith("[proposal][feat][dap·ledger][P0]")
     assert "<" not in t + b and ">" not in t + b
-    assert "@yelisheng-agent 开工" in b and "机器可对账" in b
+    assert "@fixture-agent 开工" in b and "机器可对账" in b

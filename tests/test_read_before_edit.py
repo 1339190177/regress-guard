@@ -166,7 +166,7 @@ def test_ratio_zero_disables(tmp_path):
     cleanup()
     rdir = tmp_path / ".regress"
     rdir.mkdir()
-    (rdir / "config.json").write_text('{"read_before_edit_ratio": 0}')
+    (rdir / "config.json").write_text('{"read_before_edit_ratio": 0}', encoding="utf-8")
     code, _ = run_guard("pre", "Edit", "src/app.js",
                         project_dir=str(tmp_path),
                         session_id="test-ratio0")
@@ -253,7 +253,7 @@ def test_fingerprint_blocks_external_change(tmp_path):
     """读后被外部修改（另一会话/git/格式化）→ 禁止盲改。"""
     cleanup()
     f = tmp_path / "app.js"
-    f.write_text("let a = 1\n")
+    f.write_text("let a = 1\n", encoding="utf-8")
     fp = str(f)
     run_guard("post", "Read", fp)          # 采集指纹
     _bump_mtime_ns(fp)                      # 模拟外部修改
@@ -267,7 +267,7 @@ def test_fingerprint_reread_restores(tmp_path):
     """被拦后重新 Read（刷新指纹）→ 放行。"""
     cleanup()
     f = tmp_path / "app.js"
-    f.write_text("let a = 1\n")
+    f.write_text("let a = 1\n", encoding="utf-8")
     fp = str(f)
     run_guard("post", "Read", fp)
     _bump_mtime_ns(fp)
@@ -281,7 +281,7 @@ def test_fingerprint_unchanged_allows(tmp_path):
     """读后没动过 → 指纹一致 → 放行。"""
     cleanup()
     f = tmp_path / "app.js"
-    f.write_text("let a = 1\n")
+    f.write_text("let a = 1\n", encoding="utf-8")
     fp = str(f)
     run_guard("post", "Read", fp)
     assert run_guard("pre", "Edit", fp)[0] == 0
@@ -292,11 +292,11 @@ def test_self_edit_suspends_fingerprint(tmp_path):
     """自己改完再改（未重读）→ 哨兵挂起校验，不误拦。"""
     cleanup()
     f = tmp_path / "app.js"
-    f.write_text("let a = 1\n")
+    f.write_text("let a = 1\n", encoding="utf-8")
     fp = str(f)
     run_guard("post", "Read", fp)
     run_guard("pre", "Edit", fp)           # 自己改 → sentinel
-    f.write_text("let a = 2\n")            # 内容变了（mtime 变）
+    f.write_text("let a = 2\n", encoding="utf-8")            # 内容变了（mtime 变）
     # 未重读但已在本会话 read_files 里 → 豁免路径 + sentinel 挂起 → 放行
     assert run_guard("pre", "Edit", fp)[0] == 0
     cleanup()
@@ -314,12 +314,12 @@ def test_exempt_path_edit_then_edit_not_blocked(tmp_path):
     d = tmp_path / ".regress" / "manifests"
     d.mkdir(parents=True)
     f = d / "REGRESS-X.md"
-    f.write_text("body v1\n")
+    f.write_text("body v1\n", encoding="utf-8")
     fp = str(f)
     run_guard("post", "Read", fp)
     # Edit#1：pre 放行 → 宿主写入（内容+mtime 变）→ post 补戳（完整宿主序列）
     assert run_guard("pre", "Edit", fp)[0] == 0
-    f.write_text("body v2\n")
+    f.write_text("body v2\n", encoding="utf-8")
     _bump_mtime_ns(fp)
     run_guard("post", "Edit", fp)
     # Edit#2：修前此处 exit=2（指纹不匹配）；修后放行
@@ -334,11 +334,11 @@ def test_exempt_path_pre_stamp_alone_suffices(tmp_path):
     d = tmp_path / ".regress"
     d.mkdir()
     f = d / "decisions.md"
-    f.write_text("a\n")
+    f.write_text("a\n", encoding="utf-8")
     fp = str(f)
     run_guard("post", "Read", fp)
     assert run_guard("pre", "Edit", fp)[0] == 0   # 豁免放行（此时盖 SELF_EDITED）
-    f.write_text("a\nb\n")
+    f.write_text("a\nb\n", encoding="utf-8")
     _bump_mtime_ns(fp)                              # post 钩子未发生（单保险）
     assert run_guard("pre", "Edit", fp)[0] == 0   # SELF_EDITED 挂起 → 放行
     cleanup()
@@ -348,10 +348,10 @@ def test_post_edit_stamps_actual_fingerprint(tmp_path):
     """116 B 层：post(Edit) 记写后实况——state 指纹=新内容指纹，Edit 放行。"""
     cleanup()
     f = tmp_path / "app.js"
-    f.write_text("let a = 1\n")
+    f.write_text("let a = 1\n", encoding="utf-8")
     fp = str(f)
     run_guard("post", "Read", fp)          # 旧指纹
-    f.write_text("let a = 2\n")            # 写后实况
+    f.write_text("let a = 2\n", encoding="utf-8")            # 写后实况
     _bump_mtime_ns(fp)
     run_full("post", "Edit", {"file_path": fp, "old_string": "1",
                               "new_string": "2"})
@@ -369,15 +369,15 @@ def test_post_stamp_then_external_change_still_blocks(tmp_path):
     """116 牙齿保留：post 补戳后文件又被第三方改 → 下一次 Edit 仍拦。"""
     cleanup()
     f = tmp_path / "app.js"
-    f.write_text("let a = 1\n")
+    f.write_text("let a = 1\n", encoding="utf-8")
     fp = str(f)
     run_guard("post", "Read", fp)
-    f.write_text("let a = 2\n")
+    f.write_text("let a = 2\n", encoding="utf-8")
     _bump_mtime_ns(fp)
     run_full("post", "Edit", {"file_path": fp, "old_string": "1",
                               "new_string": "2"})   # 补写后实况
     _bump_mtime_ns(fp)                                # 第三方又改
-    f.write_text("let a = 3\n")
+    f.write_text("let a = 3\n", encoding="utf-8")
     assert run_guard("pre", "Edit", fp)[0] == 2, "post 补戳后外部改应仍拦"
     cleanup()
 
@@ -399,10 +399,10 @@ def test_bash_stamp_prevents_false_external(tmp_path):
     实况指纹 → Edit 不再误报"外部修改"。"""
     cleanup("test-bashstamp")
     f = tmp_path / "src_app.js"
-    f.write_text("a = 1\n")
+    f.write_text("a = 1\n", encoding="utf-8")
     fp = str(f)
     run_guard("post", "Read", fp, session_id="test-bashstamp")
-    f.write_text("a = 2\n")  # 模拟本会话 Bash 改写（无补戳时=外部修改假象）
+    f.write_text("a = 2\n", encoding="utf-8")  # 模拟本会话 Bash 改写（无补戳时=外部修改假象）
     code, _ = run_full("post", "Bash", {"command": f"echo x > {fp}"},
                        session_id="test-bashstamp")
     assert code == 0
@@ -415,7 +415,7 @@ def test_bash_stamp_detects_post_change(tmp_path):
     """补戳=写后实况指纹（非盲豁免）：补戳后文件再被改 → Edit 仍拦。"""
     cleanup("test-bashstamp2")
     f = tmp_path / "src_app.js"
-    f.write_text("a = 1\n")
+    f.write_text("a = 1\n", encoding="utf-8")
     fp = str(f)
     run_full("post", "Bash", {"command": f"echo x > {fp}"},
              session_id="test-bashstamp2")

@@ -55,7 +55,7 @@ def _run_block(tmp_path, hook_body=None):
     (tmp_path / ".regress").mkdir()
     if hook_body is not None:
         (tmp_path / ".git" / "hooks").mkdir(parents=True)
-        (tmp_path / ".git" / "hooks" / "post-commit").write_text(hook_body)
+        (tmp_path / ".git" / "hooks" / "post-commit").write_text(hook_body, encoding="utf-8")
     subprocess.run(["git", "init", "-q", "."], cwd=tmp_path,
                    check=True, timeout=30)
     # git init 可能生成样例钩子（非默认；样例带 .sample 后缀不算已存在）

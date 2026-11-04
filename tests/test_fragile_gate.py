@@ -56,17 +56,17 @@ def make_project(tmp_path, fps_yaml, strict=True, stage_journal=False):
     subprocess.run(["git", "init", "-q"], cwd=proj, check=True, timeout=10)
     rdir = proj / ".regress"
     (rdir / "manifests").mkdir(parents=True)
-    (rdir / "config.json").write_text(json.dumps({"strict": strict}))
+    (rdir / "config.json").write_text(json.dumps({"strict": strict}), encoding="utf-8")
     (rdir / "manifests" / "REGRESS-2026-001.md").write_text(
         MANIFEST_TMPL.format(fps=fps_yaml))
     src = proj / "src"
     src.mkdir()
-    (src / "app.js").write_text("console.log(1)\n")
+    (src / "app.js").write_text("console.log(1)\n", encoding="utf-8")
     subprocess.run(["git", "add", "src/app.js"], cwd=proj, check=True, timeout=10)
     if stage_journal:
         jdir = rdir / "journal"
         jdir.mkdir()
-        (jdir / "events.jsonl").write_text('{"kind":"tool_fail","sig":"x"}\n')
+        (jdir / "events.jsonl").write_text('{"kind":"tool_fail","sig":"x"}\n', encoding="utf-8")
         subprocess.run(["git", "add", ".regress/journal/events.jsonl"],
                        cwd=proj, check=True, timeout=10)
     return proj

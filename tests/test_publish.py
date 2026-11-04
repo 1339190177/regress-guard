@@ -53,10 +53,10 @@ def test_mirror_since_joins_subjects(tmp_path):
     for a in (["git", "init", "-q"], ["git", "config", "user.email", "t@t"],
               ["git", "config", "user.name", "t"]):
         subprocess.run(a, cwd=str(p), check=True)
-    (p / "a.txt").write_text("1\n")
+    (p / "a.txt").write_text("1\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=str(p), check=True)
     subprocess.run(["git", "commit", "-qm", "中文首批（001）"], cwd=str(p), check=True)
-    (p / "a.txt").write_text("2\n")
+    (p / "a.txt").write_text("2\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=str(p), check=True)
     base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(p),
                           capture_output=True, text=True, check=True).stdout.strip()
@@ -82,7 +82,7 @@ def test_cli_dry_run_no_network(tmp_path):
     for a in (["git", "init", "-q"], ["git", "config", "user.email", "t@t"],
               ["git", "config", "user.name", "t"]):
         subprocess.run(a, cwd=str(p), check=True)
-    (p / "a.txt").write_text("1\n")
+    (p / "a.txt").write_text("1\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=str(p), check=True)
     subprocess.run(["git", "commit", "-qm", "中文（001）"], cwd=str(p), check=True)
     r = subprocess.run(
@@ -134,12 +134,12 @@ def test_mirror_default_takes_state(tmp_path, monkeypatch):
     for a in (["git", "init", "-q"], ["git", "config", "user.email", "t@t"],
               ["git", "config", "user.name", "t"]):
         subprocess.run(a, cwd=str(p), check=True)
-    (p / "a.txt").write_text("1\n")
+    (p / "a.txt").write_text("1\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=str(p), check=True)
     subprocess.run(["git", "commit", "-qm", "中文首批（001）"], cwd=str(p), check=True)
     base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(p),
                           capture_output=True, text=True, check=True).stdout.strip()
-    (p / "a.txt").write_text("2\n")
+    (p / "a.txt").write_text("2\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=str(p), check=True)
     subprocess.run(["git", "commit", "-qm", "中文二批（002）"], cwd=str(p), check=True)
     import json as _json
@@ -180,7 +180,7 @@ def _mini_repo(p):
     for a in (["git", "init", "-q"], ["git", "config", "user.email", "t@t"],
               ["git", "config", "user.name", "t"]):
         subprocess.run(a, cwd=str(p), check=True)
-    (p / "a.txt").write_text("1\n")
+    (p / "a.txt").write_text("1\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=str(p), check=True)
     subprocess.run(["git", "commit", "-qm", "中文首批（001）"], cwd=str(p),
                    check=True)

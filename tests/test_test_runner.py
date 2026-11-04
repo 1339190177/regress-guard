@@ -36,26 +36,26 @@ def test_detect_vitest(tmp_path):
 
 
 def test_detect_pytest(tmp_path):
-    (tmp_path / "pytest.ini").write_text("[pytest]")
+    (tmp_path / "pytest.ini").write_text("[pytest]", encoding="utf-8")
     runner, cmd = detect_runner(str(tmp_path))
     assert runner == "pytest"
     assert "pytest" in cmd
 
 
 def test_detect_pytest_conftest(tmp_path):
-    (tmp_path / "conftest.py").write_text("")
+    (tmp_path / "conftest.py").write_text("", encoding="utf-8")
     runner, _ = detect_runner(str(tmp_path))
     assert runner == "pytest"
 
 
 def test_detect_maven(tmp_path):
-    (tmp_path / "pom.xml").write_text("<project></project>")
+    (tmp_path / "pom.xml").write_text("<project></project>", encoding="utf-8")
     runner, _ = detect_runner(str(tmp_path))
     assert runner == "maven"
 
 
 def test_detect_go(tmp_path):
-    (tmp_path / "go.mod").write_text("module test")
+    (tmp_path / "go.mod").write_text("module test", encoding="utf-8")
     runner, _ = detect_runner(str(tmp_path))
     assert runner == "go"
 
@@ -69,7 +69,7 @@ def test_detect_none(tmp_path):
 
 def test_detect_broken_package_json(tmp_path):
     """package.json 损坏 → 跳过 Node.js 探测，不崩溃。"""
-    (tmp_path / "package.json").write_text("not json")
+    (tmp_path / "package.json").write_text("not json", encoding="utf-8")
     runner, _ = detect_runner(str(tmp_path))
     # 损坏的 package.json 不应导致崩溃
     assert runner is None
@@ -179,9 +179,9 @@ def test_detect_nested_subrepo(tmp_path):
     sub = root / "regress-guard"
     (root / ".regress").mkdir(parents=True)
     sub.mkdir(parents=True)
-    (sub / "pytest.ini").write_text("[pytest]\n")
+    (sub / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
     (sub / "tests").mkdir()
-    (sub / "tests" / "test_x.py").write_text("def test_x(): pass\n")
+    (sub / "tests" / "test_x.py").write_text("def test_x(): pass\n", encoding="utf-8")
     runner, cmd, cwd = _detect(str(root))
     assert runner == "pytest"
     assert cwd == str(sub)
@@ -194,8 +194,8 @@ def test_detect_skips_dependency_dirs(tmp_path):
     (root / ".regress").mkdir(parents=True)
     vend = root / "vendor-sample"
     vend.mkdir()
-    (vend / "pytest.ini").write_text("[pytest]\n")  # 只有 marker，无测试文件
-    (vend / "raw.py").write_text("x = 1\n")
+    (vend / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")  # 只有 marker，无测试文件
+    (vend / "raw.py").write_text("x = 1\n", encoding="utf-8")
     runner, cmd, cwd = _detect(str(root))
     assert runner is None
 

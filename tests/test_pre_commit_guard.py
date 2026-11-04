@@ -44,13 +44,13 @@ def project(tmp_path):
     sp.run(["git", "config", "user.email", "t@t.com"], cwd=str(p), check=True)
     sp.run(["git", "config", "user.name", "t"], cwd=str(p), check=True)
     (p / "src").mkdir()
-    (p / "src" / "app.js").write_text("x = 1\n")
+    (p / "src" / "app.js").write_text("x = 1\n", encoding="utf-8")
     sp.run(["git", "add", "-A"], cwd=str(p), check=True)
     sp.run(["git", "commit", "-q", "-m", "init"], cwd=str(p), check=True)
 
     rg = p / ".regress"
     (rg / "manifests").mkdir(parents=True)
-    (rg / "config.json").write_text('{"strict": true}')
+    (rg / "config.json").write_text('{"strict": true}', encoding="utf-8")
     (rg / "manifests" / "R1.md").write_text(
         "---\nid: R1\nstatus: in-progress\ntier: S\nrollback: git revert 即回滚\n"
         "planned_changes: []\nactual_changes: []\n---\n"
@@ -89,7 +89,7 @@ def test_commit_via_npm_version_detected(project):
 
 def test_corrupt_config_blocks(project):
     """config.json 损坏 → fail-safe 阻断。"""
-    (project / ".regress" / "config.json").write_text("not json")
+    (project / ".regress" / "config.json").write_text("not json", encoding="utf-8")
     code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2
     assert "config.json" in err
@@ -97,7 +97,7 @@ def test_corrupt_config_blocks(project):
 
 def test_corrupt_manifest_blocks(project):
     """清单格式损坏（无 frontmatter）→ fail-safe 阻断。"""
-    (project / ".regress" / "manifests" / "R1.md").write_text("不是合法的清单")
+    (project / ".regress" / "manifests" / "R1.md").write_text("不是合法的清单", encoding="utf-8")
     code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2
     assert "清单" in err or "frontmatter" in err
@@ -108,7 +108,7 @@ def test_corrupt_manifest_blocks(project):
 def test_untracked_file_blocks_and_records(project):
     """staged 文件不在清单 → 阻断 + 记录 untracked_files。"""
     import subprocess as sp
-    (project / "src" / "rogue.js").write_text("y = 2\n")
+    (project / "src" / "rogue.js").write_text("y = 2\n", encoding="utf-8")
     sp.run(["git", "add", "-A"], cwd=str(project), check=True)
     code, err, _ = run_guard("git commit -m 改动（R1）；1/1", project)
     assert code == 2
@@ -146,7 +146,7 @@ def test_monorepo_finds_parent_regress(project, tmp_path):
     parent.mkdir()
     rg = parent / ".regress"
     (rg / "manifests").mkdir(parents=True)
-    (rg / "config.json").write_text('{"strict": true}')
+    (rg / "config.json").write_text('{"strict": true}', encoding="utf-8")
     (rg / "manifests" / "R1.md").write_text(
         "---\nid: R1\nstatus: in-progress\nplanned_changes: []\n---\n"
     )
@@ -210,7 +210,7 @@ def _stamp(project, mid, session):
     """给清单盖 session 戳（模拟 plan_approve 的转写）。"""
     mf = project / ".regress" / "manifests" / f"{mid}.md"
     text = mf.read_text()
-    mf.write_text(text.replace("status:", f"session: {session}\nstatus:", 1))
+    mf.write_text(text.replace("status:", f"session: {session}\nstatus:", 1), encoding="utf-8")
 
 
 def test_foreign_manifest_does_not_block_my_commit(project):
@@ -227,7 +227,7 @@ def test_foreign_manifest_does_not_block_my_commit(project):
 def test_foreign_manifest_undeclared_files_no_clash(project):
     """他有清单但没声明这些文件（planned 空）→ staged 文件不算撞，放行。"""
     _stamp(project, "R1", FOREIGN_SID)
-    (project / "src" / "app.js").write_text("x = 2\n")
+    (project / "src" / "app.js").write_text("x = 2\n", encoding="utf-8")
     import subprocess as sp
     sp.run(["git", "add", "-A"], cwd=str(project), check=True)
     code, err, _ = run_guard("git commit -m 改动（R1）", project,
@@ -241,7 +241,7 @@ def test_foreign_clash_with_declared_file_blocks(project):
         "---\nid: R1\nstatus: in-progress\nsession: %s\n"
         "planned_changes:\n  - id: F1\n    file: src/app.js\n    type: method-logic\n"
         "actual_changes: []\n---\n" % FOREIGN_SID)
-    (project / "src" / "app.js").write_text("x = 2\n")
+    (project / "src" / "app.js").write_text("x = 2\n", encoding="utf-8")
     import subprocess as sp
     sp.run(["git", "add", "-A"], cwd=str(project), check=True)
     code, err, _ = run_guard("git commit -m 改动（R1）", project,

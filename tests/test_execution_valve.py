@@ -122,7 +122,7 @@ def test_main_env_kill_switch():
 def test_main_config_kill_switch(tmp_path):
     rdir = tmp_path / ".regress"
     rdir.mkdir()
-    (rdir / "config.json").write_text('{"execution_valve": false}')
+    (rdir / "config.json").write_text('{"execution_valve": false}', encoding="utf-8")
     code, _ = run_valve("mkfs /dev/sda1", {"ZCODE_PROJECT_DIR": str(tmp_path)})
     assert code == 0
 

@@ -139,10 +139,10 @@ def test_cancel_sets_cancelled_and_journals(tmp_path):
 def test_drift_warning_when_head_moved(tmp_path):
     proj = make_proj(tmp_path)
     _git(proj, "init", "-q")
-    (proj / "a.txt").write_text("1")
+    (proj / "a.txt").write_text("1", encoding="utf-8")
     _commit(proj, "A")
     base = _git(proj, "rev-parse", "--short", "HEAD").stdout.strip()
-    (proj / "a.txt").write_text("2")
+    (proj / "a.txt").write_text("2", encoding="utf-8")
     _commit(proj, "B")
 
     mf = proj / ".regress" / "manifests" / "R1.md"
@@ -160,7 +160,7 @@ def test_drift_warning_when_head_moved(tmp_path):
 def test_no_drift_when_base_head_matches(tmp_path):
     proj = make_proj(tmp_path)
     _git(proj, "init", "-q")
-    (proj / "a.txt").write_text("1")
+    (proj / "a.txt").write_text("1", encoding="utf-8")
     _commit(proj, "A")
     base = _git(proj, "rev-parse", "--short", "HEAD").stdout.strip()
     mf = proj / ".regress" / "manifests" / "R1.md"
@@ -251,7 +251,7 @@ def test_block_unblock_block_cycle_keeps_all_fossils(tmp_path):
 def test_approve_journals_dirty_snapshot(tmp_path):
     proj = make_proj(tmp_path)
     _git(proj, "init", "-q")
-    (proj / "local-debug.conf").write_text("x")  # 批准时刻的脏文件
+    (proj / "local-debug.conf").write_text("x", encoding="utf-8")  # 批准时刻的脏文件
     r = run_approve(proj, journal="on")
     assert r.returncode == 0
     assert "基线快照" in r.stdout and "local-debug.conf" in r.stdout

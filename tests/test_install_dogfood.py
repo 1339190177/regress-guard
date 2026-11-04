@@ -65,6 +65,11 @@ def test_preflight_rejects_old_python(tmp_path, monkeypatch, capsys):
     zh = tmp_path / "zh"
     zh.mkdir()
     monkeypatch.setenv("REGRESS_ZCODE_HOME", str(zh))
+    # 批193：CI runner 无 node——前置 node 检查先于版本门退出会让本测
+    # 断在错误信息上（本机有 node 掩盖）。stub 掉 which 让版本门必然到达。
+    import shutil as _sh
+    _real = _sh.which
+    monkeypatch.setattr(_sh, "which", lambda n, path=None: "/fake/node" if n == "node" else _real(n, path=path))
     with pytest.raises(SystemExit):
         mod.preflight()
     out = capsys.readouterr().out
