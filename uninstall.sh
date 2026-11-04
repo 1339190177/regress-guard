@@ -5,9 +5,14 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for _py in python3 python py; do
-    if command -v "$_py" >/dev/null 2>&1 && "$_py" -c 'import sys' >/dev/null 2>&1; then
-        exec "$_py" "${SCRIPT_DIR}/uninstall.py" "$@"
-    fi
+    _bin="$(command -v "$_py" 2>/dev/null || true)"
+    # 批202：Microsoft Store 假别名唯一藏身处是 WindowsApps 目录——在 PATH
+    # 里存在但带参运行只打安装建议（rc 还可能是 0，-c 探针滤不掉），点名排除
+    [ -z "$_bin" ] && continue
+    case "$_bin" in
+        *WindowsApps*) continue ;;
+    esac
+    exec "$_py" "${SCRIPT_DIR}/uninstall.py" "$@"
 done
 echo "REGRESS-GUARD: 找不到可用的 Python 3（试过 python3/python/py——Windows 请从 python.org 安装并勾选 Add to PATH）" >&2
 exit 1
