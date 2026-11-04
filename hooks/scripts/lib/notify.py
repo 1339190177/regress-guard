@@ -389,6 +389,12 @@ def notify(project_dir, event, title, body="", source_id="", coalesce_key=""):
         # P2#20：format 进逐通道 try——坏模板（如 awk 花括号）只跳过自身，
         # 不再废掉全部通道含企微（评审实测 KeyError 中断整个循环）
         try:
+            # 批199（Windows 产品修复）：cmd.exe 按换行切命令——多行 body
+            # （待决号后缀/时间缀）会把通道命令腰斩成半条。win32 展平为
+            # 空格续接（内容不丢，子串断言/人读均成立；POSIX shell 不动）
+            if sys.platform == "win32":
+                title = title.replace("\n", " ")
+                body = body.replace("\n", " ")
             cmd = tpl.format(title=shlex.quote(title), body=shlex.quote(body)) \
                 if ("{title}" in tpl or "{body}" in tpl) else tpl
             # P1#8 超时预算：wecom 内层 4s×2(gettoken+push)+余量 → 12s；

@@ -190,11 +190,10 @@ def test_notify_source_id_flows_into_ref(tmp_path, monkeypatch):
 def test_bad_channel_template_isolated(tmp_path):
     """模板含 awk 花括号（format 抛 KeyError）不再废掉后续通道。"""
     nt = _load(NOTIFY, "nt-iso")
-    import stat as _stat
-    stub = tmp_path / "stub.sh"
     marker = tmp_path / "iso-marker"
-    stub.write_text("#!/bin/sh\necho ok >> " + str(marker) + "\n", encoding="utf-8")
-    stub.chmod(_stat.S_IRWXU)
+    stub = make_exec_stub(  # 批199：跨平台 stub（win32 .cmd 双胞胎）
+        tmp_path, "stub-iso", 'echo ok >> ' + str(marker) + '\n',
+        '@echo off\r\necho ok >> "' + str(marker) + '"\r\n')
     proj = tmp_path / "proj"
     (proj / ".regress").mkdir(parents=True)
     (proj / ".regress" / "config.json").write_text(json.dumps(

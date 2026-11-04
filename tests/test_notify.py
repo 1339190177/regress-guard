@@ -72,8 +72,7 @@ def test_channel_runs_with_quoted_placeholders(tmp_path):
     assert "待批准 REGRESS-1" in out and "改动 3 文件" in out
 
 
-@pytest.mark.skipif(sys.platform == "win32",
-                    reason="时间缀在 body 换行后，cmd.exe 通道 stub 无法透传含换行的参数（POSIX 语义）")
+# 批199：win32 展平修复后时间缀可达（原 cmd.exe 换行腰斩已产品级根治）
 def test_project_name_prefix_and_time_suffix(tmp_path):
     """v1.31.2 格式统一：标题带【项目名】（cfg.name 优先于目录名），正文缀 🕐 时间。"""
     import re as _re
