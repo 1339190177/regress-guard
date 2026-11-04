@@ -4,6 +4,7 @@
 用户自建同名 skill 会被误删。真脚本沙箱跑（ZCODE_HOME 覆写），非逻辑复刻。
 """
 import os
+import sys
 import subprocess
 
 UNINSTALL = os.path.abspath(os.path.join(
@@ -31,7 +32,11 @@ def _sandbox(tmp_path, marker=False, foreign=True):
 
 def _run_uninstall(zhome):
     env = {**os.environ, "REGRESS_ZCODE_HOME": str(zhome)}
-    return subprocess.run(["bash", UNINSTALL], capture_output=True,
+    # 批204：win32 直调 uninstall.py——本族测的是卸载逻辑（技能所有权检查），
+    # .sh 薄委托的 bash/Windows 互操作（Store 假别名层）归 POSIX 腿覆盖
+    cmd = [sys.executable, UNINSTALL.replace(".sh", ".py")] \
+        if sys.platform == "win32" else ["bash", UNINSTALL]
+    return subprocess.run(cmd, capture_output=True,
                           text=True, encoding="utf-8", errors="replace", env=env, timeout=60)
 
 
