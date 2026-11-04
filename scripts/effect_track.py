@@ -18,7 +18,6 @@ import datetime
 import glob
 import json
 import os
-import re
 import subprocess
 import sys
 
@@ -237,7 +236,10 @@ def main():
                f"磁盘 {st['disk_history'][-1][1] if st['disk_history'] else '?'}G | "
                f"新会话摩擦 {[(s[:18], n) for s, n in (friction or [])] or '无'} | "
                f"首过 {fp[0]}/{(fp[0] or 0) + (fp[1] or 0) if fp else '-'}"
-               + (f" | 冲突指令{fp[2].get('conflict_dispatch', 0)}轮/等槽{fp[2].get('conflict_wait', 0)}/接力{fp[2].get('conflict_resolver', 0)}" if fp and len(fp) > 2 and fp[2] else ""))
+               + (f" | 冲突指令{fp[2].get('conflict_dispatch', 0)}轮"
+                  f"/等槽{fp[2].get('conflict_wait', 0)}"
+                  f"/接力{fp[2].get('conflict_resolver', 0)}"
+                  if fp and len(fp) > 2 and fp[2] else ""))
     _journal(summary + (f" | 已修:{fixed}" if fixed else "")
              + (f" | 发现:{len(findings)}项" if findings else " | 全绿"))
     if findings:
