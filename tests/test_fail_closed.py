@@ -37,7 +37,7 @@ def _run(script, raw, argv=None, project=None, env_extra=None):
     env.update(env_extra or {})
     proc = subprocess.run(
         [sys.executable, script] + (argv or []), input=raw, capture_output=True,
-        text=True, env=env, timeout=15,
+        text=True, encoding="utf-8", errors="replace", env=env, timeout=15,
     )
     return proc.returncode, proc.stderr
 
@@ -117,7 +117,7 @@ def _run_closed_stdin(script, project=None):
     quoted = " ".join(f"'{a}'" for a in (script,))
     proc = subprocess.run(
         ["bash", "-c", f"python3 {quoted} 0<&-"],
-        capture_output=True, text=True, env=env, timeout=15,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=15,
     )
     return proc.returncode, proc.stderr
 

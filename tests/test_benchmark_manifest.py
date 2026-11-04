@@ -75,7 +75,7 @@ def _collect_hits(selector):
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "tests/", "--collect-only", "-qq",
          "-k", selector],
-        cwd=REPO, capture_output=True, text=True, timeout=180)
+        cwd=REPO, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180)
     if r.returncode not in (0, 5):  # 5 = 无选中（合法观测值）；其余 = 收集期崩溃
         pytest.fail(f"collect 崩溃 rc={r.returncode}\n{r.stderr[-800:]}")
     return [ln for ln in r.stdout.splitlines() if "::" in ln]

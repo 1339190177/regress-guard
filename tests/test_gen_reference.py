@@ -9,7 +9,7 @@ GEN = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts",
 
 def _run(args, cwd):
     return subprocess.run([sys.executable, GEN, *args], capture_output=True,
-                          text=True, cwd=cwd, timeout=60)
+                          text=True, encoding="utf-8", errors="replace", cwd=cwd, timeout=60)
 
 
 def test_check_passes_on_fresh_generation(tmp_path):

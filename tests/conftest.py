@@ -39,6 +39,10 @@ def _strip_host_session_env():
     for k in ("ZCODE_PROJECT_DIR", "CLAUDE_PROJECT_DIR",
               "ZCODE_SESSION_ID", "CLAUDE_SESSION_ID", "ZCODE_HOME"):
         os.environ.pop(k, None)
+    # 批195：子进程统一 UTF-8 模式——生产路由经 launcher（PYTHONUTF8=1），
+    # 测试直调守卫也应同语义（否则 cp1252 下守卫中文输出崩=测试测的是
+    # 与生产不同的路径）。本进程自身不受影响（PYTHONUTF8 仅启动期读取）
+    os.environ.setdefault("PYTHONUTF8", "1")
     yield
 
 

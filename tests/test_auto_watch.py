@@ -69,7 +69,7 @@ def _feed(script, payload, tmp_dir):
     """子进程喂 stdin——TMPDIR 指向沙箱，与 monkeypatch 的 gettempdir 对齐。"""
     subprocess.run(
         [sys.executable, os.path.join(SCRIPTS, script)],
-        input=json.dumps(payload), capture_output=True, text=True, timeout=10,
+        input=json.dumps(payload), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         env={**os.environ, "TMPDIR": str(tmp_dir)},
     )
 
@@ -176,7 +176,7 @@ def test_verifying_status_counts_active(isolated_tmp, tmp_path):
 def test_compact_notice_emits_warning():
     proc = subprocess.run(
         [sys.executable, os.path.join(SCRIPTS, "compact_notice.py")],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
     )
     assert proc.returncode == 0
     ctx = json.loads(proc.stdout)["additionalContext"]
@@ -495,7 +495,7 @@ def _feed_mf(payload, proj, tmp_dir):
     """喂 risk_watch 子进程：TMPDIR 沙箱 + REGRESS_JOURNAL=on + 项目锚点。"""
     subprocess.run(
         [sys.executable, os.path.join(SCRIPTS, "risk_watch.py")],
-        input=json.dumps(payload), capture_output=True, text=True, timeout=10,
+        input=json.dumps(payload), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         env={**os.environ, "TMPDIR": str(tmp_dir), "REGRESS_JOURNAL": "on",
              "CLAUDE_PROJECT_DIR": str(proj)},
     )
@@ -587,7 +587,7 @@ def test_new_episode_after_unblock_journaled(tmp_path):
     subprocess.run(
         [sys.executable, os.path.join(SCRIPTS, "lib", "journal.py"),
          str(proj), "add", "task_unblocked", '{"manifest_id":"R1"}'],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         env={**os.environ, "REGRESS_JOURNAL": "on"})
     _feed_mf({"tool_name": "Edit", "tool_input": {"file_path": str(mf)}}, proj, tmp_path)
     assert len([e for e in _mf_events(proj)

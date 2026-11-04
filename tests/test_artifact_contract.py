@@ -130,7 +130,7 @@ def test_plan_approve_event_carries_run_id(tmp_path):
            "RG_SEND_LEDGER": str(tmp_path / "s.log"),
            "RG_CHAT_STATE": str(tmp_path / "c.json")}
     r = subprocess.run([sys.executable, PLAN_APPROVE, str(mp)],
-                       capture_output=True, text=True, env=env, timeout=30)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=30)
     assert r.returncode == 0, r.stderr
     ev = [json.loads(ln) for ln in
           (proj / ".regress" / "journal" / "events.jsonl")

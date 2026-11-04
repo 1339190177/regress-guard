@@ -22,7 +22,7 @@ def _load():
 
 def _git(repo, *args):
     r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
-                       text=True)
+                       text=True, encoding="utf-8", errors="replace")
     assert r.returncode == 0, r.stderr
     return r.stdout
 

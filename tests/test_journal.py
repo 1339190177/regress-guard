@@ -23,7 +23,7 @@ def _feed(script, payload, project_dir, tmp_dir, extra_env=None):
     env.update(extra_env or {})
     return subprocess.run(
         [sys.executable, script], input=json.dumps(payload),
-        capture_output=True, text=True, env=env, timeout=10,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=10,
     )
 
 
@@ -132,7 +132,7 @@ def test_cli_add_buries_assumption_fossil(tmp_path):
         [sys.executable, os.path.join(LIB, "lib", "journal.py"),
          str(proj), "add", "assumption_broken",
          '{"manifest_id":"R1","vid":"V5","was":"按1601推测","reality":"Ack=1","evidence":"mock --self-test"}'],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         env={**os.environ, "REGRESS_JOURNAL": "on"})
     assert r.returncode == 0, r.stderr
     assert '"ok": true' in r.stdout
@@ -147,7 +147,7 @@ def test_cli_add_rejects_bad_json(tmp_path):
     r = subprocess.run(
         [sys.executable, os.path.join(LIB, "lib", "journal.py"),
          str(proj), "add", "assumption_broken", "not-json"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         env={**os.environ, "REGRESS_JOURNAL": "on"})
     assert r.returncode == 2
     assert "json" in r.stderr
@@ -258,7 +258,7 @@ def test_ack_corrections_cli(tmp_path):
         [sys.executable, os.path.join(LIB, "lib", "journal.py"),
          str(proj), "ack-corrections",
          '{"how":"advisor","upto":"2026-09-24T12:00:00","note":"已对质"}'],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         env={**os.environ, "REGRESS_JOURNAL": "on"})
     assert r.returncode == 0, r.stderr
     assert '"ok": true' in r.stdout and '"cleared_after"' in r.stdout
@@ -273,7 +273,7 @@ def test_ack_corrections_rejects_bad_json(tmp_path):
     r = subprocess.run(
         [sys.executable, os.path.join(LIB, "lib", "journal.py"),
          str(proj), "ack-corrections", "not-json"],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         env={**os.environ, "REGRESS_JOURNAL": "on"})
     assert r.returncode == 2
 
@@ -337,6 +337,6 @@ def test_env_precedence_zcode_over_claude(tmp_path):
     subprocess.run([sys.executable, FAIL_WATCH],
                    input=json.dumps({"tool_name": "Bash",
                                      "tool_input": {"command": "npm test --json"}}),
-                   capture_output=True, text=True, env=env, timeout=10)
+                   capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=10)
     assert any(e["kind"] == "tool_fail" for e in load_journal(str(proj)))
     assert not (decoy / ".regress" / "journal" / "events.jsonl").exists()

@@ -20,7 +20,7 @@ INSTALL = os.path.join(ROOT, "install.sh")
                     reason="狗粮全链 ~60s——哨兵轮显式跑（REGRESS_DOGFOOD=1 开）")
 def test_dogfood_full_chain_green():
     """fresh HOME 安装→四查→边界拦→阀拦→门禁过，exit 0+摩擦清单。"""
-    r = subprocess.run(["bash", DOGFOOD], capture_output=True, text=True,
+    r = subprocess.run(["bash", DOGFOOD], capture_output=True, text=True, encoding="utf-8", errors="replace",
                        timeout=300)
     assert r.returncode == 0, r.stdout[-800:] + r.stderr[-400:]
     assert "狗粮全链绿（6/6）" in r.stdout
@@ -43,7 +43,7 @@ def test_preflight_rejects_missing_python(tmp_path):
         pytest.skip(f"python3 另在 {probe}——PATH 剔除法不成立")
     zh = tmp_path / "zh"
     zh.mkdir()
-    r = subprocess.run(["bash", INSTALL], capture_output=True, text=True,
+    r = subprocess.run(["bash", INSTALL], capture_output=True, text=True, encoding="utf-8", errors="replace",
                        timeout=60, env={"PATH": path, "HOME": str(tmp_path),
                                         "REGRESS_ZCODE_HOME": str(zh)})
     assert r.returncode != 0, "python3 缺失必须退出非零"

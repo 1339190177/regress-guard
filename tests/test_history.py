@@ -608,7 +608,7 @@ def test_outofband_cli_shows_bypass(tmp_path):
     ])
     out = subprocess.run(
         [sys.executable, os.path.abspath(h.__file__), rg, "outofband"],
-        capture_output=True, text=True, timeout=30)
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     assert out.returncode == 0
     assert "bypass 逃生 1 次" in out.stdout
     assert "逃生率 33%" in out.stdout
@@ -699,7 +699,7 @@ def test_slo_cli_recurring_gap_line(tmp_path, monkeypatch):
          os.path.abspath(os.path.join(
              os.path.dirname(__file__), "..", "hooks", "scripts", "lib",
              "history.py")), rg, "slo"],
-        capture_output=True, text=True, timeout=30,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
         env={**os.environ, "RG_PENDING_LEDGER": str(tmp_path / "none.jsonl")})
     assert out.returncode == 0
     assert "compound_stage_commit ×2｜中位间隔 7 天" in out.stdout

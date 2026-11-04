@@ -45,7 +45,7 @@ def _run(d, *args, extra_env=None):
            "REGRESS_JOURNAL": "on", "PYTHONPATH": "/poison",
            **(extra_env or {})}
     return subprocess.run([NODE, str(d / "launcher.js"), *args],
-                          capture_output=True, text=True, timeout=30, env=env)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, env=env)
 
 
 def test_dispatch_args_passthrough(tmp_path):

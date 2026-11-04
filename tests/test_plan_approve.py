@@ -48,7 +48,7 @@ def run_approve(proj, *args, journal="off"):
     mf = proj / ".regress" / "manifests" / "R1.md"
     return subprocess.run(
         [sys.executable, SCRIPT, str(mf), *args],
-        capture_output=True, text=True, env=env, timeout=15)
+        capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=15)
 
 
 def journal_events(proj):
@@ -60,7 +60,7 @@ def journal_events(proj):
 
 def _git(proj, *args):
     return subprocess.run(["git", "-C", str(proj), *args],
-                          capture_output=True, text=True, timeout=10)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
 
 
 def _commit(proj, msg):
@@ -268,7 +268,7 @@ def _seed_review_fossil(proj):
         [sys.executable, os.path.join(os.path.dirname(SCRIPT), "journal.py"),
          str(proj), "add", "plan_advisor_review",
          '{"manifest_id":"R1","verdict":"no_objection","summary":"方向清晰"}'],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         env={**os.environ, "REGRESS_JOURNAL": "on"})
 
 # ── v1.18：临行（伪全自动：预授权+顾问预审无异议）──

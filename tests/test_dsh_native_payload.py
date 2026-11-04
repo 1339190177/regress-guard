@@ -45,7 +45,7 @@ def _run(script, payload, argv=None, project=None, env_extra=None):
     env.update(env_extra or {})
     proc = subprocess.run(
         [sys.executable, script] + (argv or []), input=json.dumps(payload),
-        capture_output=True, text=True, env=env, timeout=15,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=15,
     )
     return proc.returncode, proc.stderr
 
@@ -187,7 +187,7 @@ console.log(JSON.stringify({
 }));
 """
     out = subprocess.run(["node", "--input-type=module", "-e", probe],
-                         capture_output=True, text=True, timeout=15)
+                         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
     assert out.returncode == 0, f"node 探针崩：{out.stderr[:200]}"
     r = json.loads(out.stdout.strip().splitlines()[-1])
     assert r["real_failure_failed"] is True, "真失败判定回归"

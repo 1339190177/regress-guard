@@ -28,7 +28,7 @@ def run_guard(tool_command, project_dir, cwd=None, extra_env=None):
     inp = json.dumps({"tool_name": "Bash", "tool_input": {"command": tool_command}})
     proc = subprocess.run(
         [sys.executable, GUARD],
-        input=inp, capture_output=True, text=True,
+        input=inp, capture_output=True, text=True, encoding="utf-8", errors="replace",
         env=env, cwd=str(cwd or project_dir), timeout=30
     )
     return proc.returncode, proc.stderr, proc.stdout
@@ -1951,7 +1951,7 @@ def test_string_tool_input_commit_blocked(project):
         [sys.executable, "-E",
          os.path.join(os.path.dirname(__file__), "..", "hooks",
                       "scripts", "pre_commit_guard.py")],
-        input=_json.dumps(payload), capture_output=True, text=True, env=env,
+        input=_json.dumps(payload), capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
         timeout=300)
     assert r.returncode == 2 and "不在回归清单" in r.stderr
 

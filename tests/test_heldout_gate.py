@@ -101,7 +101,7 @@ def test_real_battery_integration(tmp_path):
     r = subprocess.run(
         [sys.executable, os.path.join(SCRIPTS, "heldout_gate.py"),
          "--project", str(p)],
-        capture_output=True, text=True, timeout=180, cwd=SCRIPTS)
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180, cwd=SCRIPTS)
     assert r.returncode == 0, r.stderr
     data = json.loads((p / ".regress" / "heldout-baseline.json")
                       .read_text(encoding="utf-8"))

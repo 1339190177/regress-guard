@@ -19,7 +19,7 @@ def _mk(tmp_path):
 def _run(proj, *args):
     return subprocess.run(
         [sys.executable, LEDGER, str(proj), *(str(a) for a in args)],
-        capture_output=True, text=True, timeout=15)
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
 
 
 def test_record_first_time_then_hit(tmp_path):

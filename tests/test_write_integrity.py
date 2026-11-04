@@ -28,12 +28,12 @@ def test_heredoc_write_integrity(tmp_path):
     for i in range(5):
         r = subprocess.run(
             [sys.executable, "-", str(target), str(i)],
-            input=PROBE, capture_output=True, text=True, timeout=15)
+            input=PROBE, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
         assert r.returncode == 0 and "written ok" in r.stdout
     # 独立读回（新进程，非同进程内存）
     n = subprocess.run(
         ["grep", "-c", "^## probe-", str(target)],
-        capture_output=True, text=True, timeout=10)
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
     assert n.stdout.strip() == "5", \
         f"写入丢失再现：期望 5 段读回 {n.stdout.strip()}（升 strace 级根因批）"
     # 内容完整性：基线未被回写覆盖

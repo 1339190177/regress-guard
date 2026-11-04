@@ -405,7 +405,7 @@ def test_cli_smoke(tmp_path, monkeypatch):
     monkeypatch.setenv("RG_MACHINE_NOTIFY", str(mach))  # 子进程改走机器级（057 后项目级须信任表）
     r = subprocess.run([sys.executable, NOTIFY, str(proj), "blocked",
                         "--title", "🛑 受阻", "--body", "需要：白名单"],
-                       capture_output=True, text=True, timeout=15)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
     assert r.returncode == 0
     assert "受阻" in (tmp_path / "m4").read_text(encoding="utf-8")
 

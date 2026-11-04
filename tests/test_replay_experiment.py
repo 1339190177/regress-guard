@@ -88,12 +88,12 @@ def test_snapshot_pinned_to_history():
     def _parent_show(grep, path):
         c = subprocess.run(["git", "-C", ROOT, "log", "--grep", grep,
                             "-n1", "--format=%H"],
-                           capture_output=True, text=True, timeout=15)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
         sha = c.stdout.strip()
         if not sha:
             pytest.skip("git 历史无该批提交锚点（浅克隆环境）")
         s = subprocess.run(["git", "-C", ROOT, "show", f"{sha}^:{path}"],
-                           capture_output=True, text=True, timeout=15)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
         return s.stdout
     # 批122 父提交的 reflection_check 含 10 分钟窗特征
     old_refl = _parent_show("纠正闭环 v2", "hooks/scripts/reflection_check.py")

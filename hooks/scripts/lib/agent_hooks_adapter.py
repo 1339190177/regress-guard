@@ -150,8 +150,13 @@ class RegressGuardInterceptor:
     def _run_guard(self, name, cmd, ctx, tier):
         payload = json.dumps({"tool_name": name or "Bash",
                               "tool_input": {"command": cmd}})
+        # 批195：+SYSTEMROOT（Windows python.exe 无它 PRNG 初始化失败，
+        # 表现为 Fatal _Py_HashRandomization_Init——launcher.js ENV_KEEP
+        # 早有此认知，此处同步）；+PYTHONUTF8=1（守卫中文/emoji 输出，
+        # 与 launcher 非 guard 策略一致）
         env = {k: v for k, v in os.environ.items()
-               if k in ("PATH", "HOME", "LANG", "TERM", "TMPDIR")}
+               if k in ("PATH", "HOME", "LANG", "TERM", "TMPDIR", "SYSTEMROOT")}
+        env["PYTHONUTF8"] = "1"
         env["ZCODE_PROJECT_DIR"] = self.project_dir
         sess = (ctx.get("session") or {}).get("id")
         env["ZCODE_SESSION_ID"] = str(sess or "agent-hooks")

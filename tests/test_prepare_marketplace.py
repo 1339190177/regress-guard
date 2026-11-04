@@ -12,7 +12,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def test_dist_excludes_dev_and_keeps_manifest():
     """dev 工具/deploy/tests/.pytest_cache 排除；.zcode-plugin 清单保留。"""
     r = subprocess.run([sys.executable, SCRIPT], cwd=ROOT,
-                       capture_output=True, text=True, timeout=120)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
     assert r.returncode == 0, r.stderr
     dist = os.path.join(ROOT, "dist", "plugins", "regress-guard")
     for bad in ("scripts/publish.py", "scripts/gen_reference.py",
@@ -37,7 +37,7 @@ def test_dist_excludes_dev_and_keeps_manifest():
 
 def test_marketplace_entry_shape():
     r = subprocess.run([sys.executable, SCRIPT], cwd=ROOT,
-                       capture_output=True, text=True, timeout=120)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
     assert r.returncode == 0
     e = json.load(open(os.path.join(ROOT, "dist", "marketplace-entry.json"),
                        encoding="utf-8"))
@@ -56,7 +56,7 @@ def test_pr_payload_mode(tmp_path):
     import hashlib
     out = tmp_path / "pr"
     r = subprocess.run([sys.executable, SCRIPT, "--pr-payload", str(out)],
-                       cwd=ROOT, capture_output=True, text=True, timeout=120)
+                       cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
     assert r.returncode == 0, r.stderr
     payload = out / "external_plugins" / "regress-guard"
     assert (payload / ".zcode-plugin" / "plugin.json").exists()

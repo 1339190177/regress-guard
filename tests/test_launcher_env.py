@@ -66,7 +66,7 @@ _PROBE_ENV_KEEP = (
 def _probe(script, env):
     try:
         r = subprocess.run(
-            [NODE, "-e", script, LAUNCHER], capture_output=True, text=True,
+            [NODE, "-e", script, LAUNCHER], capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=30, env=env)
     except subprocess.TimeoutExpired:
         pytest.fail("node 探针超时：launcher.js 可能阻死")
@@ -150,7 +150,7 @@ def test_require_does_not_spawn():
     """require launcher.js 不启动守卫（require.main 守卫）——本测试族观测路径的安全前提。"""
     r = subprocess.run(
         [NODE, "-e", f"require({json.dumps(LAUNCHER)}); console.log('LOADED_OK')"],
-        capture_output=True, text=True, timeout=30)
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     assert r.returncode == 0
     assert "LOADED_OK" in r.stdout
     assert "REGRESS-GUARD" not in r.stderr
@@ -174,7 +174,7 @@ def test_signal_killed_child_exits_2(tmp_path):
         'time.sleep(0.8)  # 等 launcher 完成解释器探测并 spawn guard\n'
         '# 找到 guard 孙进程（python3 pre_commit_guard.py）杀之\n'
         'out = subprocess.run(["pgrep", "-P", str(p.pid), "-f", "pre_commit_guard"],\n'
-        '                     capture_output=True, text=True)\n'
+        '                     capture_output=True, text=True, encoding="utf-8", errors="replace")\n'
         'kids = out.stdout.split()\n'
         'if not kids:\n'
         '    print("NO_GRANDCHILD", file=sys.stderr); sys.exit(97)\n'
@@ -182,7 +182,7 @@ def test_signal_killed_child_exits_2(tmp_path):
         'rc = p.wait()\n'
         'print(rc)\n', encoding="utf-8")
     proc = subprocess.run([sys.executable, str(mk), LAUNCHER],
-                          capture_output=True, text=True, timeout=30)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     assert "NO_GRANDCHILD" not in proc.stderr, proc.stderr
     assert proc.stdout.strip() == "2", f"信号击穿应 exit 2，得 {proc.stdout!r}"
 
@@ -194,5 +194,5 @@ def test_launcher_uncaught_exception_exits_2():
          f'process.on("uncaughtException", function() {{ process.exit(2); }});'
          f'require({json.dumps(LAUNCHER)});'
          'setTimeout(function() { throw new Error("boom"); }, 50);'],
-        capture_output=True, text=True, timeout=15)
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
     assert proc.returncode == 2

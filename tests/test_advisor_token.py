@@ -6,6 +6,7 @@
 """
 import importlib.util as ilu
 import os
+import sys
 
 import pytest
 
@@ -29,6 +30,8 @@ def _load():
 def _fresh_home(tmp_path, monkeypatch):
     """每用例独立 HOME+env+缓存（模块级缓存按 home 键隔离，另显式清）。"""
     monkeypatch.setenv("HOME", str(tmp_path))
+    if sys.platform == "win32":  # 批195：Windows expanduser 走 USERPROFILE
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.delenv("ADVISOR_DSH_TOKEN", raising=False)
     m = _load()
     m._CACHE.clear()

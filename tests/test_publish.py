@@ -59,7 +59,7 @@ def test_mirror_since_joins_subjects(tmp_path):
     (p / "a.txt").write_text("2\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=str(p), check=True)
     base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(p),
-                          capture_output=True, text=True, check=True).stdout.strip()
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", check=True).stdout.strip()
     subprocess.run(["git", "commit", "-qm", "中文二批（002）"], cwd=str(p), check=True)
     pub = _load()
     msg = subprocess.run(
@@ -68,7 +68,7 @@ def test_mirror_since_joins_subjects(tmp_path):
          f"import importlib.util as i; s=i.spec_from_file_location('pub', {SCRIPT!r}); "
          f"m=i.module_from_spec(s); s.loader.exec_module(m); "
          f"print(m.mirror_since({base!r}))"],
-        cwd=str(p), capture_output=True, text=True, check=True).stdout.strip()
+        cwd=str(p), capture_output=True, text=True, encoding="utf-8", errors="replace", check=True).stdout.strip()
     assert "（002）" in msg and "（001）" not in msg
     assert pub.check_message(msg) == []
 
@@ -87,7 +87,7 @@ def test_cli_dry_run_no_network(tmp_path):
     subprocess.run(["git", "commit", "-qm", "中文（001）"], cwd=str(p), check=True)
     r = subprocess.run(
         [sys.executable, SCRIPT, "--dry-run", "-m", "中文试发布（001）"],
-        cwd=str(p), capture_output=True, text=True,
+        cwd=str(p), capture_output=True, text=True, encoding="utf-8", errors="replace",
         env={"PATH": os.environ["PATH"], "HOME": str(p)}, timeout=60)
     assert r.returncode == 0, r.stderr
     assert "[dry-run]" in r.stdout and "未发布" in r.stdout
@@ -97,14 +97,14 @@ def test_cli_rejects_unknown_flag(tmp_path):
     """未知参数拒绝（#14：gen_reference 静默吞未知 flag 的教训）。"""
     r = subprocess.run(
         [sys.executable, SCRIPT, "--dry-runy", "-m", "中文（001）"],
-        cwd=str(tmp_path), capture_output=True, text=True, timeout=60)
+        cwd=str(tmp_path), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     assert r.returncode != 0
 
 
 def test_cli_rejects_noncompliant_message(tmp_path):
     r = subprocess.run(
         [sys.executable, SCRIPT, "--dry-run", "-m", "english only"],
-        cwd=str(tmp_path), capture_output=True, text=True, timeout=60)
+        cwd=str(tmp_path), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     assert r.returncode == 2 and "中文" in r.stderr
 
 
@@ -138,7 +138,7 @@ def test_mirror_default_takes_state(tmp_path, monkeypatch):
     subprocess.run(["git", "add", "-A"], cwd=str(p), check=True)
     subprocess.run(["git", "commit", "-qm", "中文首批（001）"], cwd=str(p), check=True)
     base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(p),
-                          capture_output=True, text=True, check=True).stdout.strip()
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", check=True).stdout.strip()
     (p / "a.txt").write_text("2\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=str(p), check=True)
     subprocess.run(["git", "commit", "-qm", "中文二批（002）"], cwd=str(p), check=True)
@@ -147,7 +147,7 @@ def test_mirror_default_takes_state(tmp_path, monkeypatch):
         _json.dumps({"last_local_head": base, "remote_commit": "x", "ts": 1}),
         encoding="utf-8")
     r = subprocess.run([sys.executable, SCRIPT, "--dry-run"],
-                       cwd=str(p), capture_output=True, text=True,
+                       cwd=str(p), capture_output=True, text=True, encoding="utf-8", errors="replace",
                        env={"PATH": os.environ["PATH"], "HOME": str(tmp_path)},
                        timeout=60)
     assert r.returncode == 0, r.stderr
@@ -161,7 +161,7 @@ def test_no_state_no_rev_teaches(tmp_path):
     (p / ".regress").mkdir()
     subprocess.run(["git", "init", "-q"], cwd=str(p), check=True)
     r = subprocess.run([sys.executable, SCRIPT, "--dry-run"],
-                       cwd=str(p), capture_output=True, text=True,
+                       cwd=str(p), capture_output=True, text=True, encoding="utf-8", errors="replace",
                        env={"PATH": os.environ["PATH"], "HOME": str(tmp_path)},
                        timeout=60)
     assert r.returncode == 2 and "不空猜" in r.stderr
@@ -185,7 +185,7 @@ def _mini_repo(p):
     subprocess.run(["git", "commit", "-qm", "中文首批（001）"], cwd=str(p),
                    check=True)
     return subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(p),
-                          capture_output=True, text=True,
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
                           check=True).stdout.strip()
 
 
@@ -208,11 +208,11 @@ def test_tag_local_idempotent(tmp_path, monkeypatch):
     pub = _load()
     pub.tag_release(None, head, None)
     tags = subprocess.run(["git", "tag"], cwd=str(p), capture_output=True,
-                          text=True).stdout.split()
+                          text=True, encoding="utf-8", errors="replace").stdout.split()
     assert tags == [f"v{pub._plugin_version()}"]
     pub.tag_release(None, head, None)  # 第二次：已存在跳过，不炸
     tags2 = subprocess.run(["git", "tag"], cwd=str(p), capture_output=True,
-                           text=True).stdout.split()
+                           text=True, encoding="utf-8", errors="replace").stdout.split()
     assert tags2 == tags
 
 
@@ -225,7 +225,7 @@ def test_tag_no_version_skips(tmp_path, monkeypatch):
     monkeypatch.setattr(pub, "_plugin_version", lambda: "")
     pub.tag_release(None, head, None)
     assert subprocess.run(["git", "tag"], cwd=str(p), capture_output=True,
-                          text=True).stdout.strip() == ""
+                          text=True, encoding="utf-8", errors="replace").stdout.strip() == ""
 
 
 def test_tag_remote_paths(tmp_path, monkeypatch):
@@ -265,7 +265,7 @@ def test_cli_dry_run_shows_tag_plan(tmp_path):
     _mini_repo(p)
     r = subprocess.run(
         [sys.executable, SCRIPT, "--dry-run", "-m", "中文试发布（001）"],
-        cwd=str(p), capture_output=True, text=True,
+        cwd=str(p), capture_output=True, text=True, encoding="utf-8", errors="replace",
         env={"PATH": os.environ["PATH"], "HOME": str(p)}, timeout=60)
     assert r.returncode == 0, r.stderr
     assert "tag 计划" in r.stdout

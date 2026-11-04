@@ -60,7 +60,7 @@ def _run_block(tmp_path, hook_body=None):
                    check=True, timeout=30)
     # git init 可能生成样例钩子（非默认；样例带 .sample 后缀不算已存在）
     r = subprocess.run(["sh", "-c", _hook_block()], cwd=tmp_path,
-                       capture_output=True, text=True, timeout=30)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     assert r.returncode == 0, r.stderr
     return (tmp_path / ".git" / "hooks" / "post-commit").read_text(encoding="utf-8")
 

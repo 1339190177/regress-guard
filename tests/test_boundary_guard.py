@@ -51,7 +51,7 @@ def run_guard(proj, file_path, tool="Edit", extra_env=None):
     return subprocess.run(
         [sys.executable, GUARD],
         input=json.dumps({"tool_name": tool, "tool_input": {"file_path": str(file_path)}}),
-        capture_output=True, text=True, env=env, timeout=10,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=10,
     )
 
 
@@ -131,7 +131,7 @@ def test_non_edit_tools_pass(tmp_path):
     r = subprocess.run(
         [sys.executable, GUARD],
         input=json.dumps({"tool_name": "Read", "tool_input": {"file_path": str(proj / "x.ts")}}),
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
         env={**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}, timeout=10)
     assert r.returncode == 0
 
@@ -162,7 +162,7 @@ def test_planning_read_tools_not_affected(tmp_path):
     r = subprocess.run(
         [sys.executable, GUARD],
         input=json.dumps({"tool_name": "Read", "tool_input": {"file_path": str(proj / "src/auth/login.ts")}}),
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
         env={**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}, timeout=10)
     assert r.returncode == 0
 
@@ -343,7 +343,7 @@ def run_bash_guard(proj, command):
     return subprocess.run(
         [sys.executable, GUARD],
         input=json.dumps({"tool_name": "Bash", "tool_input": {"command": command}}),
-        capture_output=True, text=True, env=env, timeout=10)
+        capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=10)
 
 
 def test_bash_rm_inside_planning_boundary_blocked(tmp_path):

@@ -23,7 +23,7 @@ def _sandbox(tmp_path):
 def _install(zh, expect_ok=True):
     env = {**os.environ, "REGRESS_ZCODE_HOME": str(zh)}
     r = subprocess.run([sys.executable, INSTALL], capture_output=True,
-                       text=True, timeout=120, env=env)
+                       text=True, encoding="utf-8", errors="replace", timeout=120, env=env)
     if expect_ok:
         assert r.returncode == 0, r.stdout[-800:] + r.stderr[-400:]
     return r
@@ -70,7 +70,7 @@ def test_uninstall_zero_residue(tmp_path):
     zh = _sandbox(tmp_path)
     _install(zh)
     r = subprocess.run([sys.executable, UNINSTALL], capture_output=True,
-                       text=True, timeout=60,
+                       text=True, encoding="utf-8", errors="replace", timeout=60,
                        env={**os.environ, "REGRESS_ZCODE_HOME": str(zh)})
     assert r.returncode == 0, r.stderr[-400:]
     cfg = json.load(open(zh / "cli" / "config.json", encoding="utf-8"))

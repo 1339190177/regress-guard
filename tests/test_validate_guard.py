@@ -16,7 +16,7 @@ def test_architecture_guard_detects_planted_violation():
         r = subprocess.run(
             ["grep", "-l", "-E", r"\^(approved|blocked|provisional):"]
             + glob.glob(os.path.join(ROOT, "hooks", "scripts", "*.py")),
-            capture_output=True, text=True, timeout=10)
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
         assert TRAP in r.stdout, "守卫失明：种了违规未检出"
     finally:
         if os.path.exists(TRAP):
@@ -25,7 +25,7 @@ def test_architecture_guard_detects_planted_violation():
     r2 = subprocess.run(
         ["grep", "-l", "-E", r"\^(approved|blocked|provisional):"]
         + glob.glob(os.path.join(ROOT, "hooks", "scripts", "*.py")),
-        capture_output=True, text=True, timeout=10)
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
     assert r2.stdout.strip() == "", f"清理后仍有残留检出: {r2.stdout}"
 
 

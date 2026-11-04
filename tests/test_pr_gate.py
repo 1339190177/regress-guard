@@ -139,14 +139,15 @@ def test_test_cmd_branch_semantics(tmp_path):
     for cmd, expect_ok in [("true", True), ("exit 3", False),
                            ("echo done && true", True)]:
         r = subprocess.run(cmd, shell=True, cwd=str(tmp_path),
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
         assert (r.returncode == 0) == expect_ok
 
 
 def test_test_cmd_tail_note():
     """输出尾行截 120 字符进 hermetic 证据行（人可读）。"""
     import subprocess
-    r = subprocess.run("printf 'l1\nl2\nlast'", shell=True, capture_output=True, text=True)
+    r = subprocess.run("printf 'l1\nl2\nlast'", shell=True, capture_output=True,
+                       text=True, encoding="utf-8", errors="replace")
     tail = (r.stdout or r.stderr or "").strip().splitlines()[-1][:120]
     assert tail == "last"
 
