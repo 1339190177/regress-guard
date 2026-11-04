@@ -4,7 +4,7 @@ argument-hint: <需求描述>
 allowed-tools: Read, Write, Edit, Bash, Grep
 ---
 
-# /regress:plan — 需求解析 + 改动分析
+# /regress-plan — 需求解析 + 改动分析
 
 参数 `$ARGUMENTS` 是需求描述。为空则提示用法。
 
@@ -15,7 +15,7 @@ allowed-tools: Read, Write, Edit, Bash, Grep
 
 ## 步骤 0.5：规模判定（v1.37：full 的重仪式按档触发，不再一刀全量）
 
-对着需求与初判改动面打档（判据与 /regress:quick 同源，越级可审计）：
+对着需求与初判改动面打档（判据与 /regress-quick 同源，越级可审计）：
 
 - **S 档**（≤3 文件·纯内部·无环境变更）→ 本该走 quick；用户执意 full 时
   只强制：F 列表+边界+**至少 1 条脆弱点**+验收一行——4.7/4.9/4.10 留骨架跳过
@@ -174,7 +174,7 @@ fragile_points:           # 公理一：穷举关键脆弱点（字段见模板�
 
 - include = 改动目录 + 配套测试目录；**跨层之问**：跨三层的大杂烩清单是
   边界失守前兆，该拆就拆
-- hook 在 Edit/Write **发生前**拦截边界外文件；扩界唯一出口=/regress:track
+- hook 在 Edit/Write **发生前**拦截边界外文件；扩界唯一出口=/regress-track
   （回写留痕）；项目级关闭：config 设 "boundary_enforced": false
 
 ### 步骤 4.7：失忆读者层（v1.15：写给断上下文的读者）
@@ -209,7 +209,7 @@ planned_changes 排成编号步骤，每步挂可观察里程碑（"单测绿"/"
 
 ### 步骤 4.10：架构影响与 ADR（v1.35：选型理由不随对话蒸发）
 
-先读 `.regress/product-arch.md` 模块卡片（卡不存在 → /regress:init 补骨架），
+先读 `.regress/product-arch.md` 模块卡片（卡不存在 → /regress-init 补骨架），
 跨模块/结构性改动必答清单「架构影响」四问（动哪些模块/依赖方向变化/
 新增耦合/触发 ADR 否）；单文件内部改动一句"无结构性影响"了事。
 
@@ -317,7 +317,7 @@ plan_approval 回执推送——M/L 判据单独凸显给人，此处手动推�
 规则（浓缩）：批准词必须来自人类（AI 不得代填 approved.at，地层让一切批准
 可审计）；人类直填 approved.at=产物直通，AI 补跑转写对齐（不覆盖时间戳）；
 原始需求已预批准（"直接做"）→ 展示卡片标注后直接实施；S 档小改动走 quick；
-待批准期间边界内编辑被拦（planning 机器强制），断点续作 /regress:resume。
+待批准期间边界内编辑被拦（planning 机器强制），断点续作 /regress-resume。
 
 ## 步骤 6：实施
 
@@ -326,7 +326,7 @@ plan_approval 回执推送——M/L 判据单独凸显给人，此处手动推�
 授权自主推进期间人不看屏也知道走到哪。
 
 批准后进入开发。实施期间边界守卫/文件指纹/漂移检测/意图复述照常工作；
-完成走 /regress:track → commit 门禁（自跑测试+脆弱点复验）。
+完成走 /regress-track → commit 门禁（自跑测试+脆弱点复验）。
 
 实施中卡住（环境/权限/修复 3 次仍败/需人类决策）→ 别硬磨：
 `plan_approve.py <清单> --block --reason "..." --need "..."`——四问落产物，

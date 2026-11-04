@@ -4,7 +4,7 @@
 用法：python3 scripts/check_docs.py [plugin_root]
 
 检查项：
-  1. 文档中引用的 /regress:xxx 命令 → 对应 commands/regress:xxx.md 是否存在
+  1. 文档中引用的 /regress-xxx 命令 → 对应 commands/regress-xxx.md 是否存在
   2. 文档中引用的 skill 名 → 对应 skills/<name>/SKILL.md 是否存在
   3. 文档中引用的文件路径（如 hooks/scripts/xxx）→ 文件是否存在
   4. plugin.json 的 components 路径 → 目录是否存在
@@ -35,11 +35,14 @@ def check(plugin_root):
         # 跳过 EVIDENCE.md（含示例文本，不是真实引用）
         if os.path.basename(md) == "EVIDENCE.md":
             continue
-        # 找 /regress:xxx
-        for m in re.finditer(r'/regress:(\w+)', text):
-            cmd = f"regress:{m.group(1)}"
-            # 跳过占位符（xxx/nonexistent/example 等）
-            if m.group(1) in ("xxx", "nonexistent", "example", "your"):
+        # 找 /regress-xxx（批192：双向环视排除仓库名混用——URL
+        # github.../regress-guard.git、regress-guard-hooks 路径、
+        # github:1339190177/regress-guard 反引号结尾的 slug 都不是命令）
+        for m in re.finditer(r'(?<![\w:])/regress-(\w+)(?![\w.-])', text):
+            cmd = f"regress-{m.group(1)}"
+            # 跳过占位符（xxx/nonexistent/example 等）与仓库名（guard——
+            # 克隆目录 default/regress-guard 与 slug 尾段，非命令）
+            if m.group(1) in ("xxx", "nonexistent", "example", "your", "guard"):
                 continue
             if cmd not in existing_cmds:
                 errors.append(f"{rel(md, plugin_root)}: 引用命令 /{cmd}，但 commands/{cmd}.md 不存在")
@@ -139,7 +142,7 @@ def check_v122(plugin_root, errors, warnings):
         src = open(heal, encoding="utf-8").read()
         m = re.search(r"REQUIRED_COMMANDS\s*=\s*\[(.*?)\]", src, re.DOTALL)
         if m:
-            listed = set(re.findall(r'"(regress:[\w:]+)"', m.group(1)))
+            listed = set(re.findall(r'"(regress-[\w:]+)"', m.group(1)))
             actual = {os.path.basename(f)[:-3]
                       for f in glob.glob(os.path.join(plugin_root, "commands", "*.md"))}
             drift = listed ^ actual

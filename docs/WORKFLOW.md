@@ -7,15 +7,15 @@
 
 ```
 说需求（自然语言，无需敲命令）
-      ↓ UserPromptSubmit 钩子提示 AI 走 plan 流程（含 /regress:init 自动兜底）
-/regress:plan 逻辑       → 清单（F1/F2 + 脆弱点拓扑 + 边界 + 实施顺序 + 验收标准/设计取舍/用户所见草图；产品需求读产品上下文卡；修 bug 类先过假设账本），status: planning
+      ↓ UserPromptSubmit 钩子提示 AI 走 plan 流程（含 /regress-init 自动兜底）
+/regress-plan 逻辑       → 清单（F1/F2 + 脆弱点拓扑 + 边界 + 实施顺序 + 验收标准/设计取舍/用户所见草图；产品需求读产品上下文卡；修 bug 类先过假设账本），status: planning
       ↓ （顾问预审=方向四问（方向/脆弱点/边界/产品适定——产品适定必带搜索）+判据三问（判据三件齐/When 可观察/验命令可复跑）；有方向性异议必等人）
 📋 计划卡片 → 人类 30 秒：批准 / 修改 / 取消      ← 人类决策点 ①
       ↓ plan_approve.py：status→in-progress + approved.at 落产物
       ↓ （预授权任务无异议可 --provisional 临行，进否决窗）
 [AI 开发]                ← 边界守卫事前拦截越界编辑；受阻则四问落产物
       ↓                    （人类决策点 ②：给 need 所需的输入/权限）
-/regress:finish          → track 回写 F3 → verify 全证据（rescue 自救/感官问人收布尔）→ 代谢沉淀 → 产物干净检查（产品否决已埋 design_rejected 化石）
+/regress-finish          → track 回写 F3 → verify 全证据（rescue 自救/感官问人收布尔）→ 代谢沉淀 → 产物干净检查（产品否决已埋 design_rejected 化石）
       ↓                    （人类决策点 ③：感官终验 human_check）
 git commit               ← 门禁自跑测试 + locked 复验，通过自动写 done
 ```
@@ -111,7 +111,7 @@ ExitPlanMode(计划原文) ──批准──→ PostToolUse → 转录+盖章�
 ```
 
 - **幂等键** = session + plan_hash：重复事件 no-op；计划修订整档重写（落 plan_refined）
-- **双轨合一**：同 session 已有 /regress:plan 的 planning 清单 → 直接盖章它
+- **双轨合一**：同 session 已有 /regress-plan 的 planning 清单 → 直接盖章它
 - **顾问预审豁免有据**：原生批准时人刚逐字读完计划=意图裁决（顾问否决权
   为保护不在场者，人在环即最高裁决）
 - 边界从计划文本尽力提取（cap 12），提取不到留空——F3/track 扩界留痕兜底
@@ -156,7 +156,7 @@ rules_ledger._save 三处原子性/锁硬化（tmp+os.replace / file_lock，v1.9
 ```
 [先改好代码]
       ↓
-/regress:quick <需求>    → 基于 diff 生成清单（全 actual）
+/regress-quick <需求>    → 基于 diff 生成清单（全 actual）
       ↓
 git commit               ← 门禁跑测试，通过放行
 ```
@@ -169,13 +169,13 @@ TTL 4h 内同键有通过记录 → 跳过全量（stderr ♻️ 复用 + `commi
 带 `cached:true`/`cache_key`）；真跑通过才落账（只缓存通过，上限 50 条）。
 
 立场（顾问裁）：**优化位，非安全边界**——命中大声可审计；伪造缓存者本有
-更廉价的 `/regress:bypass`。关闭：环境变量 `RG_TEST_CACHE=off` 或
+更廉价的 `/regress-bypass`。关闭：环境变量 `RG_TEST_CACHE=off` 或
 `.regress/config.json` 的 `test_cache.enabled: false`（ttl_minutes/max_entries
 同节可调）。验收环（EARS 勾验）不受缓存影响——它读清单，不读树。
 
 ## 特征测试（v1.45：改无测试老代码前先钉住现状）
 
-`/regress:characterize <文件>` 五步：枚举公开入口（私有/外部服务依赖标"不可钉"）
+`/regress-characterize <文件>` 五步：枚举公开入口（私有/外部服务依赖标"不可钉"）
 → **探针真跑**三类输入（典型/空值/边界）落 JSON → 生成断言**真值**的 golden
 master pytest（浮点 approx/异常只记类型）→ 跑绿=行为已钉 → 回写 F3+脆弱点
 `kind: machine`。证据律沿用：断言探针捕获的真值，不猜 AI 以为的值——
@@ -184,7 +184,7 @@ master pytest（浮点 approx/异常只记类型）→ 跑绿=行为已钉 → �
 ## Bypass 模式（紧急 hotfix）
 
 ```
-/regress:bypass 10       → 10 分钟赦免窗口（边界/门禁统一放行，赦后记债）
+/regress-bypass 10       → 10 分钟赦免窗口（边界/门禁统一放行，赦后记债）
       ↓
 git commit               ← 放行（审计日志 + 技术债记账，测试通过的提交才还债）
       ↓
@@ -218,7 +218,7 @@ planning ──批准/临行──→ in-progress ──→ verifying ──门�
 |---|---|---|
 | **人类（ZCode 外）** | 物理动作（权限/凭据/真机）、感官感知（听/看）、意图理解（批卡前的 30 秒） | 按需 |
 | **人类（ZCode 内，必做）** | ①说需求 ②批准/修改/取消卡片 ③答 flagged 疑问 ④转达受阻输入 ⑤感官终验一个词 | 每任务 4-5 句 |
-| **人类（ZCode 内，罕见）** | `/regress:install`（新机一次）、`/regress:bypass`（紧急）、否决临行（"停"） | 一次性/紧急 |
+| **人类（ZCode 内，罕见）** | `/regress-install`（新机一次）、`/regress-bypass`（紧急）、否决临行（"停"） | 一次性/紧急 |
 | **AI（可被对话引导）** | 需求解析/脆弱点拓扑/清单与卡片/写码修测/越界找路/知识型先问顾问/finish 收尾/提交 | 全程 |
 | **hook（铁律层）** | 边界拦截/执行阀/门禁自跑测试/证据律复验/哨兵/地层采集/自愈升级/老项目迁移 | 全程无感 |
 
@@ -285,10 +285,10 @@ TOP-1 召回行（`RG_PROMPT_CONTEXT=off` 逃生）——防线从"拦截时才�
 （v1.78）Stop 级版本漂移警示：每轮收尾顺带比对已装副本与源仓版本，新漂移对
 首次出现 stderr+chat 各一（消除前不重复）——SessionStart 只跑一次的时代盲区补上。
 
-- 会话启动：自愈/自动升级/老项目迁移/活跃清单哨兵（指路 /regress:resume）
+- 会话启动：自愈/自动升级/老项目迁移/活跃清单哨兵（指路 /regress-resume）
 - 编辑时：先读后改 + 文件指纹 + 边界拦截（AI 是第一现场，人看到的只是行为变好）
 - 失败/风险/纠正：自动入考古地层，跨会话可考古
-- 断点续作：`/regress:resume` 一句话重建现场
+- 断点续作：`/regress-resume` 一句话重建现场
 - 机器级经验：finish 代谢缝自动落机器事实卡（v1.31，见下节）
 
 ## 哨兵巡检一条命令（v1.98：探针机器位）
@@ -372,7 +372,7 @@ bash scripts/clean_env_check.sh        # venv 从零装 requirements-dev 跑全�
   not_correction=判定非纠正（FP 出口——叙事性"不对"实测会误埋）
 - 硬约束语式（一定/必须/不许…+方向词）另埋 `user_constraint` 化石 → Stop
   侧提醒红线落盘（授权/门槛类约束不能只活在对话里）
-- digest 纳入纠正聚类：同主题纠正跨会话 ≥2 次 = 规律候选（/regress:learn 消费）
+- digest 纳入纠正聚类：同主题纠正跨会话 ≥2 次 = 规律候选（/regress-learn 消费）
 - 重任务检测（发布/开源/公网类）+ 无活跃清单 → 一行 M 档建议（f77a+0158a98b
   两标本=钩子在场清单缺席，M/L 纪律全空转）
 - phase-1 全不拦截；升格为门禁拦截=两轮野外数据后人裁（disposition 率/pending
@@ -567,7 +567,7 @@ ZCode 之外的七个框架宿主（LangGraph/CrewAI/Claude Agent SDK 等）。�
 
 | reason | 含义 | 解法 |
 |--------|------|------|
-| blast_radius_no_manifest | 触发影响面但无活跃清单 | /regress:plan 建 M 档清单 |
+| blast_radius_no_manifest | 触发影响面但无活跃清单 | /regress-plan 建 M 档清单 |
 | blast_radius_tier_floor | 清单 tier=S 低于影响面地板 M | 升档或拆分提交 |
 | blast_radius_scope_missing | 清单缺 impact_scope 声明 | frontmatter 补 `impact_scope: [单元...]` |
 | blast_radius_scope_mismatch | 声明未覆盖检出单元 | 补声明或拆分提交（声明面 ⊇ 触碰面） |
@@ -690,7 +690,7 @@ span 树可视化=观察位不做（OTel 思想借字段不借 SDK）。
 3. **接手跨会话任务先读 journal 尾部**：落账即交接，人不当传输层
 
 铁律：**事实带日期（=最后验证为真）、只当线索不当结论**——可信但过期的事实带权威性
-撒谎（病例：/opt 旧端口文件误导排查）。卡的生死判据在 /regress:stats：长期零新增=死重，
+撒谎（病例：/opt 旧端口文件误导排查）。卡的生死判据在 /regress-stats：长期零新增=死重，
 摘掉 finish 分支即退场（机制也要代谢）。
 
 ## 会话分层与执行基底（v2.7.4：super-agent 采用工程沉淀）
@@ -713,14 +713,14 @@ span 树可视化=观察位不做（OTel 思想借字段不借 SDK）。
 
 - `.regress/config.json` → `"strict": false`：门禁降级为仅警告
 - `"boundary_enforced": false`：关闭边界守卫
-- `/regress:bypass <分钟>`：限时赦免 + 审计（不可赦名单：执行阀=物理不可逆、先读后改=防盲改）
+- `/regress-bypass <分钟>`：限时赦免 + 审计（不可赦名单：执行阀=物理不可逆、先读后改=防盲改）
 - `"read_before_edit_ratio": 0`：关闭先读后改门禁（降级留痕）
 - `"execution_valve": false` / `RG_VALVE=off`：关闭执行阀（留痕）
 
 **RG_\* 环境开关的到达面（批138 文档修正）**：经 `launcher.js` 注册的钩子在
 洁净环境跑（v1.69 白名单）——你 shell 里的 `RG_*`/`WECOM_*`/`GIT_*` **到不了**
 那些钩子（防注入设计）。环境开关只对直跑 CLI 生效；要影响钩子行为用
-config 开关或 `/regress:bypass`。
+config 开关或 `/regress-bypass`。
 
 ### fail-closed 语义（v1.99，批135）拦截器（边界/读门禁/执行阀/提交门禁/launcher）崩溃、载荷形态破坏（非 dict/
 畸形 JSON）一律 **exit 2 拦截**——这是设计不是故障：宿主钩子语义「非 2=放行」，

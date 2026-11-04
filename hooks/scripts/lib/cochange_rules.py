@@ -5,9 +5,9 @@
 这些是"改A必改B"的确定性规则——不需要历史数据就能知道。
 
 用途：
-  1. /regress:plan 时提示"改了A别忘了B"
-  2. /regress:track 时发现"改了A但没改B"→ 警告 missing co-change
-  3. /regress:learn 冷启动时作为预置知识
+  1. /regress-plan 时提示"改了A别忘了B"
+  2. /regress-track 时发现"改了A但没改B"→ 警告 missing co-change
+  3. /regress-learn 冷启动时作为预置知识
 
 规则格式：
   {

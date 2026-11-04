@@ -27,7 +27,7 @@
 
 ## AI 会话
 
-断点续作直接跑 `/regress:resume`（从本目录产物单侧重建现场）。
+断点续作直接跑 `/regress-resume`（从本目录产物单侧重建现场）。
 其他：decisions.md=决策史（否决过的方案别重走）；journal/=考古地层；history.jsonl=门禁决策史。
 
 ---

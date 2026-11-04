@@ -5,7 +5,7 @@
 （staging 丢失/验收格式），树本身没动，全量是纯重复。
 
 立场（顾问已裁）：优化位，非安全边界。伪造缓存跳测者本有更廉价的
-/regress:bypass；命中必须大声可审计（stderr ♻️ + commit_passed 事件带
+/regress-bypass；命中必须大声可审计（stderr ♻️ + commit_passed 事件带
 cached/cache_key），TTL 收窄 4h 兜环境漂移窗。
 
 键设计：测试目录所在 git 仓的**内容规范形**——tracked ∪ 未跟踪全路径排序，逐文

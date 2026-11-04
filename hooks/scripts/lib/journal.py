@@ -9,7 +9,7 @@ append-only 地埋进项目 .regress/journal/events.jsonl，随 git 入库。
   journal/events.jsonl = 执行现场化石（工具失败/风险动作/用户纠正，由探测器写）
 
 未来维护者不靠回忆，像考古学家一样挖地层：
-  /regress:learn 聚类跨会话重复失败 → 回写为规则。
+  /regress-learn 聚类跨会话重复失败 → 回写为规则。
 """
 import os
 import json
@@ -78,7 +78,7 @@ def journal_append(kind, start_dir=None, **fields):
 
 
 def load_journal(project_dir):
-    """读取全部地层事件（供 /regress:learn 考古挖掘）。"""
+    """读取全部地层事件（供 /regress-learn 考古挖掘）。"""
     path = journal_path(project_dir)
     events = []
     try:

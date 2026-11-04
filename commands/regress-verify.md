@@ -4,7 +4,7 @@ argument-hint: [manifest-id]
 allowed-tools: Read, Write, Edit, Bash
 ---
 
-# /regress:verify — 测试验证
+# /regress-verify — 测试验证
 
 **提交时 hook 会自动跑测试。本命令用于提交前预览。**
 

@@ -4,7 +4,7 @@ argument-hint: <文件或目录>
 allowed-tools: Read, Write, Edit, Bash, Grep
 ---
 
-# /regress:characterize — 特征测试生成（v1.45）
+# /regress-characterize — 特征测试生成（v1.45）
 
 治的病：无测试的老代码不敢改——改了不知道坏了什么。特征测试
 （characterization test）**不判断对错，只钉住现状**：把当前行为变成可执行
@@ -53,7 +53,7 @@ pytest 新文件全绿 = 行为已钉。红 = 探针与生成不一致（自己�
 
 - 有活跃清单 → `actual_changes` 记 F3（tests 文件），脆弱点拓扑加一条：
   `kind: machine`「特征钉住 <入口数> 入口」verify=`pytest <新文件> -q`
-- 无清单 → 提示下次走 /regress:quick（tests 文件也是改动，要留痕收编）
+- 无清单 → 提示下次走 /regress-quick（tests 文件也是改动，要留痕收编）
 
 ## 边界
 

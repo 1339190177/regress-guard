@@ -377,7 +377,7 @@ def test_storm_suppressed_when_success_interleaved(isolated_tmp, stub_advisor, t
 
 
 def test_storm_downgrades_to_chronic_journal(isolated_tmp, stub_advisor, tmp_path):
-    """慢性已知：失败签名在考古地层跨会话重复 → 软提示指向 /regress:learn，不烧顾问。"""
+    """慢性已知：失败签名在考古地层跨会话重复 → 软提示指向 /regress-learn，不烧顾问。"""
     project = _mk_proj(tmp_path)
     _mk_journal_chronic(project, sig="npm run flaky")
     _mk_fails(tmp_path, n=3, sig="npm run flaky")
@@ -385,7 +385,7 @@ def test_storm_downgrades_to_chronic_journal(isolated_tmp, stub_advisor, tmp_pat
     joined = "\n".join(rs or [])
     assert "当前方法大概率错误" not in joined
     assert "自动第二意见" not in joined
-    assert "慢性" in joined and "/regress:learn" in joined
+    assert "慢性" in joined and "/regress-learn" in joined
     assert len(stub_advisor) == 0
 
 

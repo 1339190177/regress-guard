@@ -24,14 +24,14 @@ def test_template_has_verify_cwd_norm():
 
 
 def test_plan_command_mentions_norms():
-    t = open(os.path.join(ROOT, "commands", "regress:plan.md"),
+    t = open(os.path.join(ROOT, "commands", "regress-plan.md"),
              encoding="utf-8").read()
     assert "子仓相对" in t and "cd <仓目录>" in t, "plan 命令骨架缺两规范"
 
 
 def test_init_hook_self_upgrade_branch():
     """批147：老自装观测钩子缺 source 字段须能自升级（gated 误计带外标本）。"""
-    t = open(os.path.join(ROOT, "commands", "regress:init.md"),
+    t = open(os.path.join(ROOT, "commands", "regress-init.md"),
              encoding="utf-8").read()
     assert "自升级" in t, "init.md 缺自升级分支说明"
     # 升级判据三件套：事件名识别（commit_observed）+ 缺口检测（"source"）
@@ -43,7 +43,7 @@ def test_init_hook_self_upgrade_branch():
 
 def _hook_block():
     import re
-    t = open(os.path.join(ROOT, "commands", "regress:init.md"),
+    t = open(os.path.join(ROOT, "commands", "regress-init.md"),
              encoding="utf-8").read()
     m = re.search(r"```bash\n(if git rev-parse.*?)\n```", t, re.S)
     assert m, "init.md 钩子安装块丢失"

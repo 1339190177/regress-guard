@@ -4,7 +4,7 @@ argument-hint: <minutes>
 allowed-tools: Read, Write, Edit, Bash
 ---
 
-# /regress:bypass — 紧急绕过
+# /regress-bypass — 紧急绕过
 
 **仅用于紧急 hotfix 场景。** 限时开启 bypass 模式，期间 commit 不被 hook 阻断，但所有绕过行为记入审计日志。
 
@@ -19,8 +19,8 @@ allowed-tools: Read, Write, Edit, Bash
 参数 `$1` 是绕过时长（分钟），默认 10 分钟：
 
 ```
-/regress:bypass 10    # 绕过 10 分钟
-/regress:bypass 30    # 绕过 30 分钟
+/regress-bypass 10    # 绕过 10 分钟
+/regress-bypass 30    # 绕过 30 分钟
 ```
 
 ## 执行
@@ -60,5 +60,5 @@ bypass 到期后，hook 自动清除 `bypass_until`，恢复严格模式。无�
 此期间的 commit 不会做回归校验，但会记入审计日志。
 到期后自动恢复严格模式。
 
-请确保事后补跑 /regress:verify 验证这些改动。
+请确保事后补跑 /regress-verify 验证这些改动。
 ```

@@ -6,7 +6,7 @@
 清理：
   1. 清理 ~/.zcode/skills/ 下的旧版 skill（v1.95.1 起带所有权检查：
      仅删含 .regress-guard-skill 标记的目录，其余只提示人工确认）
-  2. 删除 ~/.zcode/commands/ 下的 regress:* 命令（命名空间专属，安全）
+  2. 删除 ~/.zcode/commands/ 下的 regress-* 命令（命名空间专属，安全）
   3. 删除 ~/.zcode/regress-guard-hooks/
   4. 从 config.json 移除 hook 注册（批191 修正：走 REGRESS_ZCODE_HOME
      覆写——install.sh 时代 heredoc 硬编码 ~/.zcode，沙箱测试清不到覆写路径）
@@ -26,11 +26,11 @@ AGENTS_FILE = os.path.join(ZCODE_HOME, "AGENTS.md")
 
 # 与 self_heal REQUIRED_COMMANDS 同源（P1#6）
 COMMANDS = [
-    "regress:init", "regress:plan", "regress:track", "regress:verify",
-    "regress:quick", "regress:bypass", "regress:learn", "regress:evolve",
-    "regress:trace", "regress:resume", "regress:finish", "regress:stats",
-    "regress:characterize", "regress:install", "regress:uninstall",
-    "regress:update",
+    "regress-init", "regress-plan", "regress-track", "regress-verify",
+    "regress-quick", "regress-bypass", "regress-learn", "regress-evolve",
+    "regress-trace", "regress-resume", "regress-finish", "regress-stats",
+    "regress-characterize", "regress-install", "regress-uninstall",
+    "regress-update",
 ]
 
 
@@ -67,6 +67,14 @@ def remove_commands() -> None:
         if os.path.exists(f):
             os.remove(f)
             info(f"删除命令: {cmd}")
+    # 批192：清扫旧冒号命名残留（改名前的死文件不在 COMMANDS 清单内）
+    import glob
+    for legacy in glob.glob(os.path.join(ZCODE_HOME, "commands", "regress:*.md")):
+        try:
+            os.remove(legacy)
+            info(f"回收旧命名残留: {os.path.basename(legacy)}")
+        except OSError:
+            pass
 
 
 def remove_hook_home() -> None:

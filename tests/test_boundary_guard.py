@@ -74,7 +74,7 @@ def test_outside_boundary_blocked(tmp_path):
     proj = make_project(tmp_path)
     r = run_guard(proj, proj / "src/other/db.ts")
     assert r.returncode == 2
-    assert "开发边界" in r.stderr and "/regress:track" in r.stderr
+    assert "开发边界" in r.stderr and "/regress-track" in r.stderr
 
 
 def test_exempt_regress_and_agents(tmp_path):
@@ -103,7 +103,7 @@ def test_track_write_extends_boundary(tmp_path):
     proj = make_project(tmp_path)
     target = proj / "src/shared.ts"
     assert run_guard(proj, target).returncode == 2
-    # 模拟 /regress:track 回写
+    # 模拟 /regress-track 回写
     mf = proj / ".regress" / "manifests" / "R1.md"
     mf.write_text(mf.read_text().replace(
         "actual_changes: []",
@@ -274,7 +274,7 @@ def test_forbidden_zone_blocks_regardless_of_task(tmp_path):
     (proj / "legacy").mkdir()
     r = run_guard(proj, proj / "legacy" / "old.ts")
     assert r.returncode == 2
-    assert "禁改区" in r.stderr and "/regress:bypass" in r.stderr
+    assert "禁改区" in r.stderr and "/regress-bypass" in r.stderr
 
 
 def test_forbidden_escape_via_bypass(tmp_path):

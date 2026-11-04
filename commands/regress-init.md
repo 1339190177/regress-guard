@@ -4,7 +4,7 @@ argument-hint: [--force]
 allowed-tools: Read, Write, Edit, Bash
 ---
 
-# /regress:init — 初始化项目
+# /regress-init — 初始化项目
 
 在项目根目录创建 `.regress/`（**只是数据目录，不是代码**）。代码已在全局级 `~/.zcode/` 安装。
 
@@ -175,8 +175,8 @@ fi
 
 建议把 .regress/（含 journal/）纳入 git——历史厚度决定系统生存韧性。
 
-下一步：/regress:plan <需求描述>
-（老项目首次大提交若被 F3 拦截，直接跑 /regress:track 一次性回填全部文件）
+下一步：/regress-plan <需求描述>
+（老项目首次大提交若被 F3 拦截，直接跑 /regress-track 一次性回填全部文件）
 ```
 
 ## 架构说明

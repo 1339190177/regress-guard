@@ -83,8 +83,8 @@ def test_all_hooks_route_via_launcher():
 def test_uninstall_covers_all_commands():
     """命令删除清单与 REQUIRED_COMMANDS 同源（漏一条=死文件）。"""
     src = open(UNINSTALL_PY, encoding="utf-8").read()
-    for cmd in ("regress:resume", "regress:finish", "regress:stats",
-                "regress:init", "regress:update"):
+    for cmd in ("regress-resume", "regress-finish", "regress-stats",
+                "regress-init", "regress-update"):
         assert cmd in src, f"uninstall.py 漏删 {cmd}"
 
 

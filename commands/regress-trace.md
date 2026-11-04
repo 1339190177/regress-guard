@@ -4,7 +4,7 @@ argument-hint: [manifest-id]
 allowed-tools: Read, Bash
 ---
 
-# /regress:trace — 交付链追溯
+# /regress-trace — 交付链追溯
 
 把 `.regress/history.jsonl` 按 **意图→过程→产出** 组织成可读的交付链（借鉴 Harness Inspector 的证据链模型，文本版实现）。
 

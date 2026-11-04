@@ -10,7 +10,7 @@ LLM 的建议是概率猜测，不可逆执行是物理确定性动作——两�
   AI 不得替用户默认携带。
 
 关闭途径（显式、留痕）：
-  - env REGRESS_VALVE=off（紧急，如 /regress:bypass 场景）
+  - env REGRESS_VALVE=off（紧急，如 /regress-bypass 场景）
   - .regress/config.json {"execution_valve": false}（项目级长期关闭）
 
 顾问意见（auto-consult）与此阀的关系：顾问永远只产生文本 additionalContext，

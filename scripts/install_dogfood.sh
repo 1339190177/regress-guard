@@ -3,7 +3,7 @@
 #
 # 全链：fresh ZCODE_HOME（真安装零污染本机）→ 四查 → 夹具项目 →
 # 已装钩子三面（边界拦/执行阀拦/launcher 门禁过）→ 摩擦清单。
-# AI 驱动的 /regress:init 不可自动化——夹具清单代位（planning+approved 形态）。
+# AI 驱动的 /regress-init 不可自动化——夹具清单代位（planning+approved 形态）。
 #
 # 用法：bash scripts/install_dogfood.sh；exit 0=全链绿；任何一步红即停并
 # 列摩擦点。哨兵轮日跑（顾问：slow 测试缺省跳，此脚本是日跑位）。

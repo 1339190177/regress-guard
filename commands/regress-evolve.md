@@ -4,7 +4,7 @@ argument-hint: <遇到的问题描述>
 allowed-tools: Read, Write, Edit, Bash, WebSearch, WebFetch, Grep
 ---
 
-# /regress:evolve — 查攻略·适配·沉淀
+# /regress-evolve — 查攻略·适配·沉淀
 
 遇到不熟悉的难题，查社区最佳实践，**适配当前项目**（不盲目照搬），沉淀到知识库。下次同样的问题直接读知识库，不再查。
 

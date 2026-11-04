@@ -4,7 +4,7 @@ argument-hint: [manifest-id]
 allowed-tools: Read, Write, Edit, Bash, Grep
 ---
 
-# /regress:finish — 收尾流水线
+# /regress-finish — 收尾流水线
 
 实施完成后的一条命令收尾：**track → verify → 代谢沉淀 → 提交就绪**。
 流程段之间没有人肉粘合剂——中间不需要人，人只出现在两个决策点
@@ -14,7 +14,7 @@ allowed-tools: Read, Write, Edit, Bash, Grep
 
 ## 步骤 1：track（F3 回写 = 扩界留痕）
 
-按 /regress:track 的完整规则执行：`git diff` + 未跟踪文件对比清单，
+按 /regress-track 的完整规则执行：`git diff` + 未跟踪文件对比清单，
 F3 直接回写 `actual_changes`（这是开发边界的扩界出口，留痕）。
 
 ## 步骤 1.5：自审 diff（v1.41：触发表激活，防空转）
@@ -35,7 +35,7 @@ F3 直接回写 `actual_changes`（这是开发边界的扩界出口，留痕）
 
 ## 步骤 2：verify（全证据）
 
-按 /regress:verify 的完整规则执行：
+按 /regress-verify 的完整规则执行：
 
 - 跑项目测试——失败自己修再跑；**修复 3 次仍败或需要输入 → 先分流再受阻**：
   知识型阻塞（用法/取舍/报错不懂）先带四问去 consult，顾问能解则继续（标注采纳情况）；
@@ -79,7 +79,7 @@ F3 直接回写 `actual_changes`（这是开发边界的扩界出口，留痕）
 python3 "<插件路径>/hooks/scripts/lib/journal.py" . digest
 ```
 
-- **digest 非空 / 本次有 rescue 回填 / top_f3 有新共变** → 执行 /regress:learn 的沉淀
+- **digest 非空 / 本次有 rescue 回填 / top_f3 有新共变** → 执行 /regress-learn 的沉淀
   流程（规律入 AGENTS.md 标记块 + `rules_ledger.py . record` 记账），汇报新增规律条数
 - **机器级分支（v1.31）**：沉淀里若有机器味事实（服务器拓扑/通道/环境坑/跨项目工具坑）→
   `python3 "<插件路径>/hooks/scripts/lib/facts.py" record "<标题>" "<一句话+验证命令>" [域]`
@@ -97,7 +97,7 @@ python3 "<插件路径>/hooks/scripts/lib/journal.py" . digest
 - **顾问采纳落账（v1.49）**：本批评审带顾问意见 → 落一条 advisor_adoption
   事件（journal add advisor_adoption，adoption ∈ adopted/partial/rejected）——
   与回复中的标注义务同源（回复里写「已咨询第二意见：采纳」，台账里也要有同条），
-  采纳率在 /regress:stats 第 10 项可查
+  采纳率在 /regress-stats 第 10 项可查
 - 全空 → 报告一行「无可沉淀，代谢跳过」——不硬凑
 - 顺带跑 `rules_ledger.py . health`：命中 ≥3 的稳定规律输出「建议固化 skill」卡片
   （🦴 经人批准后用 skill-creator 固化——**自动固化的错误经验会以技能的形式高速复发**）
@@ -149,4 +149,4 @@ python3 "<插件路径>/hooks/scripts/lib/notify.py" . progress --title "⏳ 清
 
 - 清单已是 done/completed → 报告"已收尾"，只输出债务/漂移检查
 - 测试全绿但用户不在场 → 报告就绪状态并停，不代答 open 的处置
-- 小改动收不了尾（无清单）→ 提示下次走 /regress:quick 或先 /regress:plan
+- 小改动收不了尾（无清单）→ 提示下次走 /regress-quick 或先 /regress-plan

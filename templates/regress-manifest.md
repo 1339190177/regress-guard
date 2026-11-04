@@ -57,7 +57,7 @@ fragile_points:        # 公理一：穷举致使失败的关键脆弱点，逐�
     description: "{{FRAGILE_DESCRIPTION}}"
     # verify 命令的 cwd=工作区根（门禁 5.6 复验位）——验仓内文件须带
     # cd <仓目录> && 前缀，否则复验时 FileNotFoundError 假红（run2 起已知坑）
-    verify: "{{VERIFY_COMMAND}}"   # 可执行命令，/regress:verify 跑它拿证据
+    verify: "{{VERIFY_COMMAND}}"   # 可执行命令，/regress-verify 跑它拿证据
     rescue: "{{RESCUE_COMMAND}}"   # 可选：verify 失败/见典型报错时先敲这个（自救）
     # status 行禁带行内注释（P1#12 病例：行尾 # 让 open 检测恒不中=公理一静默失效）
     # 流转：open=未挂牌(禁提交) / locked=verify已通过 / flagged=带病挂牌
@@ -104,7 +104,7 @@ created_at: "{{DATE}}"
 
 ## 广度矩阵（用户可见功能必填 · v1.35：治"做完才发现少一半"）
 
-> 三个子节缺一不可（/regress:plan 4.9 的产出落这里）。**每行配验证路径**——
+> 三个子节缺一不可（/regress-plan 4.9 的产出落这里）。**每行配验证路径**——
 > 用户故事反推一条可操作验证语句，防矩阵沦为条款清单（顾问补强）。
 
 ### 角色 × 任务
@@ -136,7 +136,7 @@ created_at: "{{DATE}}"
 
 ## 架构影响（跨模块/结构性改动必填 · v1.35）
 
-> 读 `.regress/product-arch.md` 模块卡片后回答（卡不存在 → /regress:init 补）。
+> 读 `.regress/product-arch.md` 模块卡片后回答（卡不存在 → /regress-init 补）。
 > 单文件内部改动可写"无结构性影响"一句话了事。
 
 - **动了哪些模块**：{{模块卡片里的名字，不是文件路径}}
@@ -159,7 +159,7 @@ created_at: "{{DATE}}"
 
 ## 环境准备（必读 · 写给失忆的读者）
 
-> 写给失忆的读者：只凭这段把环境跑起来，不求助、不迷路。（写作指导 /regress:plan 4.7）
+> 写给失忆的读者：只凭这段把环境跑起来，不求助、不迷路。（写作指导 /regress-plan 4.7）
 
 - **运行时**：{{JDK/Node/Python 版本及原因；有 --add-opens 之类的特殊参数直接给全命令}}
 - **外部依赖**：{{Redis/TDengine/…：本地装还是隧道连？给出 ssh -L 等现成命令}}
@@ -202,7 +202,7 @@ created_at: "{{DATE}}"
 ## 报错自救（What if broken）
 
 > verify 失败先查这张表再动手：左列报错关键词、右列自救命令（与 rescue 字段同源；
-> 踩坑修复后回填，经 /regress:learn 沉淀为项目规律）。
+> 踩坑修复后回填，经 /regress-learn 沉淀为项目规律）。
 
 | 报错关键词 | 自救 |
 |-----------|------|

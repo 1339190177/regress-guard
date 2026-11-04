@@ -3,7 +3,7 @@ description: 从 .regress/ 产物层单侧重建工作现场（断点续作，�
 allowed-tools: Read, Bash, Grep
 ---
 
-# /regress:resume — 现场重建（产物自足性）
+# /regress-resume — 现场重建（产物自足性）
 
 对话会压缩、会丢上下文；产物层（.regress/）不会。本命令**只从产物重建现场**，
 不依赖任何对话历史——这是「以产物为中心」的验收标准：
@@ -87,7 +87,7 @@ python3 "<插件路径>/hooks/scripts/lib/history.py" .regress summary
    blocked    → 🛑 最优先：把 blocked.need 转达给人类（受阻等待人类输入）
    planning   → 重新输出计划卡片请人类批准（lib/plan_approve.py 转写）
    in-progress→ 对齐实施顺序表，从第一个未达里程碑的步骤继续；脆弱点未锁死的先锁
-   verifying  → 跑 /regress:verify 收尾
+   verifying  → 跑 /regress-verify 收尾
 ```
 
 多份活跃清单 → 逐份输出卡片（按 created_at 排序），下一步只列最旧的一份。
@@ -96,5 +96,5 @@ python3 "<插件路径>/hooks/scripts/lib/history.py" .regress summary
 
 - 无活跃清单 → 读 `.regress/history.jsonl` 最后几条事件，报告"上个任务已收尾"，
   并列出 decisions.md 要点供开新任务参考
-- 无 `.regress/` → "本项目未接入 regress-guard，/regress:init 初始化"
+- 无 `.regress/` → "本项目未接入 regress-guard，/regress-init 初始化"
 - 信息缺失（字段空/文件不存在）→ 跳过该项并在简报中注明，不猜

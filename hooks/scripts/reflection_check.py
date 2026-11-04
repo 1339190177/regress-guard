@@ -206,7 +206,7 @@ def _git_diff_stat(project_dir, max_lines=15, cap=900):
 
 
 def _stable_failure_sigs(project_dir):
-    """考古地层里跨会话重复的失败签名（慢性已知，归 /regress:learn 管，不当急性卡死）。"""
+    """考古地层里跨会话重复的失败签名（慢性已知，归 /regress-learn 管，不当急性卡死）。"""
     try:
         lib_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib")
         if lib_dir not in sys.path:
@@ -228,7 +228,7 @@ def check_context(project_dir):
     # 0. 轮内失败检测（用户无感层）—— v2 信号融合：3 次失败 ≠ 一定卡死。
     #    两个降级信号（任一命中即从"急性风暴"降为软提示，不烧顾问）：
     #      ① 迭代中：失败签名在窗口内也有**成功**执行（TDD 红绿循环、修一步跑一步）
-    #      ② 慢性已知：签名在考古地层里跨会话重复（稳定经验，归 /regress:learn 管）
+    #      ② 慢性已知：签名在考古地层里跨会话重复（稳定经验，归 /regress-learn 管）
     #    只有"全新签名 + 零成功 + ≥3 次"才是急性卡死（强注入 + 机器摆渡咨询）。
     #    摆渡包自组装：失败清单原文 + git diff --stat 直接附在注入里——
     #    客观工件不经过 AI 的相关性过滤（自举问题）。
@@ -284,7 +284,7 @@ def check_context(project_dir):
                 if success_sigs & {f.get("sig", "?") for f in fails}:
                     reasons.append("失败签名窗口内也有成功执行（迭代/TDD 推进中）")
                 if stable_sigs & {f.get("sig", "?") for f in fails}:
-                    reasons.append("属考古地层跨会话慢性失败（/regress:learn 的领域）")
+                    reasons.append("属考古地层跨会话慢性失败（/regress-learn 的领域）")
                 reminders.append(
                     f"ℹ️ 失败信号 {len(fails)} 次已观察，但非急性卡死"
                     f"（{'; '.join(reasons) or '证据不足'}）——继续当前节奏推进；"
@@ -315,7 +315,7 @@ def check_context(project_dir):
     if active_manifests:
         reminders.append(
             f"📋 有活跃的回归清单（{', '.join(active_manifests[:3])}），"
-            f"确认已跑 /regress:track 检查 F3 了吗？"
+            f"确认已跑 /regress-track 检查 F3 了吗？"
         )
 
         # 1.5 方向漂移自动检测（计划-实现对齐，无需人类开口）
@@ -326,7 +326,7 @@ def check_context(project_dir):
             reminders.append(
                 f"🧭 方向漂移检测：git 改动里有 {len(drift)} 个文件不在活跃清单的 "
                 f"planned/actual 中（如 {', '.join(drift[:4])}）——要么是 F3"
-                f"（改了计划外的东西），要么需求已变。先 /regress:track 回写清单，"
+                f"（改了计划外的东西），要么需求已变。先 /regress-track 回写清单，"
                 f"或调 mcp__advisor__consult 把【原始需求＋漂移文件列表】发给顾问"
                 f"判断是否偏离需求，判断后再继续。"
             )
@@ -339,7 +339,7 @@ def check_context(project_dir):
         if config.get("bypass_until"):
             reminders.append(
                 "⚠️ 当前处于 bypass 模式——本轮的改动未经测试验证，"
-                "记得事后补 /regress:verify"
+                "记得事后补 /regress-verify"
             )
     except (IOError, json.JSONDecodeError):
         pass

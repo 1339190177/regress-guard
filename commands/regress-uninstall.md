@@ -3,7 +3,7 @@ description: 卸载 regress-guard（清理用户级配置 + hook + 命令）
 allowed-tools: Bash
 ---
 
-# /regress:uninstall — 卸载
+# /regress-uninstall — 卸载
 
 清理 regress-guard 的所有用户级配置。项目的 `.regress/` 目录保留（历史数据不删）。
 

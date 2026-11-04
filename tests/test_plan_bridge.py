@@ -109,7 +109,7 @@ def test_post_revision_updates_in_place(tmp_path, monkeypatch):
 
 
 def test_post_stamps_existing_planning_manifest(tmp_path, monkeypatch):
-    """双轨合一：同 session 既有 /regress:plan 的 planning 清单 → 直接盖章它。"""
+    """双轨合一：同 session 既有 /regress-plan 的 planning 清单 → 直接盖章它。"""
     proj = _proj(tmp_path)
     _env(monkeypatch, proj)
     m = proj / ".regress" / "manifests" / "2026-001-manual.md"

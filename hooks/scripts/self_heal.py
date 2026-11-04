@@ -71,11 +71,11 @@ REQUIRED_LIB_FILES = [
     "host_env.py",  # 批166：宿主方言垫片（dsh 桥 session/工具名，部署对账卫兵点名入册）
 ]
 REQUIRED_COMMANDS = [
-    "regress:init", "regress:plan", "regress:track", "regress:verify",
-    "regress:quick", "regress:bypass", "regress:learn", "regress:evolve",
-    "regress:trace", "regress:resume", "regress:finish", "regress:stats",
-    "regress:characterize",
-    "regress:install", "regress:uninstall", "regress:update"
+    "regress-init", "regress-plan", "regress-track", "regress-verify",
+    "regress-quick", "regress-bypass", "regress-learn", "regress-evolve",
+    "regress-trace", "regress-resume", "regress-finish", "regress-stats",
+    "regress-characterize",
+    "regress-install", "regress-uninstall", "regress-update"
 ]
 
 README_TEMPLATE_NAME = "regress-dir-readme.md"
@@ -369,7 +369,7 @@ def _active_manifest_sentinel():
     if not lines:
         return None
     return ("【进行中任务】\n" + "\n".join(lines)
-            + "\n断点续作：/regress:resume（从 .regress/ 产物层单侧重建现场）")
+            + "\n断点续作：/regress-resume（从 .regress/ 产物层单侧重建现场）")
 
 
 def backfill_lock_gitignore(regress_dir):
@@ -610,7 +610,7 @@ def main():
             pass
 
     # 项目经验注入（越用越聪明的 ambient 层）：摘要有变化才注入，避免每次启动刷屏
-    # 活跃清单哨兵：有任务在进行则必注入（每会话一次，指路 /regress:resume）
+    # 活跃清单哨兵：有任务在进行则必注入（每会话一次，指路 /regress-resume）
     sentinel = _active_manifest_sentinel()
     digest = _project_digest()
     context = "\n\n".join(p for p in (sentinel, digest, *_degraded) if p)
@@ -621,7 +621,7 @@ def main():
         print(json.dumps({"status": "healed", "additionalContext": msg}))
     elif issues:
         msg = "regress-guard 警告：以下文件缺失且无法自动恢复：\n" + "\n".join(f"  - {i}" for i in issues)
-        msg += "\n\n建议重新运行 /regress:install"
+        msg += "\n\n建议重新运行 /regress-install"
         print(json.dumps({"status": "warning", "additionalContext": msg}))
     elif context:
         # 哨兵（有活跃任务时）或摘要变化时注入

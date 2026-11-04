@@ -319,7 +319,7 @@ def main():
             return 1
         if not _already_journaled("plan_advisor_review", mid, mdir):
             print("plan_approve: 临行需要真实的顾问预审化石在场（plan_advisor_review）——"
-                  "先跑 /regress:plan 步骤 5a：consult 后 journal.py . add "
+                  "先跑 /regress-plan 步骤 5a：consult 后 journal.py . add "
                   "plan_advisor_review '{\"manifest_id\":\"..\",\"verdict\":\"..\",\"summary\":\"..\"}'"
                   "（防代笔：预审必须留下可审计的痕迹）", file=sys.stderr)
             return 1

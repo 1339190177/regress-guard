@@ -75,8 +75,8 @@ def test_backfill_idempotent(tmp_path, monkeypatch):
 
 def test_required_commands_include_new_ones():
     import self_heal
-    assert "regress:trace" in self_heal.REQUIRED_COMMANDS
-    assert "regress:resume" in self_heal.REQUIRED_COMMANDS
+    assert "regress-trace" in self_heal.REQUIRED_COMMANDS
+    assert "regress-resume" in self_heal.REQUIRED_COMMANDS
 
 
 # ── v1.17：活跃清单哨兵 ──
@@ -116,7 +116,7 @@ def test_sentinel_in_progress(tmp_path, monkeypatch):
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(proj))
     out = sh._active_manifest_sentinel()
     assert out and "🎯 R1" in out and "1 个脆弱点未锁" in out
-    assert "/regress:resume" in out
+    assert "/regress-resume" in out
 
 
 def test_sentinel_done_returns_none(tmp_path, monkeypatch):
@@ -144,7 +144,7 @@ def test_sentinel_planning(tmp_path, monkeypatch):
 
 def test_required_commands_include_finish():
     import self_heal
-    assert "regress:finish" in self_heal.REQUIRED_COMMANDS
+    assert "regress-finish" in self_heal.REQUIRED_COMMANDS
 
 
 def test_sentinel_provisional(tmp_path, monkeypatch):

@@ -4,7 +4,7 @@
 不阻断（exit 0），通过 additionalContext 注入提醒：
   - 需求太短（<20字）→ 提醒先解析
   - 含模糊词 → 提醒歧义检测
-  - 像"改/加/修"类变更 → 提醒先 /regress:plan
+  - 像"改/加/修"类变更 → 提醒先 /regress-plan
   - 重复提交（和上一条一样）→ 提醒可能重复
 
 这是"需求进来时的第一道关口"。
@@ -239,7 +239,7 @@ def analyze_prompt(text):
 
     # 0.6 硬约束埋点（v1.94.0，122）：约束语式+方向词共现 → user_constraint
     # 化石（红线机械可见）。不注入提醒——约束已在用户原话里，AI 天然可见；
-    # 埋点为的是 Stop 侧"红线落盘"提醒和 /regress:learn 考古有据可挖。
+    # 埋点为的是 Stop 侧"红线落盘"提醒和 /regress-learn 考古有据可挖。
     if (CONSTRAINT_RE.search(clean) and CONSTRAINT_DIRECTION_RE.search(clean)):
         journal_append("user_constraint", excerpt=clean[:200])
 
@@ -255,7 +255,7 @@ def analyze_prompt(text):
     if len(clean) < MIN_REQUIREMENT_LEN and re.search(CHANGE_VERBS, clean):
         reminders.append(
             f"💡 需求描述较短（{len(clean)}字）。"
-            f"建议先 /regress:plan 让 AI 解析需求、补全上下文后再动手。"
+            f"建议先 /regress-plan 让 AI 解析需求、补全上下文后再动手。"
         )
 
     # 3. 模糊词检测
@@ -275,11 +275,11 @@ def analyze_prompt(text):
     #     的宿主，治理本质（计划先于实施+人类批准是边界钥匙）由此提醒面复刻
     #     ——ZCode 侧同样受益（原生计划模式的纪律前移到入口）。只对接入
     #     项目（有 .regress）提醒，闲聊词形不刷屏。
-    if PLAN_INTENT_RE.search(clean) and "/regress:" not in text \
+    if PLAN_INTENT_RE.search(clean) and "/regress-" not in text \
             and _project_has_regress():
         reminders.append(
             "🧭 计划性需求——先立清单等批准（计划模式纪律）：AI 应先出计划清单"
-            "（/regress:plan 语义：需求复述+边界+验收判据），你批准（回复「批准」"
+            "（/regress-plan 语义：需求复述+边界+验收判据），你批准（回复「批准」"
             "或清单填 approved.at）后边界守卫才解锁实施——未批准不动码，批准是"
             "边界钥匙。"
         )
@@ -306,18 +306,18 @@ def analyze_prompt(text):
                 break
             search_dir = parent
 
-        if (has_regress and "/regress:" not in text
+        if (has_regress and "/regress-" not in text
                 and re.search(CHANGE_VERBS, clean)
                 and len(clean) >= MIN_REQUIREMENT_LEN):
             reminders.append(
-                "📋 检测到变更需求——AI 会先解析需求+分析改动点（/regress:plan 逻辑），"
+                "📋 检测到变更需求——AI 会先解析需求+分析改动点（/regress-plan 逻辑），"
                 "不需要你手动触发。"
             )
 
         # 4.5 重任务无清单提醒（v1.94.0，122）：发布/开源类任务+无活跃清单 →
         # 一行建议开 M 档（验收+深查纪律恰是这类任务的止血位）。同会话只提
         # 一次（tmp 冷却），不刷屏。
-        if has_regress and "/regress:" not in text and HEAVY_TASK_RE.search(clean):
+        if has_regress and "/regress-" not in text and HEAVY_TASK_RE.search(clean):
             if not _active_manifests(project_dir, limit=1) and not _heavy_reminded():
                 reminders.append(
                     "🚀 重任务检测（发布/开源/公网类）且当前无活跃清单——此类任务"
@@ -446,7 +446,7 @@ def main():
     if not isinstance(prompt_text, str):
         prompt_text = str(prompt_text)
 
-    # 跳过命令自身（/regress:xxx）
+    # 跳过命令自身（/regress-xxx）
     if prompt_text.strip().startswith("/"):
         sys.exit(0)
 

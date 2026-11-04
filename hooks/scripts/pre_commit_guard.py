@@ -686,7 +686,7 @@ def main():
             "  1. 暂存（git 加路径的命令）\n"
             "  2. git status --short 核对暂存内容\n"
             "  3. 提交命令\n\n"
-            "确要复合（如一次性脚本）：/regress:bypass <分钟>（限时赦免，赦后记债）。"
+            "确要复合（如一次性脚本）：/regress-bypass <分钟>（限时赦免，赦后记债）。"
         )
 
     # 读配置 — fail-safe：config 损坏时用最严格默认（阻断）
@@ -1080,7 +1080,7 @@ def main():
                 emit_block(
                     "提交被拦：影响面横跨 " + "、".join(_br_u)
                     + " 但无活跃清单。\n\n"
-                    "高影响/跨单元变更须 M 档清单承载（/regress:plan）——"
+                    "高影响/跨单元变更须 M 档清单承载（/regress-plan）——"
                     "影响面评审从口头约定变机器位。"
                 )
             _br_fm = parse_frontmatter(manifest) or {}
@@ -1093,7 +1093,7 @@ def main():
                     "提交被拦：影响面横跨 " + "、".join(_br_u)
                     + "，归因清单 tier=" + (_br_tier or "?")
                     + " 低于影响面地板（M）。\n\n"
-                    "升档 /regress:plan 或把提交拆成单单元——跨单元变更按 "
+                    "升档 /regress-plan 或把提交拆成单单元——跨单元变更按 "
                     "M 档全套检查面对待（广度矩阵+验收入环+深查）。"
                 )
             _br_sc_raw = _br_fm.get("impact_scope") or []
@@ -1168,7 +1168,7 @@ def main():
                     "· 与该会话串行作业，或让人类仲裁归属\n"
                     "· 该会话已死？哨兵视图确认后收尾其清单或重盖 session 戳：\n"
                     "  python3 hooks/scripts/lib/sentinel.py\n"
-                    "· 确要抢收：/regress:bypass <分钟>（限时赦免，赦后记债）"
+                    "· 确要抢收：/regress-bypass <分钟>（限时赦免，赦后记债）"
                 )
             record(regress_dir, "commit_passed", "",
                    runner="none", passed=0, total=0,
@@ -1261,7 +1261,7 @@ def main():
             record(regress_dir, "commit_warned", manifest_id,
                    note="structural_change_without_cards", structural=_ad[:6])
             print(f"REGRESS-GUARD (warning): 结构性变更（{len(_ad)} 文件）但项目无模块卡片——"
-                  "建议 /regress:init 建产品层（全貌是强制产物的起点）", file=sys.stderr)
+                  "建议 /regress-init 建产品层（全貌是强制产物的起点）", file=sys.stderr)
 
     # ─── 4.6 收官两规则（v1.41：触发表激活，防空转）─────
     # 顾问重塑：rollback=能力断言+引信（全档，写不出即不该提交；默认只在无逃逸面
@@ -1353,7 +1353,7 @@ def main():
                 f"{_hit_str}\n\n"
                 "· 真密钥：撤销轮换（进了 git 历史就算删了也已泄漏），用 env/凭据库\n"
                 "· 文档示例/教学串：config supply_chain.allowlist 加值\n"
-                "· 确要提交：/regress:bypass <分钟>（限时赦免+审计留痕）"
+                "· 确要提交：/regress-bypass <分钟>（限时赦免+审计留痕）"
             )
 
     if _sc_cfg.get("deps", True):
@@ -1415,7 +1415,7 @@ def main():
         )
 
     # 5.4 跨会话冲突（v1.34）：先于 untracked 检查——否则"不在清单中"的提示
-    # 会误导去 /regress:track 把他人文件认领进我的清单（方向反了）
+    # 会误导去 /regress-track 把他人文件认领进我的清单（方向反了）
     if my_sid and others:
         clash = sorted({s.replace(os.sep, "/") for s in staged} & _others_files())
         if clash:
@@ -1431,14 +1431,14 @@ def main():
                 "· 与该会话串行作业，或让人类仲裁归属\n"
                 "· 该会话已死？哨兵视图确认后收尾其清单或重盖 session 戳：\n"
                 "  python3 hooks/scripts/lib/sentinel.py\n"
-                "· 确要抢收：/regress:bypass <分钟>（限时赦免，赦后记债）"
+                "· 确要抢收：/regress-bypass <分钟>（限时赦免，赦后记债）"
             )
 
     if untracked:
         files_str = "\n  ".join(untracked)
         msg = (f"commit 被阻断。以下 staged 文件不在回归清单中：\n"
                f"  {files_str}\n\n"
-               f"请先运行 /regress:track 回写，或 git reset 撤销。\n清单：{manifest}")
+               f"请先运行 /regress-track 回写，或 git reset 撤销。\n清单：{manifest}")
         record(regress_dir, "commit_blocked", manifest_id,
                reason="untracked_files", untracked_files=untracked)
         if strict:
@@ -1460,7 +1460,7 @@ def main():
             f"  {lines}\n\n"
             "公理一：成功不是跑通，而是所有已知脆弱点被锁死或显式挂牌。\n"
             "每个脆弱点二选一后回写清单：\n"
-            "  - locked：verify 命令实测通过（跑 /regress:verify 或手动执行后回写）\n"
+            "  - locked：verify 命令实测通过（跑 /regress-verify 或手动执行后回写）\n"
             "  - flagged：显式带病挂牌（description 里写明知悉的原因）"
         )
         record(regress_dir, "commit_blocked", manifest_id,
@@ -1492,7 +1492,7 @@ def main():
     for fp in locked_no_verify:
         print(
             f"REGRESS-GUARD: ⚠️ {fp.get('id', '?')} 自称 locked 但无 verify 命令——"
-            f"证据链缺环，建议补命令（/regress:verify 拿证据）或改 flagged 显式挂牌",
+            f"证据链缺环，建议补命令（/regress-verify 拿证据）或改 flagged 显式挂牌",
             file=sys.stderr,
         )
     verify_failed = []

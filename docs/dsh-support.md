@@ -53,7 +53,7 @@
 真实 DeepSeek agent 会话（dsh --profile headless，deepseek-official）在
 fixture 仓（活跃清单 R1 边界=src/app.js，staged 越界文件）执行
 `git commit`：**提交未发生**（fixture git log 空），agent 收到完整拦截消息
-（"commit 被阻断。以下 staged 文件不在回归清单中…请先运行 /regress:track
+（"commit 被阻断。以下 staged 文件不在回归清单中…请先运行 /regress-track
 回写"）并原样转达、零绕过。全链：dsh bash 工具→桥 PreToolUse→
 hooks.cc.json（摊平路径）→launcher/门禁→deny→agent。复跑可再现。
 

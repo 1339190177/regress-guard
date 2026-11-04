@@ -4,7 +4,7 @@ argument-hint: [manifest-id]
 allowed-tools: Read, Write, Edit, Bash, Grep
 ---
 
-# /regress:track — 发现 F3 并回写
+# /regress-track — 发现 F3 并回写
 
 **AI 完成代码修改后应自动执行此命令，不等用户手动触发。**
 

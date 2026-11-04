@@ -76,6 +76,15 @@ def preflight() -> None:
 
 def copy_files() -> None:
     os.makedirs(COMMANDS_DIR, exist_ok=True)
+    # 批192：清扫旧冒号命名残留（NTFS 非法字符——改名前装的 regress:*.md
+    # 在新版卸载清单外成死文件，升级路径上原地回收）
+    for name in os.listdir(COMMANDS_DIR):
+        if name.startswith("regress:") and name.endswith(".md"):
+            try:
+                os.remove(os.path.join(COMMANDS_DIR, name))
+                info(f"回收旧命名残留: {name}")
+            except OSError:
+                pass
     for name in sorted(os.listdir(os.path.join(PLUGIN_ROOT, "commands"))):
         if name.endswith(".md"):
             shutil.copy2(os.path.join(PLUGIN_ROOT, "commands", name), COMMANDS_DIR)
@@ -337,14 +346,14 @@ def inject_agents() -> None:
 ## 回归契约
 
 0. **先读后改**：改代码前至少读 2 个相关文件（hook 强制；读后被外部改过的文件指纹不匹配，hook 会拦）
-1. **需求解析优先**：从代码推断上下文、检测歧义、自决消歧；计划（planning 状态）须人类批准后才实施——批准前边界守卫拦编辑，不认同就继续对话完善；批准走 lib/plan_approve.py（approved 落产物+漂移检查），人类也可直接填清单 approved.at（产物直通）；**原生计划模式批准由 plan_bridge 钩子自动转录（钩子未生效时 AI 补转录，幂等）**；断点续作用 /regress:resume 从产物层重建现场
-2. 开发完跑 /regress:track 发现 F3，直接回写
+1. **需求解析优先**：从代码推断上下文、检测歧义、自决消歧；计划（planning 状态）须人类批准后才实施——批准前边界守卫拦编辑，不认同就继续对话完善；批准走 lib/plan_approve.py（approved 落产物+漂移检查），人类也可直接填清单 approved.at（产物直通）；**原生计划模式批准由 plan_bridge 钩子自动转录（钩子未生效时 AI 补转录，幂等）**；断点续作用 /regress-resume 从产物层重建现场
+2. 开发完跑 /regress-track 发现 F3，直接回写
 3. 提交时 hook 自跑测试，被拦后自己修；**脆弱点 open 状态的清单禁止提交**（先 verify 拿证据转 locked，或显式 flagged 挂牌）
-4. 紧急用 /regress:bypass <分钟> 临时绕过
+4. 紧急用 /regress-bypass <分钟> 临时绕过
 5. 改 >=3 个文件时 hook 会触发 pre-mortem：假设出bug最可能是什么？
 6. **不可逆命令要令牌**：mkfs/dd if=/force push/DROP/TRUNCATE/项目外 rm -rf 会被执行阀拦，确要执行须显式加 REGRESS_CONFIRM=YES 前缀（禁止习惯性携带）
 7. **失败/风险/用户纠正自动入地层**（.regress/journal/，append-only）——别删，那是未来会话的考古资产；重大决策（含否决过的方案）写 .regress/decisions.md
-8. **开发边界**：活跃清单外/边界外的文件 Edit/Write 会被 hook **事前拦截**——别绕，扩界的唯一出口是 /regress:track 回写（留痕）；边界不是拖慢，是把 token 和质量都省下来（6B→1B 实证）
+8. **开发边界**：活跃清单外/边界外的文件 Edit/Write 会被 hook **事前拦截**——别绕，扩界的唯一出口是 /regress-track 回写（留痕）；边界不是拖慢，是把 token 和质量都省下来（6B→1B 实证）
 9. **受阻是一等状态**：卡住别硬磨别绕过——`plan_approve.py <清单> --block --reason --need` 四问落产物并转达人类（受阻期间边界守卫拦编辑）；解阻后 `--unblock`
 10. **假设被证伪别悄悄改**：verify 实测推翻清单推测时，追加「假设失效记录」（was→reality→evidence）+ `journal.py . add assumption_broken`——失效过程比结论值钱
 11. **顾问预审（伪全自动）**：计划卡片送顾问预审——顾问有一票否决权（有方向性异议必等人，即使已预授权）无一票批准权；预授权任务无异议才 `--provisional --advisor` 临行（否决窗内 `--cancel` 可停）；知识型受阻先问顾问再 --block；预审意见必须来自真实 consult（audit 可查），不得代笔
@@ -354,10 +363,10 @@ def inject_agents() -> None:
 `~/.zcode/regress-guard-hooks/lib/`（journal.py / plan_approve.py / history.py 都在），
 `<插件路径>/hooks/scripts/lib/` 是源码等价路径。
 
-可用命令：/regress:init, /regress:plan, /regress:track, /regress:verify,
-/regress:quick, /regress:bypass, /regress:learn, /regress:evolve,
-/regress:trace, /regress:resume, /regress:finish,
-/regress:install, /regress:uninstall, /regress:update
+可用命令：/regress-init, /regress-plan, /regress-track, /regress-verify,
+/regress-quick, /regress-bypass, /regress-learn, /regress-evolve,
+/regress-trace, /regress-resume, /regress-finish,
+/regress-install, /regress-uninstall, /regress-update
 {CONTRACT_END}"""
 
     FULL_BLOCK = SOUL + "\n\n" + CONTRACT
@@ -444,7 +453,7 @@ def main() -> None:
     print("════════════════════════════════════════════")
     print()
     print("已安装：")
-    print("  • 全部 /regress:* 命令（以 ~/.zcode/commands/ 实际装入为准——数字宣称会腐烂，126 起由 test_claims_lint 对账）")
+    print("  • 全部 /regress-* 命令（以 ~/.zcode/commands/ 实际装入为准——数字宣称会腐烂，126 起由 test_claims_lint 对账）")
     print("  • commit 卡点 hook（自动跑测试）")
     print("  • 先读后改门禁 + 文件指纹（读后被外部改过 → 强制重读）")
     print("  • pre-mortem 反思（改≥3文件时触发）")
@@ -460,7 +469,7 @@ def main() -> None:
     print("  • AGENTS.md 回归契约")
     print()
     print("现在在任意项目中对 AI 说：")
-    print("  /regress:init    ← 初始化项目")
+    print("  /regress-init    ← 初始化项目")
     print()
     print(f"卸载：python {os.path.join(PLUGIN_ROOT, 'uninstall.py')}")
 

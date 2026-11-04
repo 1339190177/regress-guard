@@ -23,7 +23,7 @@ _NUM_CLAIM = re.compile(r"(\d+)\s*个\s*(skill|命令|hook)", re.I)
 def _repo_files():
     out = {}
     for f in CLAIM_FILES:
-        p = os.path.join(ROOT, "commands", f) if f.startswith("regress:") \
+        p = os.path.join(ROOT, "commands", f) if f.startswith("regress-") \
             else os.path.join(ROOT, f)
         out[f] = open(p, encoding="utf-8").read() if os.path.exists(p) else ""
     return out

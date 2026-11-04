@@ -46,15 +46,15 @@ def test_command_byte_budget_warns_on_bloat():
     with tempfile.TemporaryDirectory() as td:
         os.makedirs(os.path.join(td, "commands"))
         # 负路：造一个超预算文件
-        big = os.path.join(td, "commands", "regress:fat.md")
+        big = os.path.join(td, "commands", "regress-fat.md")
         with open(big, "w", encoding="utf-8") as f:
             f.write("x" * (check_docs.COMMAND_BYTE_BUDGET + 1))
         errs, warns = [], []
         check_docs.check_v123(td, errs, warns)
-        assert not errs and len(warns) == 1 and "regress:fat.md" in warns[0]
+        assert not errs and len(warns) == 1 and "regress-fat.md" in warns[0]
         # 正路：删掉后无告警
         os.remove(big)
-        with open(os.path.join(td, "commands", "regress:lean.md"), "w",
+        with open(os.path.join(td, "commands", "regress-lean.md"), "w",
                   encoding="utf-8") as f:
             f.write("x" * 100)
         errs2, warns2 = [], []

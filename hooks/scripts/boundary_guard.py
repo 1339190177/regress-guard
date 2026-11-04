@@ -14,8 +14,8 @@
      blocked=受阻拦编辑（合法停止不是绕过理由）
   3. 无边界信息 → 放行（fail-open，不误锁）
 豁免：.regress/**、AGENTS.md、regress-guard 自身文件。
-越界的合法出口：/regress:track 回写 actual_changes（扩界留痕）；
-禁改区的合法出口：/regress:bypass <分钟>（赦后记债）或改 config。
+越界的合法出口：/regress-track 回写 actual_changes（扩界留痕）；
+禁改区的合法出口：/regress-bypass <分钟>（赦后记债）或改 config。
 关闭：.regress/config.json 设 "boundary_enforced": false。
 
 v1.20：字段读取与可编辑性判定收敛到 lib/manifest_fields.py（单一来源）。
@@ -382,7 +382,7 @@ def _fail_closed(reason):
             f"  守卫无法判定状态时按「拦」处理——这是设计不是故障\n"
             f"  （静默放行=看不见的越界）。\n"
             f"  · 修复/排查后重试\n"
-            f"  · 确要临时越过 → /regress:bypass <分钟>（限时赦免，赦后记债）\n"
+            f"  · 确要临时越过 → /regress-bypass <分钟>（限时赦免，赦后记债）\n"
             f"  · 项目级关闭 → .regress/config.json 设 boundary_enforced: false",
             file=sys.stderr,
         )
@@ -473,7 +473,7 @@ def main():
                 f"  {fp_rel}{via}\n"
                 f"  命中 .regress/config.json 的 boundary.forbidden（冻结区/遗留区）。\n\n"
                 f"  禁改区与任务边界无关——它保护的是「不该再被碰」的代码。\n"
-                f"  · 确有必要 → /regress:bypass <分钟>（限时赦免，赦后记债）\n"
+                f"  · 确有必要 → /regress-bypass <分钟>（限时赦免，赦后记债）\n"
                 f"  · 冻结已解除 → 从 config 的 forbidden 列表移除（留痕于 git）",
                 file=sys.stderr,
             )
@@ -511,7 +511,7 @@ def main():
                     f"  · 与该会话串行作业，或让人类仲裁文件归属\n"
                     f"  · 该会话已死？租约过期即自动可收回（v1.109）；未过期可"
                     f"重盖 session+lease 戳接管后再动此文件\n"
-                    f"  · 确要并行抢改 → /regress:bypass <分钟>（限时赦免，赦后记债）",
+                    f"  · 确要并行抢改 → /regress-bypass <分钟>（限时赦免，赦后记债）",
                     file=sys.stderr,
                 )
                 sys.exit(2)
@@ -557,7 +557,7 @@ def main():
                 f"  · 人类回复「批准/开始/ok」→ python3 {APPROVE_SCRIPT} <清单> 完成转写\n"
                 f"    （status→in-progress + approved 落产物 + 漂移检查 + 入地层）\n"
                 f"  · 人类也可直接编辑清单填 approved.at（产物直通），守卫视同已批准\n"
-                f"  · 计划需修改 → /regress:plan 继续对话完善（保持 planning）\n"
+                f"  · 计划需修改 → /regress-plan 继续对话完善（保持 planning）\n"
                 f"  · 你认为不该等批准 → 在回复中说明理由，请人类显式批准",
                 file=sys.stderr,
             )
@@ -570,11 +570,11 @@ def main():
             f"  不在任何活跃清单（{ids}）的边界内。\n\n"
             f"  边界 = 计划的物理化：越界动作在发生前被拦截，而不是烧完 token 后被提醒。\n"
             f"  三条路（选一）：\n"
-            f"  1. 这确实是本任务需要的 → /regress:track 把它回写 actual_changes"
+            f"  1. 这确实是本任务需要的 → /regress-track 把它回写 actual_changes"
             f"（边界随之扩展，扩界留痕）\n"
             f"  2. 这属于另一个任务 → 先收尾当前清单（status: done 解除边界），再开新清单\n"
             f"  3. 误锁 → .regress/config.json 设 \"boundary_enforced\": false 项目级关闭\n\n"
-            f"  需要临时绕过：/regress:bypass <分钟>",
+            f"  需要临时绕过：/regress-bypass <分钟>",
             file=sys.stderr,
         )
         sys.exit(2)

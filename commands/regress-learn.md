@@ -3,7 +3,7 @@ description: 分析历史+检测框架规则，输出项目洞察，写入 AGENT
 allowed-tools: Read, Write, Edit, Bash
 ---
 
-# /regress:learn — 学习项目规律
+# /regress-learn — 学习项目规律
 
 分析历史 + 框架 co-change 规则，输出洞察，**写入 AGENTS.md**。
 
@@ -92,7 +92,7 @@ correction_disposition 高水位之后仍有的 user_correction）——长期�
 ## 如果 top_f3_files 不为空 → 写入 AGENTS.md
 ```markdown
 <!-- regress-guard learn start -->
-## 项目规律（/regress:learn 自动发现）
+## 项目规律（/regress-learn 自动发现）
 - 改 src/auth/ 时，src/utils/validator.js 通常需要同步改（出现 5 次）
 <!-- regress-guard learn end -->
 ```

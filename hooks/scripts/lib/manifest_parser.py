@@ -184,7 +184,7 @@ def get_fragile_points(manifest_path):
       open    = 已识别但既没锁死也没挂牌 → 禁止提交（pre_commit_guard 拦）
       locked  = verify 命令通过，已锁死
       flagged = 显式带病挂牌（写明知悉原因）
-    未列出的脆弱点 = 真正的未知风险（/regress:plan 负责穷举）。
+    未列出的脆弱点 = 真正的未知风险（/regress-plan 负责穷举）。
     """
     data = parse_frontmatter(manifest_path)
     if not data:

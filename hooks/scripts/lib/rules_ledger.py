@@ -472,7 +472,7 @@ def main(argv=None):
                 # 闭）；集合变化=新决策点；人 resolve 后同集合再现=新待决
                 _notify(project_dir, "plan_approval",
                         f"🦴 固化候选 ×{n}",
-                        "规律命中≥3 可固化为 skill——需要你批准（/regress:stats 查看详情）",
+                        "规律命中≥3 可固化为 skill——需要你批准（/regress-stats 查看详情）",
                         source_id="rules-ledger-candidates",
                         coalesce_key=_candidates_fp(res))
             except Exception:

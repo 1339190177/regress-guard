@@ -115,7 +115,7 @@ def load_history(regress_dir):
 
 
 def summarize(regress_dir):
-    """分析历史，输出项目级洞察（供 /regress:learn 使用）。
+    """分析历史，输出项目级洞察（供 /regress-learn 使用）。
 
     Returns:
         {
@@ -348,7 +348,7 @@ def build_trace(regress_dir, run=None):
     """构建交付链视图（借鉴 Harness Inspector 的 Intent→Process→Output）。
 
     把 history.jsonl 按 意图(manifest) → 过程(session) → 产出(commit) 组织。
-    输出人类可读的文本交付链，供 /regress:trace 展示。
+    输出人类可读的文本交付链，供 /regress-trace 展示。
     run（v2.0.0 批162）：只列带该 run_id 的事件——跨执行体因果链的查询面
     （自迭代 run/哨兵轮次一屏看全；无 run 锚的零散事件不在此视图）。
     """

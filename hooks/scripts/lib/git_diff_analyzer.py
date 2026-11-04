@@ -15,7 +15,7 @@ import subprocess
 # 默认忽略的文件模式（不算计划外改动）
 DEFAULT_IGNORE_PATTERNS = [
     ".regress/",          # 框架自身产物
-    "AGENTS.md",          # 框架注入的契约文件（由 /regress:init 管理）
+    "AGENTS.md",          # 框架注入的契约文件（由 /regress-init 管理）
     "package-lock.json",  # npm 锁文件
     "yarn.lock",          # yarn 锁文件
     "pnpm-lock.yaml",     # pnpm 锁文件

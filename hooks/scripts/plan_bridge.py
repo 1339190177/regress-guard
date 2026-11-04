@@ -13,7 +13,7 @@ ZCode 原生计划模式的批准不产生任何产物——无清单、无边�
 - 单钩子原子：不用 Pre+Post 两段式（避免 planning 悬空与盖章竞态）
 - 幂等键 = session + plan_hash（顾问修正采纳）：同 session 活跃 via:native 清单
   且 hash 不变 → 完全 no-op；hash 变 → 视为计划修订，重写正文并落 plan_refined
-- 双轨合一：同 session 已有 /regress:plan 的 planning 清单 → 直接盖章它
+- 双轨合一：同 session 已有 /regress-plan 的 planning 清单 → 直接盖章它
   （两条批准通道，产物层只有一份）
 - 顾问预审豁免有据：原生批准时人刚逐字读完计划=意图裁决（责任矩阵最高裁决，
   顾问否决权为保护不在场者）

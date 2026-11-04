@@ -4,14 +4,14 @@ argument-hint: <需求描述>
 allowed-tools: Read, Write, Edit, Bash, Grep
 ---
 
-# /regress:quick — 快速模式
+# /regress-quick — 快速模式
 
-合并 `/regress:plan` 和 `/regress:track` 为一步：**基于 git diff 直接生成清单**
+合并 `/regress-plan` 和 `/regress-track` 为一步：**基于 git diff 直接生成清单**
 （不分 planned/actual，全部算实际改动）。清单标 `mode: quick`。
 
 ## 与 full 模式的分界（v1.37：机器判据，不再靠"个人/小改动"感觉）
 
-**四条全过才许 quick**（任一不过 → 走 /regress:plan full）：
+**四条全过才许 quick**（任一不过 → 走 /regress-plan full）：
 
 1. 改动 ≤3 个文件（git diff 统计，含新增）
 2. 无 new-file 以外的结构类型（model 签名变更/跨模块调用链 → full）
@@ -37,7 +37,7 @@ allowed-tools: Read, Write, Edit, Bash, Grep
 git diff --name-only HEAD; git ls-files --others --exclude-standard
 ```
 统计文件数、看类型、找用户可见面、找环境文件。**判据不过就在此说
-"这单走 full"，转 /regress:plan**——塌方曲线的病根是重仪式被绕过，
+"这单走 full"，转 /regress-plan**——塌方曲线的病根是重仪式被绕过，
 不是仪式被正确豁免；机器判据让豁免留痕、越级可审计。
 
 ### 步骤 2：用户先改好代码
