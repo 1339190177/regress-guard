@@ -272,16 +272,40 @@ def _seg_write_targets(seg):
             targets.add(toks[-1])
     for m in re.finditer(r'\bof=([^\s;|&]+)', dq):
         targets.add(m.group(1))
-    # 批193（公网 issue#2 P0-2）：PowerShell 写动词——dsh(pwsh) 下
-    # Set-Content/Out-File/New-Item/Add-Content 是主要写向量，POSIX 表认不出
-    # = 静默放行。-Path 前缀可选；裸位置参数兜底（Set-Content out.txt hi）。
+    # 批193+194（公网 issue#2 P0-2 + 遗留1/2）：PowerShell 写动词全表
+    # 两阶段提取：先匹配命名路径参数（-Path/-LiteralPath/-FilePath/-Destination/-Target），
+    # 无则取位置参数（跳过已知非路径参数值 -ItemType/-Value/-InputObject 等）。
+    # v2.8.2 一阶段正则的 -ItemType Directory 被当位置目标的标本根治。
+    _PS_WRITE = (
+        r'(?:^|[;|&\s])(Set-Content|Out-File|New-Item|Add-Content|'
+        r'Copy-Item|Move-Item|Remove-Item|Rename-Item|Tee-Object|Clear-Content)'
+    )
+    # 阶段一：命名参数（-Path xxx / -FilePath xxx / -Destination xxx / -Target xxx）
     for m in re.finditer(
-            r'(?:^|[;|&\s])(Set-Content|Out-File|New-Item|Add-Content)'
-            r'(?:\s+-[^\s]+)*\s+(?:-Path\s+)?([^\s;|&-]+(?:\.[^\s;|&]+)?)',
+            _PS_WRITE +
+            r'[^;|&\n]*?\s(?:-Path|-LiteralPath|-FilePath|-Destination|-Target)\s+([^\s;|&-]+)',
             dq, re.I):
         t = m.group(2).strip('\'"')
         if t and not t.startswith("-"):
             targets.add(t)
+    # 阶段二：位置参数兜底（跳过已知非路径命名参数的值）
+    _PS_NONPATH_FLAGS = r'(?:-[^\s]+\s+[^\s-]+\s+)*'  # 贪心吃 flag+value 对
+    for m in re.finditer(
+            _PS_WRITE + r'\s+' + _PS_NONPATH_FLAGS + r'([^\s;|&-]+)',
+            dq, re.I):
+        t = m.group(2).strip('\'"')
+        if t and not t.startswith("-"):
+            # Copy-Item/Move-Item 的第二个位置参数是目标（第一个是源）
+            if m.group(1).lower() in ("copy-item", "move-item"):
+                # 找第二个非 flag token
+                rest = dq[m.end(2):].strip()
+                toks = [x for x in rest.split() if not x.startswith("-")]
+                if toks:
+                    targets.add(toks[0].strip('\'"'))  # t 是源，第一个后续 token 是目标
+                else:
+                    targets.add(t)  # 只有源无目标=原地操作（罕见，保守收）
+            else:
+                targets.add(t)
     return targets
 
 

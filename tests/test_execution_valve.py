@@ -189,3 +189,25 @@ def test_powershell_remove_item_no_recurse_passes():
                         os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
                        input=payload_str, capture_output=True, text=True, timeout=10)
     assert r.returncode == 0
+
+
+# ─── 批194（issue#2 遗留3）：del /s 与 Remove-Item -Recurse 无 -Force ───
+
+def test_del_s_blocked():
+    """cmd del /s /q = 递归强制删（只补 rd/rmdir 不够）。"""
+    payload_str = '{"tool_name":"Bash","tool_input":{"command":"del /s /q D:\\\\data"}}'
+    import subprocess, sys, os
+    r = subprocess.run([sys.executable, "-E",
+                        os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
+                       input=payload_str, capture_output=True, text=True, timeout=10)
+    assert r.returncode == 2
+
+
+def test_remove_item_recurse_only_blocked():
+    """-Recurse 无 -Force 同样删空目录树（只读文件才中断）。"""
+    payload_str = '{"tool_name":"Bash","tool_input":{"command":"Remove-Item -Recurse D:\\\\data"}}'
+    import subprocess, sys, os
+    r = subprocess.run([sys.executable, "-E",
+                        os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
+                       input=payload_str, capture_output=True, text=True, timeout=10)
+    assert r.returncode == 2

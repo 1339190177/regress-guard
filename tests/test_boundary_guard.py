@@ -618,3 +618,41 @@ def test_powershell_set_content_bare_position(tmp_path):
     import boundary_guard as bg
     t = bg.extract_write_targets("Set-Content out.txt hello", str(tmp_path))
     assert any("out.txt" in p for p in t), t
+
+
+# ─── 批194（issue#2 遗留1/2）：参数顺序+覆盖面 ───
+
+def test_powershell_new_item_param_order(tmp_path):
+    """-ItemType Directory -Path newdir → 目标是 newdir 不是 Directory（v2.8.2 误报标本）。"""
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
+    import boundary_guard as bg
+    t = bg.extract_write_targets("New-Item -ItemType Directory -Path newdir", str(tmp_path))
+    assert any("newdir" in p for p in t), t
+    assert not any("Directory" in p for p in t), f"Directory 不应被捕: {t}"
+
+
+def test_powershell_copy_move_second_positional(tmp_path):
+    """Copy-Item/Move-Item 目标是第二个位置参数（第一个是源）。"""
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
+    import boundary_guard as bg
+    t = bg.extract_write_targets("Copy-Item a.txt out/b.txt", str(tmp_path))
+    assert any("b.txt" in p for p in t), t
+    t2 = bg.extract_write_targets("Move-Item a.txt b.txt", str(tmp_path))
+    assert any("b.txt" in p for p in t2), t2
+
+
+def test_powershell_full_verb_coverage(tmp_path):
+    """六个遗留缺口：Remove-Item/Rename-Item/Tee-Object/Clear-Content 等。"""
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
+    import boundary_guard as bg
+    for cmd, expect in [
+        ("Remove-Item data/x.txt", "x.txt"),
+        ("Rename-Item a.txt b.txt", "a.txt"),
+        ("Tee-Object -FilePath t.log", "t.log"),
+        ("Clear-Content -Path c.txt", "c.txt"),
+    ]:
+        t = bg.extract_write_targets(cmd, str(tmp_path))
+        assert any(expect in p for p in t), f"'{cmd}' → {t}（应为 {expect}）"
