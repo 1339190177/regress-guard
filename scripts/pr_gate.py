@@ -402,30 +402,25 @@ def sweep():
     for entry in repos:
         repo, agent = entry["repo"], entry["agent_login"]
         try:
+            # 批196：headRefOid/mergeable 随 list 一次带回——settled PR
+            # 零额外调用（原每 PR 至多两次 pr view，90s 轮询下是无谓 gh 脉冲源）
             open_prs = json.loads(_gh(["pr", "list", "-R", repo,
-                "--author", agent, "--state", "open", "--json", "number"]))
+                "--author", agent, "--state", "open",
+                "--json", "number,headRefOid,mergeable"]))
         except Exception as e:
             escalated.append(f"{repo}: 枚举失败 {e}")
             continue
         for pr in open_prs:
             n = pr["number"]
             # 去重：同 head sha 且已有终态判定（escalate 类滞留 PR 不重评；新推送=新 sha 自动复评）
-            try:
-                head = json.loads(_gh(["pr", "view", str(n), "-R", repo,
-                                       "--json", "headRefOid,mergeable"]))["headRefOid"]
-                prev = state.get(f"{repo}#{n}") or {}
-                # 批184 例外：mergeable 随 dev 移动而变——同 head 滞留 escalate 的
-                # 冲突 PR 必须重估（去重为省克隆，mergeable 一跳 gh 调用即可判）
-                if prev.get("head") == head and prev.get("verdict") in ("merged", "escalate"):
-                    try:
-                        mv = json.loads(_gh(["pr", "view", str(n), "-R", repo,
-                                             "--json", "mergeable"]))["mergeable"]
-                    except Exception:
-                        mv = "MERGEABLE"
-                    if mv == "MERGEABLE":
-                        continue
-            except Exception:
-                head = ""
+            head = pr.get("headRefOid") or ""
+            prev = state.get(f"{repo}#{n}") or {}
+            # 批184 例外：mergeable 随 dev 移动而变——同 head 滞留 escalate 的
+            # 冲突 PR 必须重估（去重为省克隆，mergeable 取自 list 一跳即可判；
+            # 字段缺失按 MERGEABLE 乐观跳过 = 原 except 兜底同语义）
+            if prev.get("head") == head and prev.get("verdict") in ("merged", "escalate"):
+                if (pr.get("mergeable") or "MERGEABLE") == "MERGEABLE":
+                    continue
             try:
                 v = review_pr(repo, n, {})
             except Exception as e:
