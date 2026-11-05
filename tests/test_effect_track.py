@@ -15,7 +15,7 @@ def workroot(tmp_path, monkeypatch):
     root = tmp_path / "work"
     root.mkdir()
     ev_root = tmp_path / "evidence"
-    monkeypatch.setattr(effect_track, "WORK_DIR", str(root))
+    monkeypatch.setattr(effect_track, "_work_dirs", lambda: [str(root)])
     monkeypatch.setattr(effect_track, "EVIDENCE_ROOT",
                         str(ev_root), raising=False)
     yield root, ev_root

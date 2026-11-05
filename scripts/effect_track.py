@@ -24,10 +24,19 @@ import sys
 GUARD_ROOT = os.path.expanduser("~/.zcode/workspace/default/regress-guard")
 WORKSPACE = os.path.expanduser("~/.zcode/workspace/default")
 STATE = os.path.join(WORKSPACE, ".regress", "effect-track.json")
-WORK_DIR = os.path.expanduser("~/.dsh/state/superagent-tongtu/work")
+
+
+def _work_dirs():
+    """批192（哨兵 run62 补丁合入）：全部 superagent 实例的 work/ 目录。
+    glob 自动发现（含未来新增项目），硬编码单仓→多仓。"""
+    return [os.path.join(d, "work") for d in sorted(glob.glob(
+        os.path.expanduser("~/.dsh/state/superagent*/")))
+        if os.path.isdir(os.path.join(d, "work"))]
+
+
 # 会话目录名是「路径转义」形态（含用户名），发版卫生禁用户名字面量——后缀匹配等价覆盖
 SESSION_GLOB = os.path.join(os.path.expanduser("~/.dsh/sessions"),
-                            "*superagent-tongtu*")
+                            "*superagent*")
 TONGTU_REPO = "1339190177/tongtu-anquan-ai-workspace"
 # 人类长期服务容器白名单（非 agent 遗留，永不触碰）
 HUMAN_PREFIXES = ("media-stack-", "dap-wvp-direct", "dap-zlm-direct",
@@ -90,14 +99,15 @@ def check_exit0(findings):
 
 def _worktree_holds(token):
     """token 是否被活跃 worktree 持有（有活跃清单=在工，容器不许动）。"""
-    for wt in glob.glob(os.path.join(WORK_DIR, f"*{token}*")):
-        for mf in glob.glob(os.path.join(wt, ".regress", "manifests", "*.md")):
-            try:
-                head = open(mf, encoding="utf-8", errors="ignore").read(600)
-            except OSError:
-                continue
-            if any(f"status: {s}" in head for s in ACTIVE_STATUS):
-                return True
+    for wd in _work_dirs():
+        for wt in glob.glob(os.path.join(wd, f"*{token}*")):
+            for mf in glob.glob(os.path.join(wt, ".regress", "manifests", "*.md")):
+                try:
+                    head = open(mf, encoding="utf-8", errors="ignore").read(600)
+                except OSError:
+                    continue
+                if any(f"status: {s}" in head for s in ACTIVE_STATUS):
+                    return True
     return False
 
 
@@ -129,34 +139,37 @@ def gc_ended_worktrees(fixed):
     夜树（PR 未决、assignment running）不动——_worktree_holds 拦住。"""
     import shutil
     cutoff = datetime.datetime.now().timestamp() - 3 * 86400
-    for wt in glob.glob(os.path.join(WORK_DIR, "*")):
-        if os.path.getmtime(wt) > cutoff:
-            continue
-        name = os.path.basename(wt)
-        if _worktree_holds(name[-12:]):
-            continue
-        ev_src = os.path.join(wt, "ui-evidence")
-        if os.path.isdir(ev_src):
-            ev_dst = os.path.join(os.path.dirname(WORK_DIR), "evidence", name)
-            os.makedirs(ev_dst, exist_ok=True)
-            for f in glob.glob(os.path.join(ev_src, "*")):
-                if os.path.isfile(f):
-                    shutil.copy2(f, ev_dst)
-        shutil.rmtree(wt, ignore_errors=True)
-        fixed.append(f"worktree 回收 {name[:44]}（>3天终态，取证已存档）")
-    seed = os.path.expanduser("~/src/tongtu-anquan-ai-workspace")
-    if os.path.isdir(seed):
-        subprocess.run(["git", "-C", seed, "worktree", "prune"],
+    for wd in _work_dirs():
+        for wt in glob.glob(os.path.join(wd, "*")):
+            if os.path.getmtime(wt) > cutoff:
+                continue
+            name = os.path.basename(wt)
+            if _worktree_holds(name[-12:]):
+                continue
+            ev_src = os.path.join(wt, "ui-evidence")
+            if os.path.isdir(ev_src):
+                ev_dst = os.path.join(os.path.dirname(wd), "evidence", name)
+                os.makedirs(ev_dst, exist_ok=True)
+                for f in glob.glob(os.path.join(ev_src, "*")):
+                    if os.path.isfile(f):
+                        shutil.copy2(f, ev_dst)
+            shutil.rmtree(wt, ignore_errors=True)
+            fixed.append(f"worktree 回收 {name[:44]}（>3天终态，取证已存档）")
+    for seed in sorted(glob.glob(os.path.expanduser("~/src/*/.git"))):
+        subprocess.run(["git", "-C", os.path.dirname(seed), "worktree", "prune"],
                        capture_output=True, timeout=30)
 
 
 def check_disk(findings, st):
     """③ worktree 磁盘趋势：总量入史；超阈值列可清清单（不自动删）。"""
-    r = _run(["du", "-s", WORK_DIR], timeout=300)
-    try:
-        gb = int(r.stdout.split()[0]) / 1024 / 1024
-    except (IndexError, ValueError):
-        return
+    total_kb = 0
+    for wd in _work_dirs():
+        r = _run(["du", "-s", wd], timeout=300)
+        try:
+            total_kb += int(r.stdout.split()[0])
+        except (IndexError, ValueError):
+            pass
+    gb = total_kb / 1024 / 1024
     today = datetime.date.today().isoformat()
     st["disk_history"] = [d for d in st["disk_history"] if d[0] != today]
     st["disk_history"].append((today, round(gb, 2)))
@@ -166,14 +179,15 @@ def check_disk(findings, st):
         pct = int(df.stdout.splitlines()[1].split()[4].rstrip("%"))
     except (IndexError, ValueError):
         pct = 0
-    if gb > 8 or pct > 85:
+    if gb > 12 or pct > 85:
         stale = []
         cutoff = datetime.datetime.now().timestamp() - 3 * 86400
-        for wt in glob.glob(os.path.join(WORK_DIR, "*")):
-            if os.path.getmtime(wt) < cutoff and not _worktree_holds(
-                    os.path.basename(wt)[-8:]):
-                s = _run(["du", "-sh", wt], timeout=120)
-                stale.append(f"{os.path.basename(wt)[:40]} {s.stdout.split()[0] if s.stdout else '?'}")
+        for wd in _work_dirs():
+            for wt in glob.glob(os.path.join(wd, "*")):
+                if os.path.getmtime(wt) < cutoff and not _worktree_holds(
+                        os.path.basename(wt)[-8:]):
+                    s = _run(["du", "-sh", wt], timeout=120)
+                    stale.append(f"{os.path.basename(wt)[:40]} {s.stdout.split()[0] if s.stdout else '?'}")
         findings.append(f"③磁盘面：worktree {gb:.1f}G/df {pct}% 超阈——可清候选（终态+>3天）：{stale or '无'}")
 
 
