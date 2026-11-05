@@ -272,6 +272,16 @@ def _seg_write_targets(seg):
             targets.add(toks[-1])
     for m in re.finditer(r'\bof=([^\s;|&]+)', dq):
         targets.add(m.group(1))
+    # 批193（公网 issue#2 P0-2）：PowerShell 写动词——dsh(pwsh) 下
+    # Set-Content/Out-File/New-Item/Add-Content 是主要写向量，POSIX 表认不出
+    # = 静默放行。-Path 前缀可选；裸位置参数兜底（Set-Content out.txt hi）。
+    for m in re.finditer(
+            r'(?:^|[;|&\s])(Set-Content|Out-File|New-Item|Add-Content)'
+            r'(?:\s+-[^\s]+)*\s+(?:-Path\s+)?([^\s;|&-]+(?:\.[^\s;|&]+)?)',
+            dq, re.I):
+        t = m.group(2).strip('\'"')
+        if t and not t.startswith("-"):
+            targets.add(t)
     return targets
 
 

@@ -147,3 +147,45 @@ def test_nondict_payload_blocks():
         proc = subprocess.run([sys.executable, VALVE], input=raw,
                               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
         assert proc.returncode == 2, f"{raw} 应阻断，得 {proc.returncode}"
+
+
+# ─── 批193（公网 issue#2 P0-3）：PowerShell 灾难级 ───
+
+def test_powershell_remove_item_blocked():
+    """Remove-Item -Recurse -Force = 不可逆删除（Windows 用户报告：全放行）。"""
+    import json as _json
+    payload = _json.dumps({"tool_name": "Bash",
+                           "tool_input": {"command": "Remove-Item -Recurse -Force C:\\data"}})
+    import subprocess, sys, os
+    r = subprocess.run([sys.executable, "-E",
+                        os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
+                       input=payload, capture_output=True, text=True, timeout=10)
+    assert r.returncode == 2, f"Remove-Item -Recurse -Force 应被拦（rc={r.returncode}）"
+
+
+def test_powershell_format_volume_blocked():
+    payload_str = '{"tool_name":"Bash","tool_input":{"command":"Format-Volume -DriveLetter D"}}'
+    import subprocess, sys, os
+    r = subprocess.run([sys.executable, "-E",
+                        os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
+                       input=payload_str, capture_output=True, text=True, timeout=10)
+    assert r.returncode == 2
+
+
+def test_powershell_rd_s_blocked():
+    payload_str = '{"tool_name":"Bash","tool_input":{"command":"cmd /c rd /s /q D:\\\\data"}}'
+    import subprocess, sys, os
+    r = subprocess.run([sys.executable, "-E",
+                        os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
+                       input=payload_str, capture_output=True, text=True, timeout=10)
+    assert r.returncode == 2
+
+
+def test_powershell_remove_item_no_recurse_passes():
+    """无 -Recurse 或无 -Force 的 Remove-Item 不是灾难级（合法删单文件）。"""
+    payload_str = '{"tool_name":"Bash","tool_input":{"command":"Remove-Item temp.txt"}}'
+    import subprocess, sys, os
+    r = subprocess.run([sys.executable, "-E",
+                        os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
+                       input=payload_str, capture_output=True, text=True, timeout=10)
+    assert r.returncode == 0

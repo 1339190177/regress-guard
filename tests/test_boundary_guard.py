@@ -594,3 +594,27 @@ def test_memories_dir_exempt_from_project_forbidden():
     # 注意：regress-guard 路径本就被 is_exempt 放行（"regress-guard" in fp_abs
     # 既有行为），本测试只钉"memories 目录被豁免"——正例即可，负例用别的路径
     assert not bg.is_exempt("x", os.path.expanduser("~/.zcode/other-config.json"))
+
+
+# ─── 批193（公网 issue#2 P0-2）：PowerShell 写动词 ───
+
+def test_powershell_write_verbs_detected(tmp_path):
+    """Set-Content/Out-File/New-Item 应解析出写目标（dsh pwsh 写入面）。"""
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
+    import boundary_guard as bg
+    t1 = bg.extract_write_targets("Set-Content -Path out.txt -Value hello", str(tmp_path))
+    assert any("out.txt" in p for p in t1), t1
+    t2 = bg.extract_write_targets("Out-File -FilePath log.txt -InputObject data", str(tmp_path))
+    assert any("log.txt" in p for p in t2), t2
+    t3 = bg.extract_write_targets("New-Item -Path newdir -ItemType Directory", str(tmp_path))
+    assert any("newdir" in p for p in t3), t3
+
+
+def test_powershell_set_content_bare_position(tmp_path):
+    """裸位置参数形态（无 -Path 前缀）也应识别。"""
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
+    import boundary_guard as bg
+    t = bg.extract_write_targets("Set-Content out.txt hello", str(tmp_path))
+    assert any("out.txt" in p for p in t), t

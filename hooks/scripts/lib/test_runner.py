@@ -16,6 +16,7 @@ import os
 import json
 import subprocess
 import re
+import shutil
 
 
 def _detect_in(project_dir):
@@ -68,7 +69,10 @@ def _detect_in(project_dir):
 
     # Java / Maven
     if os.path.exists(os.path.join(project_dir, "pom.xml")):
-        return ("maven", ["mvn", "test", "-q"])
+        # 批193（公网 issue#2 P0-1）：Windows 上 mvn 是 mvn.CMD——列表形态的
+        # subprocess 不走 PATHEXT，shutil.which 解析全路径；找不到则如实报
+        mvn = shutil.which("mvn") or "mvn"
+        return ("maven", [mvn, "test", "-q"])
 
     # Java / Gradle
     if os.path.exists(os.path.join(project_dir, "build.gradle")) or \
@@ -82,7 +86,8 @@ def _detect_in(project_dir):
 
     # Go
     if os.path.exists(os.path.join(project_dir, "go.mod")):
-        return ("go", ["go", "test", "./..."])
+        go = shutil.which("go") or "go"
+        return ("go", [go, "test", "./..."])
 
     return (None, None)
 

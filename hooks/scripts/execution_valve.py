@@ -41,6 +41,11 @@ CATASTROPHIC = [
     ("强推覆盖远端", re.compile(r"\bgit\s+push\b.*(\s--force\b|\s-f\b)(\s|$)")),
     ("删库 DROP/TRUNCATE", re.compile(r"\b(DROP\s+(TABLE|DATABASE)|TRUNCATE\s+TABLE)\b", re.I)),
     ("全员可写 chmod 777", re.compile(r"\bchmod\s+-\w*R\w*\s+777\b")),
+    # 批193（公网 issue#2 P0-3）：PowerShell 灾难级——dsh(pwsh) 下这些
+    # 全部绕过 POSIX 模式。双 lookahead 处理 -Recurse/-Force 顺序无关。
+    ("磁盘格式化", re.compile(r"\b(Format-Volume|Clear-Disk|Initialize-Disk|Remove-Partition)\b", re.I)),
+    ("递归强删", re.compile(r"\bRemove-Item\b(?=[^;|&\n]*-Recurse)(?=[^;|&\n]*-Force)", re.I)),
+    ("cmd 递归删除", re.compile(r"\b(rd|rmdir)\s+/s\b", re.I)),
 ]
 
 # rm -rf 单列：合法清理太常见，只拦"物理上不可恢复"的目标——
