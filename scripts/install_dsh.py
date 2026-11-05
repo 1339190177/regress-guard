@@ -217,6 +217,20 @@ PLUGIN_SRC = os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "deploy", "dsh-native")
 
 
+def commands_surface(root=None):
+    """命令面实况（批205，公网 issue#3）：已装命令 md 数——dsh 斜杠菜单的
+    注册来源（插件扫 ~/.zcode/commands/regress-*.md）。0=命令面缺位
+    （install.py 未跑），此时 dsh 只有钩子拦截面、无 /regress-* 入口。"""
+    root = root or _installed_root()
+    cdir = os.path.join(os.path.dirname(root), "commands")
+    try:
+        n = [f for f in os.listdir(cdir)
+             if f.startswith("regress-") and f.endswith(".md")]
+    except OSError:
+        return 0, cdir
+    return len(n), cdir
+
+
 def _profile_pkg_json(dsh_home, profile):
     return os.path.join(dsh_home, "profiles", profile, "package.json")
 
@@ -338,12 +352,26 @@ def main():
                 open(_profile_patch_path(dsh_home, args.profile),
                      encoding="utf-8").read()) if os.path.exists(
                 _profile_patch_path(dsh_home, args.profile)) else False
+            n_cmds, cdir = commands_surface()
             print(f"原生插件：{'在位' if native_here else '缺'} | 桥残留条目："
-                  f"{'有（双门禁风险）' if bridge_left else '无'}")
+                  f"{'有（双门禁风险）' if bridge_left else '无'} | "
+                  f"命令面：{n_cmds} 个 regress-*.md（{cdir}）")
+            if native_here and n_cmds == 0:
+                print("install_dsh: 命令面 0——dsh 侧 /regress-* 不会注册"
+                      "（钩子面可独立工作）；先跑 python install.py", file=sys.stderr)
+                return 1
             return 0 if (native_here and not bridge_left) else 1
         ok, msg = native_install(dsh_home, args.profile)
+        n_cmds, cdir = commands_surface()
         print(f"原生插件：{msg}（本地目录 ~/.dsh/{NATIVE_LOCAL_DIR}；"
               "桥条目已撤防双门禁）")
+        if n_cmds:
+            print(f"命令面：{n_cmds} 个 /regress-* 将注册进 dsh 斜杠菜单"
+                  f"（来源 {cdir}；重启 dsh 生效，运行中安装的新命令"
+                  "下次 session-start 自动对账入册）")
+        else:
+            print("⚠️  命令面 0（~/.zcode/commands/ 无 regress-*.md）——"
+                  "dsh 侧只有钩子拦截面、无 /regress-* 入口；跑 python install.py 补齐")
         return 0 if ok else 1
 
     if args.remove:

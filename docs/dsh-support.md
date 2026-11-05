@@ -172,3 +172,54 @@ valve/read_before_edit_guard 三守卫整链 no-op（仅提交门禁生效，e2e
 前台命令转后台 job，post-execute 时拿到的是"moved to background"中间态
 结果，resultFailed 判 false——迟到的作业失败对 fail_watch 不可见（接
 job 完成事件是后续批候选，见 tests/test_dsh_native_payload.py 标本测）。
+
+## 命令面（批205，v2.8.6·公网 issue#3 根治）
+
+**病根**：install.py 把 16 个 `/regress-*` 命令装到 `~/.zcode/commands/`
+——ZCode 扫描该目录，**dsh 不扫**（dsh 指令面只有 skill 与
+`ctx.commands.register`）。命令在 dsh 是"死文件"：安装器报 ✅、斜杠菜单
+不出现、输入被当普通文本。批166/169 适配了拦截面（钩子），入口面（命令）
+缺位——公网 issue#3（wjsdxl，DSH desktop 0.2.1-rc.5 实测）。
+
+**架构**：`deploy/dsh-native/lib/commands.js`（零外部依赖，pytest 探针
+可直载）。三层：
+
+1. **注册**：`ctx.commands.register({name, description, input:{hint}})`——
+   name=文件名、description/argument-hint=frontmatter（单一事实源仍是
+   `commands/*.md`，本层零复制流程逻辑）。走 `ctx.inject(["commands"],…)`
+   **运行时注入**而非顶层硬 inject：老宿主无该服务时硬 inject=整个插件
+   拒载=拦截面陪葬（fail-closed 回归，禁止）。注册面=目录扫描
+   `regress-*.md`（同目录外来命令 handoff/ask-deepseek 不碰）。
+2. **执行**：handler fresh 读 md →剥 frontmatter→`$ARGUMENTS`→rawInput
+   展开→构造 UserMessage 经 `agent.followup()` 注入为新回合——**ZCode
+   slash command 的 dsh 平移**（命令展开为用户回合交给模型，plan/track/
+   verify 等 AI 类流程全量可用）。issue 作者以为"handler 不能给模型发
+   消息"（execute 文档"without sending it to the model"说的是宿主不自动
+   转消息）——`invocation.agent` 走 inbox 是正门：dsh-acp 同款
+   （createUserMessage+followup），followup 排队 next-turn 并唤醒 driver；
+   老宿主缺 followup 则 steer 兜底（idle steer 同样开 turn）。
+3. **对账**：session-start 时重扫补注新落盘的命令（`install.py` 升级后
+   免重启 dsh，新会话即入斜杠菜单）；幂等（宿主同名注册 throw）。
+
+**消息形状纪律（同族修复）**：agent-loop 的 step 读 `message.source.kind`
+——裸 `{role, content}` 会 TypeError 炸 turn 静默丢消息。`userTextMessage()`
+单点铸造 id(uuid)/role/content/source 四件套 frozen 消息；批205 同步收口
+turn-stopping 反思 deny 的 steer 老调用点（此前裸形状=拦截理由可能静默
+丢失）。
+
+**fail-soft 纪律**：宿主无 commands 服务/命令目录不可读→警告一次静默返回，
+钩子面（治理主体）不受牵连；命令文档缺失→error+修复指引（重跑
+install.py）；宿主 Agent 面无注入通道→显式 error（不静默假装成功）。
+
+**性质继承（宿主 commands 服务契约）**：全局生效（plain context 注册）、
+零 token 成本（描述不进系统提示，只在斜杠菜单展示）、确定性解析（宿主
+解析命令行，不依赖模型判断）、生命周期 `command/run`+`command/done`
+入会话日志可考古。
+
+**实证与防回归**：tests/test_dsh_commands.py 11 测——漂移 ratchet
+（注册面==仓内命令全集，新命令 md 不接入 dsh 当场红=issue#3 类漂移不再
+靠用户提 issue 发现）、消息四件套、$ARGUMENTS 展开、幂等/外来不碰/
+文档缺失指引、运行时注入源码契约、late reconcile、安装器命令面诊断。
+`install_dsh.py --check` 增报命令面实况（原生在位而命令面 0 → exit 1
+并指向 install.py）；安装后输出命令数与生效条件（重启 dsh；运行中装
+的新命令下次 session-start 自动对账入册）。

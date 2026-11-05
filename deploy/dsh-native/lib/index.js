@@ -18,14 +18,20 @@ import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import z from "@deepseek-ai/schemastery";
+import { createCommandRegistrar, userTextMessage } from "./commands.js";
 
 export const name = "regress-guard";
 
+// 批205：commands 服务走运行时注入（ctx.inject）而非硬 inject——老宿主无
+// 该服务时硬 inject 会让整个插件拒载=拦截面陪葬（fail-closed 回归）。运行
+// 时注入：服务在则命令面挂载，不在则钩子面独走（命令面是增强不是主体）。
 export const inject = ["workingDirectory"];
 
 export const Config = z.object({
 	guardRoot: z.string().default(path.join(os.homedir(), ".zcode", "regress-guard-hooks")),
-	timeoutMs: z.number().default(600000)
+	timeoutMs: z.number().default(600000),
+	// 命令 md 目录（默认 guardRoot 同级的 commands/——install.py 装入位）
+	commandsDir: z.string().default("")
 });
 
 const BASH_TOOLS = new Set(["bash", "Bash", "pwsh"]);
@@ -135,6 +141,26 @@ export function apply(ctx, config) {
 	const hook = (rel) => path.join(G, rel);
 	const T = config.timeoutMs;
 
+	// 批205（公网 issue#3）：命令面——16 个 /regress-* 经 ctx.commands.register
+	// 入 dsh 斜杠菜单，执行=md 正文展开为 UserMessage 经 agent.followup 注入
+	// （ZCode slash command 语义平移，单一事实源 commands/*.md）。commands
+	// 服务运行时注入：老宿主无此服务→警告一次，钩子面不受牵连。
+	const commandsDir = (config.commandsDir && config.commandsDir.replace(/^~/, os.homedir()))
+		|| path.join(path.dirname(G), "commands");
+	let registrar = null;
+	ctx.inject(["commands"], (cmdCtx) => {
+		// fail-soft：命令面装载失败（服务时序/竞态）不牵连钩子面
+		try {
+			registrar = createCommandRegistrar(cmdCtx, commandsDir, ctx.logger);
+			const added = registrar.reconcile();
+			ctx.logger?.info?.("regress-guard(native/commands): armed "
+				+ `${registrar.registered.size} command(s) from ${commandsDir}`
+				+ (added.length ? "" : " (no new this pass)"));
+		} catch (err) {
+			ctx.logger?.warn?.(`regress-guard(native/commands): 注册失败（钩子面不受影响）——${err}`);
+		}
+	});
+
 	const sessionCwd = async (agent) => {
 		try { return await ctx.workingDirectory.ensure(agent); }
 		catch { return agent?.session?.header?.cwd; }
@@ -206,6 +232,18 @@ export function apply(ctx, config) {
 	});
 
 	ctx.on("agent/session-start", async ({ agent, source }) => {
+		// 批205：会话启动对账注册——运行中安装/升级的命令免重启 dsh 即入菜单
+		// （fail-soft：对账失败不阻塞 self_heal/compact_notice 主链）
+		let added = [];
+		try {
+			added = registrar?.reconcile() ?? [];
+		} catch (err) {
+			ctx.logger?.warn?.(`regress-guard(native/commands): 对账失败——${err}`);
+		}
+		if (added.length) {
+			ctx.logger?.info?.("regress-guard(native/commands): +" + added.length
+				+ " on session-start (" + added.join(", ") + ")");
+		}
 		const cwd = await sessionCwd(agent);
 		if (!cwd) return;
 		const sid = sessionId(agent);
@@ -256,7 +294,9 @@ export function apply(ctx, config) {
 		const r = await runGuardHook(hook("reflection_check.py"), [],
 			{ stop_hook_active: false }, cwd, sid, Math.min(T, 120000));
 		if (r.code === 2 && r.stderr && agent?.steer) {
-			agent.steer({ role: "user", content: [{ type: "text", text: r.stderr }] });
+			// 批205：消息形状收口——裸 {role,content} 缺 source，agent-loop 的
+			// step 读 message.source.kind 会 TypeError 炸 turn 静默丢消息
+			agent.steer(userTextMessage(r.stderr));
 		} else {
 			await runGuardHook(hook("stop_notify.py"), [], {}, cwd, sid, Math.min(T, 30000));
 		}

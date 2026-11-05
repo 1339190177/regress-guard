@@ -43,6 +43,15 @@ for f in hooks/scripts/*.py hooks/scripts/lib/*.py; do
   python3 -m py_compile "$f" 2>/dev/null || { echo -e "${RED}❌ 语法错误: $f${NC}"; fail=1; }
 done
 node --check hooks/scripts/launcher.js 2>/dev/null || { echo -e "${RED}❌ launcher.js 语法错误${NC}"; fail=1; }
+# 批205：dsh 原生适配层（index.js 命令面接线 + commands.js 零依赖模块）
+for f in deploy/dsh-native/lib/*.js; do
+  if node --check "$f" 2>/dev/null; then continue; fi
+  # ESM 兜底：老 node 对 package.json type 感知不稳时按 .mjs 复检
+  cp "$f" "${f%.js}.mjs"
+  node --check "${f%.js}.mjs" 2>/dev/null; rc=$?
+  rm -f "${f%.js}.mjs"
+  [ $rc -eq 0 ] || { echo -e "${RED}❌ 语法错误: $f${NC}"; fail=1; }
+done
 echo "✅"
 
 echo "/─ 5/6 guard 冒烟"
