@@ -156,7 +156,9 @@ def test_powershell_remove_item_blocked():
     import json as _json
     payload = _json.dumps({"tool_name": "Bash",
                            "tool_input": {"command": "Remove-Item -Recurse -Force C:\\data"}})
-    import subprocess, sys, os
+    import subprocess
+    import sys
+    import os
     r = subprocess.run([sys.executable, "-E",
                         os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
                        input=payload, capture_output=True, text=True, timeout=10)
@@ -165,7 +167,9 @@ def test_powershell_remove_item_blocked():
 
 def test_powershell_format_volume_blocked():
     payload_str = '{"tool_name":"Bash","tool_input":{"command":"Format-Volume -DriveLetter D"}}'
-    import subprocess, sys, os
+    import subprocess
+    import sys
+    import os
     r = subprocess.run([sys.executable, "-E",
                         os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
                        input=payload_str, capture_output=True, text=True, timeout=10)
@@ -174,7 +178,9 @@ def test_powershell_format_volume_blocked():
 
 def test_powershell_rd_s_blocked():
     payload_str = '{"tool_name":"Bash","tool_input":{"command":"cmd /c rd /s /q D:\\\\data"}}'
-    import subprocess, sys, os
+    import subprocess
+    import sys
+    import os
     r = subprocess.run([sys.executable, "-E",
                         os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
                        input=payload_str, capture_output=True, text=True, timeout=10)
@@ -184,7 +190,9 @@ def test_powershell_rd_s_blocked():
 def test_powershell_remove_item_no_recurse_passes():
     """无 -Recurse 或无 -Force 的 Remove-Item 不是灾难级（合法删单文件）。"""
     payload_str = '{"tool_name":"Bash","tool_input":{"command":"Remove-Item temp.txt"}}'
-    import subprocess, sys, os
+    import subprocess
+    import sys
+    import os
     r = subprocess.run([sys.executable, "-E",
                         os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
                        input=payload_str, capture_output=True, text=True, timeout=10)
@@ -196,7 +204,9 @@ def test_powershell_remove_item_no_recurse_passes():
 def test_del_s_blocked():
     """cmd del /s /q = 递归强制删（只补 rd/rmdir 不够）。"""
     payload_str = '{"tool_name":"Bash","tool_input":{"command":"del /s /q D:\\\\data"}}'
-    import subprocess, sys, os
+    import subprocess
+    import sys
+    import os
     r = subprocess.run([sys.executable, "-E",
                         os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
                        input=payload_str, capture_output=True, text=True, timeout=10)
@@ -206,8 +216,120 @@ def test_del_s_blocked():
 def test_remove_item_recurse_only_blocked():
     """-Recurse 无 -Force 同样删空目录树（只读文件才中断）。"""
     payload_str = '{"tool_name":"Bash","tool_input":{"command":"Remove-Item -Recurse D:\\\\data"}}'
-    import subprocess, sys, os
+    import subprocess
+    import sys
+    import os
     r = subprocess.run([sys.executable, "-E",
                         os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
                        input=payload_str, capture_output=True, text=True, timeout=10)
     assert r.returncode == 2
+
+
+# ─── 批195（issue#2 第三轮）：递归删三方言目标判定（与 rm -rf 对称） ───
+
+def test_ps_recursive_delete_project_internal_passes():
+    """项目内递归删放行——与 rm -rf ./build 对称（第三轮主诉：五形态全误拦）。
+
+    v2.8.2/3 把 Remove-Item -Recurse 直接进 CATASTROPHIC 无条件拦；dsh 在
+    Windows 只投递 pwsh → build/dist/node_modules 日常清理全断，"每次带
+    令牌"训练习惯性携带反而削弱令牌信号。"""
+    for cmd in ("Remove-Item -Recurse -Force ./build",
+                "Remove-Item -Recurse -Force build",
+                "Remove-Item -Recurse -Force .\\dist",
+                "Remove-Item -Recurse -Force node_modules",
+                "Remove-Item -Recurse ./build",
+                "rm -rf ./build"):  # POSIX 对照（对称性锚点）
+        rc, _ = run_valve(cmd)
+        assert rc == 0, f"{cmd} 项目内清理应放行（rc={rc}）"
+
+
+def test_ps_recursive_delete_external_blocked():
+    """项目外绝对路径递归删仍拦（保持 v2.8.2/3 拦截面不回退）。
+
+    Linux 宿主上 C:\\Windows 走 win_form 字符串分支——宿主 abspath 会把它
+    折进 cwd 成幻影"项目内"路径（假放行），故不走宿主 realpath。"""
+    for cmd in ("Remove-Item -Recurse -Force C:\\Windows",
+                "Remove-Item -Recurse -Force D:\\data",
+                "Remove-Item -Recurse D:\\data",
+                "Remove-Item -Recurse -Force -Path D:\\data"):
+        rc, _ = run_valve(cmd)
+        assert rc == 2, f"{cmd} 项目外应拦（rc={rc}）"
+
+
+def test_ps_recursive_delete_drive_root_blocked():
+    """盘符根递归删应拦（D:\\ 整盘）。"""
+    rc, _ = run_valve("Remove-Item -Recurse -Force D:\\")
+    assert rc == 2, f"盘符根应拦（rc={rc}）"
+
+
+def test_ps_recursive_delete_named_path_internal_passes():
+    """命名路径参数 -Path 项目内目标放行。"""
+    rc, _ = run_valve("Remove-Item -Recurse -Force -Path build")
+    assert rc == 0, f"-Path build 项目内应放行（rc={rc}）"
+
+
+def test_ps_recursive_delete_tmp_zone_passes():
+    """临时区递归删放行（与 rm -rf /tmp/x 对称）。"""
+    rc, _ = run_valve("Remove-Item -Recurse -Force /tmp/dap-clean-195")
+    assert rc == 0, f"临时区应放行（rc={rc}）"
+
+
+def test_ps_recursive_delete_no_target_fail_closed():
+    """无显式目标（管道输入形态）按拦——目标不可知不猜（fail-closed）。
+
+    位置/命名参数形态不受影响；v2.8.3 该形态属无条件拦，此处不回退。"""
+    rc, _ = run_valve("Get-ChildItem | Remove-Item -Recurse -Force")
+    assert rc == 2, f"管道输入目标不可知应拦（rc={rc}）"
+
+
+def test_ps_recursive_delete_var_target_worst_case_blocked():
+    """变量目标（$env:TEMP\\x）展开不可知按最坏情形拦——POSIX rm -rf $VAR 同款语义。"""
+    rc, _ = run_valve("Remove-Item -Recurse -Force $env:TEMP\\dap")
+    assert rc == 2, f"变量展开不可知应按最坏拦（rc={rc}）"
+
+
+def test_del_s_project_internal_passes():
+    """cmd del /s 项目内放行（第三轮第二诉：.\\build 直接被拦）。"""
+    rc, _ = run_valve("del /s /q .\\build")
+    assert rc == 0, f"del /s /q 项目内应放行（rc={rc}）"
+
+
+def test_del_s_external_blocked():
+    """cmd del /s 项目外仍拦。"""
+    rc, _ = run_valve("del /s /q E:\\data")
+    assert rc == 2, f"del /s /q 项目外应拦（rc={rc}）"
+
+
+def test_del_q_single_file_passes():
+    """del /q 纯静默单文件删不递归——不算递归删（第三轮附带误拦修复）。"""
+    rc, _ = run_valve("del /q temp.txt")
+    assert rc == 0, f"del /q 单文件应放行（rc={rc}）"
+
+
+def test_del_forward_slash_path_not_switch():
+    """路径斜杠段（src/sub）不冒充 /s 开关——开关须独立成词（前置空白）。"""
+    rc, _ = run_valve("del src/sub")
+    assert rc == 0, f"路径斜杠段不是开关（rc={rc}）"
+
+
+def test_win_dialect_judgment_unit():
+    """win 方言单目标判定（真 Windows 宿主场景：project/tmp 均为 win 形态）。"""
+    from execution_valve import _target_dangerous
+    proj = "C:\\Users\\dev\\proj"
+    tmp = "C:\\Users\\dev\\AppData\\Local\\Temp"
+    ok = [  # 不危险
+        "C:\\Users\\dev\\proj\\build",
+        "c:\\users\\DEV\\proj\\BUILD",       # NTFS 大小写不敏感
+        "C:\\Users\\dev\\AppData\\Local\\Temp\\dap-x",
+        "c:/users/dev/proj/x",              # 正斜杠形态
+        "build",                            # 相对=项目内
+    ]
+    bad = [
+        "C:\\Windows",
+        "D:/",                              # 盘符根
+        "\\\\srv\\share",                    # UNC 根
+    ]
+    for t in ok:
+        assert not _target_dangerous(t, proj, tmp), f"{t} 应放行"
+    for t in bad:
+        assert _target_dangerous(t, proj, tmp), f"{t} 应拦"

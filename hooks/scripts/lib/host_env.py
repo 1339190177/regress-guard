@@ -11,6 +11,7 @@
 错归属比无归属糟，垫片只补缺不覆盖（已有 env=宿主明示，尊重之）。
 """
 import os
+import re
 import sys
 import tempfile
 
@@ -39,6 +40,25 @@ def is_root(p: str) -> bool:
     POSIX "/"、Windows 盘符 "C:\\\\"、UNC "\\\\\\\\server\\\\share" 三态通用——
     逐字串比较（p == "/"）在 Windows 上恒假。"""
     return bool(p) and p == os.path.dirname(p)
+
+
+_WIN_FORM = re.compile(r"^[A-Za-z]:[\\/]|^\\\\")
+
+
+def is_abs_any(p: str) -> bool:
+    """跨平台绝对路径判定（批195）：宿主 os.path.isabs 或 Windows 形态
+    （盘符 X:\\ / X:/ 、UNC \\\\\\\\server）任一即真。
+
+    Linux 宿主判 Windows 命令串（公网 issue#2 场景：CI/测试机跑 Windows
+    语义用例）时 os.path.isabs("C:\\\\data") 恒假 → 被当项目内相对路径
+    放行——路径的绝对性是字符串属性，不应随宿主漂移。"""
+    return os.path.isabs(p) or bool(_WIN_FORM.match(p))
+
+
+def win_form(p: str) -> bool:
+    """是否 Windows 形态路径（批195）——供方言分支用（Windows 形态目标
+    不进宿主 realpath/abspath：POSIX 宿主会折进 cwd 成幻影路径）。"""
+    return bool(_WIN_FORM.match(p))
 
 
 def normcase_abspath(p: str) -> str:

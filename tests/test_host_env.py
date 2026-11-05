@@ -117,3 +117,29 @@ def test_ensure_utf8_stdio_never_raises():
         ensure_utf8_stdio()  # 不抛即过
     finally:
         sys.stdout, sys.stderr = real_out, real_err
+
+
+# ─── 批195：跨平台绝对路径判定（Linux 宿主判 Windows 命令串不漂移） ───
+
+def test_is_abs_any_cross_platform():
+    """绝对性是字符串属性：POSIX 形态真、Windows 盘符/UNC 真——不随宿主漂移。
+
+    Linux 宿主 os.path.isabs("C:\\data") 恒假（公网 issue#2 场景：CI 跑
+    Windows 语义用例被当项目内相对路径放行）。"""
+    from host_env import is_abs_any
+    assert is_abs_any("/etc/passwd")
+    assert is_abs_any("C:\\data")
+    assert is_abs_any("D:/x/y")
+    assert is_abs_any("\\\\srv\\share\\p")
+    assert not is_abs_any("build")
+    assert not is_abs_any(".\\dist")
+    assert not is_abs_any("src/sub")
+
+
+def test_win_form_dialect_branch():
+    from host_env import win_form
+    assert win_form("C:\\Users\\x")
+    assert win_form("c:/temp")
+    assert win_form("\\\\srv\\share")
+    assert not win_form("/tmp/x")
+    assert not win_form("./build")

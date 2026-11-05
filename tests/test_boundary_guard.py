@@ -600,7 +600,8 @@ def test_memories_dir_exempt_from_project_forbidden():
 
 def test_powershell_write_verbs_detected(tmp_path):
     """Set-Content/Out-File/New-Item 应解析出写目标（dsh pwsh 写入面）。"""
-    import sys, os
+    import sys
+    import os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
     import boundary_guard as bg
     t1 = bg.extract_write_targets("Set-Content -Path out.txt -Value hello", str(tmp_path))
@@ -613,7 +614,8 @@ def test_powershell_write_verbs_detected(tmp_path):
 
 def test_powershell_set_content_bare_position(tmp_path):
     """裸位置参数形态（无 -Path 前缀）也应识别。"""
-    import sys, os
+    import sys
+    import os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
     import boundary_guard as bg
     t = bg.extract_write_targets("Set-Content out.txt hello", str(tmp_path))
@@ -624,7 +626,8 @@ def test_powershell_set_content_bare_position(tmp_path):
 
 def test_powershell_new_item_param_order(tmp_path):
     """-ItemType Directory -Path newdir → 目标是 newdir 不是 Directory（v2.8.2 误报标本）。"""
-    import sys, os
+    import sys
+    import os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
     import boundary_guard as bg
     t = bg.extract_write_targets("New-Item -ItemType Directory -Path newdir", str(tmp_path))
@@ -634,7 +637,8 @@ def test_powershell_new_item_param_order(tmp_path):
 
 def test_powershell_copy_move_second_positional(tmp_path):
     """Copy-Item/Move-Item 目标是第二个位置参数（第一个是源）。"""
-    import sys, os
+    import sys
+    import os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
     import boundary_guard as bg
     t = bg.extract_write_targets("Copy-Item a.txt out/b.txt", str(tmp_path))
@@ -645,7 +649,8 @@ def test_powershell_copy_move_second_positional(tmp_path):
 
 def test_powershell_full_verb_coverage(tmp_path):
     """六个遗留缺口：Remove-Item/Rename-Item/Tee-Object/Clear-Content 等。"""
-    import sys, os
+    import sys
+    import os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts"))
     import boundary_guard as bg
     for cmd, expect in [

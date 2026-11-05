@@ -48,11 +48,13 @@ echo "✅"
 echo "/─ 5/6 guard 冒烟"
 TMP=$(mktemp -d)
 echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | \
-  CLAUDE_PROJECT_DIR="$TMP" python3 hooks/scripts/pre_commit_guard.py 2>/dev/null
+  env -u ZCODE_PROJECT_DIR -u ZCODE_SESSION_ID CLAUDE_PROJECT_DIR="$TMP" \
+    python3 hooks/scripts/pre_commit_guard.py 2>/dev/null
 [ $? -eq 0 ] || { echo -e "${RED}❌ 非 commit 命令未放行${NC}"; fail=1; }
 mkdir -p "$TMP/.regress/manifests" && echo "broken" > "$TMP/.regress/config.json"
 echo '{"tool_name":"Bash","tool_input":{"command":"git commit -m x"}}' | \
-  CLAUDE_PROJECT_DIR="$TMP" python3 hooks/scripts/pre_commit_guard.py 2>/dev/null
+  env -u ZCODE_PROJECT_DIR -u ZCODE_SESSION_ID CLAUDE_PROJECT_DIR="$TMP" \
+    python3 hooks/scripts/pre_commit_guard.py 2>/dev/null
 [ $? -eq 2 ] || { echo -e "${RED}❌ fail-safe 未阻断${NC}"; fail=1; }
 rm -rf "$TMP"
 echo "✅"
