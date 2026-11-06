@@ -10,6 +10,13 @@
 # 的官方口径，本地 16 核串行实测约 2 分钟，CI 预算 15 分钟绰绰有余。
 name: CI
 
+# 批206（Windows 兼容根治）：pytest 进程以 UTF-8 模式启动——subprocess
+# text 模式的默认解码随 UTF-8 模式换轨（locale.getpreferredencoding 返回
+# utf-8）。Windows runner 的 cp1252 读守卫的 UTF-8 stderr 必炸（charmap
+# 0x90 读线程异常被吞=9 条警告+stderr 恒空）。Linux 腿本就 UTF-8，幂等无扰。
+env:
+  PYTHONUTF8: "1"
+
 on:
   push:
     branches: [main]

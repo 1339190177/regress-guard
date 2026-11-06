@@ -161,8 +161,12 @@ def test_powershell_remove_item_blocked():
     import os
     r = subprocess.run([sys.executable, "-E",
                         os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
-                       input=payload, capture_output=True, text=True, timeout=10)
-    assert r.returncode == 2, f"Remove-Item -Recurse -Force 应被拦（rc={r.returncode}）"
+                       input=payload, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=10)
+    # 批206：stderr 内容断言——修前 cp1252 读线程吞异常致 r.stderr 恒空串，
+    # 「拦截文在场」从未被验证过（-E 拦不住进程内 ensure_utf8_stdio 的 UTF-8 输出）
+    assert r.returncode == 2 and "REGRESS-GUARD" in r.stderr, \
+        f"Remove-Item -Recurse -Force 应被拦（rc={r.returncode}）"
 
 
 def test_powershell_format_volume_blocked():
@@ -172,8 +176,10 @@ def test_powershell_format_volume_blocked():
     import os
     r = subprocess.run([sys.executable, "-E",
                         os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
-                       input=payload_str, capture_output=True, text=True, timeout=10)
-    assert r.returncode == 2
+                       input=payload_str, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=10)
+    # 批206：同上——stderr 拦截文在场性断言（修前 cp1252 下恒空串）
+    assert r.returncode == 2 and "REGRESS-GUARD" in r.stderr
 
 
 def test_powershell_rd_s_blocked():
@@ -183,8 +189,10 @@ def test_powershell_rd_s_blocked():
     import os
     r = subprocess.run([sys.executable, "-E",
                         os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
-                       input=payload_str, capture_output=True, text=True, timeout=10)
-    assert r.returncode == 2
+                       input=payload_str, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=10)
+    # 批206：同上——stderr 拦截文在场性断言（修前 cp1252 下恒空串）
+    assert r.returncode == 2 and "REGRESS-GUARD" in r.stderr
 
 
 def test_powershell_remove_item_no_recurse_passes():
@@ -195,7 +203,8 @@ def test_powershell_remove_item_no_recurse_passes():
     import os
     r = subprocess.run([sys.executable, "-E",
                         os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
-                       input=payload_str, capture_output=True, text=True, timeout=10)
+                       input=payload_str, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=10)
     assert r.returncode == 0
 
 
@@ -209,8 +218,10 @@ def test_del_s_blocked():
     import os
     r = subprocess.run([sys.executable, "-E",
                         os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
-                       input=payload_str, capture_output=True, text=True, timeout=10)
-    assert r.returncode == 2
+                       input=payload_str, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=10)
+    # 批206：同上——stderr 拦截文在场性断言（修前 cp1252 下恒空串）
+    assert r.returncode == 2 and "REGRESS-GUARD" in r.stderr
 
 
 def test_remove_item_recurse_only_blocked():
@@ -221,8 +232,10 @@ def test_remove_item_recurse_only_blocked():
     import os
     r = subprocess.run([sys.executable, "-E",
                         os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts", "execution_valve.py")],
-                       input=payload_str, capture_output=True, text=True, timeout=10)
-    assert r.returncode == 2
+                       input=payload_str, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=10)
+    # 批206：同上——stderr 拦截文在场性断言（修前 cp1252 下恒空串）
+    assert r.returncode == 2 and "REGRESS-GUARD" in r.stderr
 
 
 # ─── 批195（issue#2 第三轮）：递归删三方言目标判定（与 rm -rf 对称） ───
@@ -269,8 +282,15 @@ def test_ps_recursive_delete_named_path_internal_passes():
 
 
 def test_ps_recursive_delete_tmp_zone_passes():
-    """临时区递归删放行（与 rm -rf /tmp/x 对称）。"""
-    rc, _ = run_valve("Remove-Item -Recurse -Force /tmp/dap-clean-195")
+    """临时区递归删放行（与 rm -rf 临时区对称）。
+
+    批206（Windows 兼容根治）：硬编码 /tmp 在 Windows 折成盘相对 \\tmp\\…
+    ——不在真临时区（C:\\Users\\…\\Temp）被阀门正确地拦（断言 2==0 红，
+    阀门无罪测试有病）。改 realpath(gettempdir()) 平台自适应：与阀门自身
+    的 tmp_root 归一化（execution_valve._dangerous_targets 同源 realpath）
+    严格对齐，两侧同串才放行。"""
+    tmp_target = os.path.join(os.path.realpath(tempfile.gettempdir()), "dap-clean-195")
+    rc, _ = run_valve(f"Remove-Item -Recurse -Force {tmp_target}")
     assert rc == 0, f"临时区应放行（rc={rc}）"
 
 

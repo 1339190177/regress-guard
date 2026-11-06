@@ -43,6 +43,21 @@ def _strip_host_session_env():
     # 测试直调守卫也应同语义（否则 cp1252 下守卫中文输出崩=测试测的是
     # 与生产不同的路径）。本进程自身不受影响（PYTHONUTF8 仅启动期读取）
     os.environ.setdefault("PYTHONUTF8", "1")
+    # 批206（Windows 兼容根治）：机制纠偏——PYTHONIOENCODING 只影响子进程
+    # 自身 stdio 的编码（守卫输出侧），【不改】父进程 subprocess text 模式
+    # 的默认解码（那是 locale.getpreferredencoding 的地盘，仅受启动期
+    # UTF-8 模式[ci.yml env PYTHONUTF8=1]或调用位显式 encoding 支配）。
+    # 此处设它=让不经 -E 的子进程（无 ensure_utf8_stdio 垫片的老路径）也强制
+    # UTF-8 输出；父进程解码侧的根治见 test_subprocess_encoding.py ratchet
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    # Windows 本进程 stdout/stderr 也重配（pytest 捕获层）
+    if sys.platform == "win32":
+        for stream in (sys.stdout, sys.stderr):
+            if hasattr(stream, "reconfigure"):
+                try:
+                    stream.reconfigure(encoding="utf-8")
+                except (OSError, ValueError):
+                    pass
     yield
 
 

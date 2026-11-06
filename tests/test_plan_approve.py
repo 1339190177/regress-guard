@@ -389,7 +389,8 @@ def test_drift_repo_field_selects_repo(tmp_path):
         sp.run(["git", "config", "user.name", "t"], cwd=str(d), check=True)
     sp.run(["git", "-C", str(prod), "commit", "-q", "--allow-empty", "-m", "p1"], check=True)
     base = sp.run(["git", "-C", str(prod), "rev-parse", "--short", "HEAD"],
-                  capture_output=True, text=True).stdout.strip()
+                  capture_output=True, text=True,
+                  encoding="utf-8", errors="replace").stdout.strip()
     # .regress 在外层（跨仓布局），清单声明 repo: product
     mdir = ws / ".regress" / "manifests"
     mdir.mkdir(parents=True)

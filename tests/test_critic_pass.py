@@ -204,7 +204,8 @@ def test_rev_range_diff(monkeypatch, tmp_path):
     sp.run(["git", "add", "-A"], cwd=str(repo), check=True)
     sp.run(["git", "commit", "-qm", "second"], cwd=str(repo), check=True)
     two = sp.run(["git", "rev-parse", "HEAD~1", "HEAD"], cwd=str(repo),
-                 capture_output=True, text=True).stdout.split()
+                 capture_output=True, text=True,
+                 encoding="utf-8", errors="replace").stdout.split()
     rng = f"{two[0]}..{two[1]}"  # A..B 形态（rev-parse 区间形态是两行 sha）
     mf = tmp_path / "R5.md"
     mf.write_text("---\nid: R5\n---\nx", encoding="utf-8")

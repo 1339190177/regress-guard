@@ -1990,7 +1990,9 @@ def test_monorepo_climb_terminates(tmp_path):
     inner.mkdir(parents=True)
     sp.run(["git", "init", "-q"], cwd=inner, check=True, timeout=10)
     r = sp.run([sys.executable, GUARD], input="{}", capture_output=True,
-               text=True, timeout=15,
+               text=True, encoding="utf-8", errors="replace", timeout=15,
                env={**os.environ, "CLAUDE_PROJECT_DIR": str(inner)},
                cwd=inner)
+    # 批206：cp1252 父进程下读线程吞异常致 stderr 恒空——[-300:] 断言恒真盲区，
+    # 显式 encoding 后 stderr 内容才真实在场
     assert r.returncode in (0, 2), r.stderr[-300:]
