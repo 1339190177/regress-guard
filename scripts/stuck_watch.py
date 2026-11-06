@@ -11,6 +11,8 @@
 只报不杀：恢复动作（retry/stop/issue 评论再触发）需要判断，归会话层/人类
 （retry API 只收 failed/blocked，stopped-by-person 走评论——批175 实证）。
 去重：同工单 2h 内不重复报；assignment 终态后自动清零。
+批207：输出带心跳自证（实例 N/工单 M）——空转 bug（输出恒 running 0 谎报
+健康）与真零从此可区分；main() 路径测试补位（此前 3 测全 helper 单测）。
 退出码：0=无卡滞；1=有（已 WeCom+journal）；2=自崩（timer 不重试）。
 状态：~/.zcode/workspace/default/.regress/stuck-watch.json
 """
@@ -78,7 +80,9 @@ def _stale_label(completed):
 def _load():
     try:
         with open(STATE) as f:
-            return json.load(f)
+            data = json.load(f)
+        data.setdefault("alerted", {})  # 批207：最小态/手删键的文件不再 KeyError
+        return data
     except Exception:
         return {"alerted": {}}
 
@@ -98,8 +102,9 @@ def main():
     now_local = datetime.datetime.now()
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     st = _load()
+    dirs = _state_dirs()
     tickets = []
-    for sd in _state_dirs():
+    for sd in dirs:
         try:
             db = sqlite3.connect(
                 "file:" + os.path.join(sd, "orchestrator.sqlite") + "?mode=ro", uri=True)
@@ -110,7 +115,10 @@ def main():
             continue  # 单库崩不拖全局
 
     running, findings, healthy = 0, [], []
-    tickets = []
+    # 批207：原 `tickets = []` 变量遮蔽（批192 glob 重构引入）清空刚加载的
+    # 列表后遍历空表——哨兵自 11-04 09:55 起空转 3 天（输出恒 running 0，
+    # 昨日 18h 滞留全程谎报健康）。enriched 独立命名钉死此坑。
+    enriched = []
     for tid, raw in tickets:
         d = json.loads(raw)
         title = (d.get("title") or "")[:36]
@@ -123,10 +131,10 @@ def main():
                 d["createdAt"].replace("Z", "+00:00"))
         except (KeyError, ValueError):
             continue
-        tickets.append((tid, title, is_running, started_any, created))
+        enriched.append((tid, title, is_running, started_any, created))
 
     # 两遍法：先数 running（判槽位），再评估停摆/卡滞
-    for tid, title, is_running, started_any, created in tickets:
+    for tid, title, is_running, started_any, created in enriched:
         if not is_running:
             st["alerted"].pop(tid, None)   # 终态自愈，清告警态
             continue
@@ -150,7 +158,9 @@ def main():
             healthy.append(f"{tid[:8]}({idle/60:.0f}m前活跃)")
 
     _save(st)
-    line = (f"卡滞哨：running {running} 健康 {len(healthy)}"
+    # 批207 心跳自证：输出带扫描面（实例数/工单数）——哨兵视野为空（实例 0）
+    # 与哨兵空转谎报（历史上恒 running 0）从此可区分
+    line = (f"卡滞哨：实例 {len(dirs)} 工单 {len(tickets)}｜running {running} 健康 {len(healthy)}"
             + (f"｜{', '.join(healthy)}" if healthy else ""))
     if findings:
         _journal("卡滞哨发现：" + "；".join(findings))

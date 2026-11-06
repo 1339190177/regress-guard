@@ -42,6 +42,9 @@ WORKSPACE = os.path.expanduser("~/.zcode/workspace/default")
 SUPERAGENT_DB = os.path.expanduser("~/.dsh/state/superagent/orchestrator.sqlite")
 
 DEFAULT_SECTIONS = ["背景", "改动", "验证"]
+# 批207：mergeable=UNKNOWN 的 defer 阈值——90s sweep × 4 ≈ 6min，远超 GitHub
+# 常规合并性计算延迟（秒级）；连续 4 轮仍未知视为卡死，升级一次后封口
+UNKNOWN_MAX_STREAK = 4
 DEFAULT_MAX_LINES = 200          # 记录性阈值（v2.7.3 起不阻断）
 VERIFIED_MARKS = ("✅", "已验", "（过）", "通过")
 RATIO_RE = re.compile(r"(\d+)\s*/\s*(\d+)")
@@ -109,9 +112,15 @@ def fmt_hermetic(passed, total):
 def _judge_human_signal(bad_reviews, mergeable_state):
     """⑥拆家（批184）：冲突与人审意见分道——CONFLICTING 走冲突自处理引擎，
     CHANGES_REQUESTED 才是等人审。旧文案两者混为「人类信号红」，worker 收到的
-    升级评论无针对性指引（昨夜七单+今晨三 CONFLICTING 实证）。"""
-    if mergeable_state != "MERGEABLE":
+    升级评论无针对性指引（昨夜七单+今晨三 CONFLICTING 实证）。
+
+    批207 三态化：UNKNOWN/缺失≠冲突——GitHub 合并性计算未回的瞬态被误判
+    冲突（PR#94 实证：冲突解法指令发给无冲突的 worker + 每轮重评=重复通知，
+    在途单卡死 9h+）。瞬态终态裁决归 sweep 侧 streak。"""
+    if mergeable_state == "CONFLICTING":
         return False, "冲突（CONFLICTING）", True
+    if mergeable_state != "MERGEABLE":
+        return False, f"合并性未知（mergeable={mergeable_state}）", False
     if bad_reviews:
         return False, "人审意见（CHANGES_REQUESTED）——等人类评论", False
     return True, "", False
@@ -384,9 +393,14 @@ def _review_state():
         return {}, p
 
 
-def _save_review(state, path, repo, number, head, verdict):
-    state[f"{repo}#{number}"] = {"head": head, "verdict": verdict,
-                                 "at": __import__("time").strftime("%F %T")}
+def _save_review(state, path, repo, number, head, verdict, streak=None):
+    """批207：streak=同 head 的 UNKNOWN 连续轮数（defer 态记账；其余 verdict
+    整记录覆写即自然清零）。"""
+    rec = {"head": head, "verdict": verdict,
+           "at": __import__("time").strftime("%F %T")}
+    if streak is not None:
+        rec["unknown_streak"] = streak
+    state[f"{repo}#{number}"] = rec
     try:
         json.dump(state, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     except Exception:
@@ -397,7 +411,7 @@ def sweep():
     """扫描注册表内各仓的开放 agent PR，按 pr_review.mode 分档执行。"""
     with open(REGISTRY, encoding="utf-8") as f:
         repos = json.load(f)
-    merged, escalated = [], []
+    merged, escalated, unknown_deferred = [], [], []
     state, state_path = _review_state()
     for entry in repos:
         repo, agent = entry["repo"], entry["agent_login"]
@@ -415,11 +429,22 @@ def sweep():
             # 去重：同 head sha 且已有终态判定（escalate 类滞留 PR 不重评；新推送=新 sha 自动复评）
             head = pr.get("headRefOid") or ""
             prev = state.get(f"{repo}#{n}") or {}
-            # 批184 例外：mergeable 随 dev 移动而变——同 head 滞留 escalate 的
-            # 冲突 PR 必须重估（去重为省克隆，mergeable 取自 list 一跳即可判；
-            # 字段缺失按 MERGEABLE 乐观跳过 = 原 except 兜底同语义）
+            mb = pr.get("mergeable") or "MERGEABLE"  # 批196 字段缺失乐观缺省
+            # 批184 例外：CONFLICTING 随 dev 移动可自愈必须重估；
+            # 批207：UNKNOWN 且已 escalate——GitHub 侧卡死等人类，封口不再重评
+            # （原「非 MERGEABLE 一律重评」使 UNKNOWN 每轮重跑 hermetic+重发指令）
             if prev.get("head") == head and prev.get("verdict") in ("merged", "escalate"):
-                if (pr.get("mergeable") or "MERGEABLE") == "MERGEABLE":
+                if mb in ("MERGEABLE", "UNKNOWN"):
+                    continue
+            # 批207：UNKNOWN 三态化——瞬态不判冲突/不发指令/不跑 hermetic；
+            # 同 head 连续 UNKNOWN_MAX_STREAK 轮仍未知才升级（明示非冲突）
+            if mb == "UNKNOWN":
+                streak = (prev.get("unknown_streak", 0) + 1
+                          if prev.get("head") == head else 1)
+                if streak < UNKNOWN_MAX_STREAK:
+                    _save_review(state, state_path, repo, n, head,
+                                 "defer-unknown", streak)
+                    unknown_deferred.append(f"{repo}#{n}({streak})")
                     continue
             try:
                 v = review_pr(repo, n, {})
@@ -496,6 +521,9 @@ def sweep():
         _notify(f"pr-gate 扫描：{len(merged)}合/{len(escalated)}升",
                 "；".join(parts)[:900])
     print(f"pr_gate sweep: {len(merged)} merged/recommended, {len(escalated)} escalated"
+          + (f", {len(unknown_deferred)} unknown-deferred"
+             + (f" [{'; '.join(unknown_deferred)}]" if len(unknown_deferred) <= 4 else "")
+             if unknown_deferred else "")
           + (f", {len(ignored)} ignored-notice" if ignored else ""))
     return 0 if not escalated else 1
 

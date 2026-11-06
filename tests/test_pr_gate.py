@@ -229,3 +229,78 @@ def test_break_marker_only_from_others():
           {'body': '冲突熔断：交棒', 'author': {'login': 'worker-1'}}]
     assert pr_gate._has_break_marker(cs, 'me')
     assert not pr_gate._has_break_marker(cs[:1], 'me')
+
+
+# ─── 批207：mergeable 三态化——UNKNOWN≠CONFLICTING（PR#94 标本） ───
+
+def test_human_signal_unknown_is_not_conflict():
+    """GitHub 瞬态 UNKNOWN 被判冲突=误发冲突解法指令（修前红）。"""
+    ok, why, c = pr_gate._judge_human_signal([], 'UNKNOWN')
+    assert not ok and not c, (ok, why, c)
+    assert '未知' in why and '冲突' not in why
+    ok, why, c = pr_gate._judge_human_signal([], None)  # 字段缺失同族
+    assert not ok and not c
+    ok, why, c = pr_gate._judge_human_signal([], 'CONFLICTING')
+    assert c and '冲突' in why  # 冲突语义不回退
+    assert pr_gate._judge_human_signal([], 'MERGEABLE')[0]
+
+
+def test_sweep_unknown_lifecycle_defer_escalate_seal(monkeypatch, tmp_path):
+    """UNKNOWN 生命周期：3 轮 defer（零评审零评论）→ 第 4 轮升级一次（明示非冲突）
+    → 此后同 head 封口（不再重评=停重复通知，PR#94 解困语义）。"""
+    import json as _json
+
+    reg = tmp_path / "reg.json"
+    reg.write_text(_json.dumps([{"repo": "o/r", "agent_login": "a1"}]), encoding="utf-8")
+    st_path = tmp_path / "st.json"
+    st_path.write_text("{}", encoding="utf-8")
+    gh_calls = []
+
+    def _gh(args):
+        gh_calls.append(" ".join(args[:3]))
+        if args[:3] == ["pr", "list", "-R"]:
+            return _json.dumps([{"number": 94, "headRefOid": "h1", "mergeable": "UNKNOWN"}])
+        if args[:2] == ["pr", "comment"]:
+            gh_calls.append("COMMENT:" + (args[-1] if isinstance(args[-1], str) else ""))
+            return ""
+        raise AssertionError(f"意外 gh 调用: {args}")
+
+    monkeypatch.setattr(pr_gate, "REGISTRY", str(reg))
+    monkeypatch.setattr(pr_gate, "_review_state", lambda: (_json.load(open(st_path)), str(st_path)))
+    monkeypatch.setattr(pr_gate, "_journal", lambda f: None)
+    monkeypatch.setattr(pr_gate, "_notify", lambda t, b: None)
+    monkeypatch.setattr(pr_gate, "SUPERAGENT_DB", str(tmp_path / "no.db"))
+    monkeypatch.setattr(pr_gate, "_gh", _gh)
+
+    def _boom(*a, **k):
+        raise AssertionError("UNKNOWN defer 轮不应触发评审（零克隆零 hermetic）")
+
+    # 轮 1-3：defer——不评审、不评论、不升级
+    monkeypatch.setattr(pr_gate, "review_pr", _boom)
+    for expect_streak in (1, 2, 3):
+        assert pr_gate.sweep() == 0, f"第{expect_streak}轮应 defer 静默"
+        st = _json.load(open(st_path))
+        rec = st["o/r#94"]
+        assert rec["verdict"] == "defer-unknown" and rec["unknown_streak"] == expect_streak
+    assert not [c for c in gh_calls if c.startswith("COMMENT")], gh_calls
+
+    # 轮 4：达阈值——评审一次、升级评论一条且明示非冲突
+    monkeypatch.setattr(pr_gate, "review_pr", lambda repo, n, cfg: {
+        "mechanical_pass": False, "fail_reason": "合并性未知（mergeable=UNKNOWN）",
+        "conflict": False, "mode": "auto-merge", "count_txt": "exit0",
+        "passed": -1, "total": -1})
+    assert pr_gate.sweep() == 1  # 有升级
+    comments = [c for c in gh_calls if c.startswith("COMMENT")]
+    assert len(comments) == 1, gh_calls
+    assert "合并性未知" in comments[0] and "冲突（CONFLICTING）" not in comments[0]
+    assert _json.load(open(st_path))["o/r#94"]["verdict"] == "escalate"
+
+    # 轮 5+：同 head 封口——不再评审不再评论（重复通知止于此；pr list 本轮
+    # 照常发生是设计——枚举是唯一入口）
+    monkeypatch.setattr(pr_gate, "review_pr", _boom)
+    n_calls = len(gh_calls)
+    assert pr_gate.sweep() == 0
+    assert len(gh_calls) == n_calls + 1, gh_calls[n_calls:]  # 仅 pr list
+    assert not [c for c in gh_calls[n_calls:] if c.startswith("COMMENT")]
+    assert _json.load(open(st_path))["o/r#94"]["verdict"] == "escalate"  # 封口不改判
+
