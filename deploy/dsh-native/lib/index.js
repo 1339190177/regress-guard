@@ -17,6 +17,7 @@
 import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
+import fs from "node:fs";
 import z from "@deepseek-ai/schemastery";
 import { createCommandRegistrar, userTextMessage } from "./commands.js";
 
@@ -205,7 +206,7 @@ export function apply(ctx, config) {
 			if (deny) return deny;
 		}
 		return next();
-	});
+	}, { global: true });
 
 	ctx.on("tools/post-execute", async (exec, result, next) => {
 		const args = materializeArguments(exec.arguments);
@@ -229,7 +230,7 @@ export function apply(ctx, config) {
 			}
 		}
 		return next();
-	});
+	}, { global: true });
 
 	ctx.on("agent/session-start", async ({ agent, source }) => {
 		// 批205：会话启动对账注册——运行中安装/升级的命令免重启 dsh 即入菜单
@@ -252,7 +253,7 @@ export function apply(ctx, config) {
 		} else if (source === "compact") {
 			await runGuardHook(hook("compact_notice.py"), [], { source }, cwd, sid, Math.min(T, 30000));
 		}
-	});
+	}, { global: true });
 
 	ctx.on("agent/pre-step", async (data, next) => {
 		const agent = data?.agent;
@@ -285,7 +286,7 @@ export function apply(ctx, config) {
 		} catch { /* 非 JSON 输出不注入 */ }
 		if (!extra) return down;
 		return { ...down, additionalContexts: [extra, ...(down.additionalContexts ?? [])] };
-	});
+	}, { global: true });
 
 	ctx.on("agent/turn-stopping", async ({ agent, signal }) => {
 		const cwd = await sessionCwd(agent);
@@ -300,7 +301,14 @@ export function apply(ctx, config) {
 		} else {
 			await runGuardHook(hook("stop_notify.py"), [], {}, cwd, sid, Math.min(T, 30000));
 		}
-	});
+	}, { global: true });
+
+	// 批 N（诊断增强）：文件 boot 标记——apply() 跑过必落盘（诊断 boot-past
+	// 静默跳过；ctx.logger 去向不一定可见，文件标记是硬证据）
+	try {
+		fs.appendFileSync(path.join(os.homedir(), ".dsh", "regress-guard-armed.log"),
+			`${new Date().toISOString()} pid=${process.pid} guardRoot=${G}\n`);
+	} catch { /* 标记失败不阻断钩子面 */ }
 
 	ctx.logger?.info?.("regress-guard(native): interception armed "
 		+ `(guardRoot=${G})`);
