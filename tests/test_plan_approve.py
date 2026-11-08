@@ -490,3 +490,106 @@ def test_approve_s_tier_no_ears_block(tmp_path):
     r = run_approve(proj, "--note", "对话批准")
     assert r.returncode == 0, r.stderr
     assert "验收判据（单独过目" not in r.stdout
+
+
+# ── 批210：复活闸（同边界内容取消先例挡道+--force-revive 显式复活）──
+
+def _seed_fossil_for(proj, mid):
+    """参数化版预审化石（批210：多清单场景 R2/R3 各需自己的化石）。"""
+    import subprocess as sp
+    sp.run([sys.executable, os.path.join(os.path.dirname(SCRIPT), "journal.py"),
+            str(proj), "add", "plan_advisor_review",
+            json.dumps({"manifest_id": mid, "verdict": "no_objection",
+                        "summary": "方向清晰"}, ensure_ascii=False)],
+           capture_output=True, text=True, encoding="utf-8", errors="replace",
+           timeout=10, env={**os.environ, "REGRESS_JOURNAL": "on"})
+
+
+def _approve_m(proj, name, *args, journal="on"):
+    """参数化清单名+带会话身份（批210：无会话 env 则 lease 不盖章，
+    复活闸测试依赖真实 input_hash 在场）。"""
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj),
+           "CLAUDE_SESSION_ID": "test-revive", "REGRESS_JOURNAL": journal}
+    mf = proj / ".regress" / "manifests" / name
+    return subprocess.run(
+        [sys.executable, SCRIPT, str(mf), *args],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env=env, timeout=15)
+
+
+def _write_draft(proj, name, mid):
+    (proj / ".regress" / "manifests" / name).write_text(
+        f"---\nid: {mid}\nrequirement: \"{mid} 修复\"\nstatus: planning\n"
+        "planned_changes:\n  - id: F1\n    file: \"src/a.ts\"\n"
+        "    type: method-logic\nactual_changes: []\n---\nbody\n",
+        encoding="utf-8")
+
+
+def _mk_boundary(proj, content="x = 1\n"):
+    (proj / "src").mkdir(exist_ok=True)
+    (proj / "src" / "a.ts").write_text(content, encoding="utf-8")
+
+
+def test_revive_guard_blocks_same_boundary_cancelled(tmp_path):
+    """同边界内容（input_hash 同）有 cancelled 先例→临行拒 exit 1，
+    stderr 列先例 id；草稿保持 planning。"""
+    proj = make_proj(tmp_path)
+    _mk_boundary(proj)
+    _seed_fossil_for(proj, "R1")
+    r1 = _approve_m(proj, "R1.md", "--provisional", "--advisor", "无方向性异议")
+    assert r1.returncode == 0, r1.stderr
+    prec = (proj / ".regress" / "manifests" / "R1.md").read_text(encoding="utf-8")
+    assert "input_hash:" in prec  # 租约已盖（闸的前提条件自证）
+    rc1 = _approve_m(proj, "R1.md", "--cancel", "--note", "标本证伪拦下")
+    assert rc1.returncode == 0, rc1.stderr
+
+    _write_draft(proj, "R2.md", "R2")  # 同一 src/a.ts 未变 → 同 hash
+    _seed_fossil_for(proj, "R2")
+    r2 = _approve_m(proj, "R2.md", "--provisional", "--advisor", "无方向性异议")
+    assert r2.returncode == 1
+    assert "复活闸" in r2.stderr and "R1" in r2.stderr
+    assert "--force-revive" in r2.stderr
+    assert re.search(r"^status: planning$",
+                     (proj / ".regress" / "manifests" / "R2.md").read_text(
+                         encoding="utf-8"), re.M)
+
+
+def test_revive_guard_force_revive_journals(tmp_path):
+    """--force-revive（顾问裁：CLI 令牌优于环境变量）→放行+journal 落
+    plan_revived 带先例 id 列表。"""
+    proj = make_proj(tmp_path)
+    _mk_boundary(proj)
+    _seed_fossil_for(proj, "R1")
+    assert _approve_m(proj, "R1.md", "--provisional", "--advisor",
+                      "无方向性异议").returncode == 0
+    assert _approve_m(proj, "R1.md", "--cancel", "--note",
+                      "标本证伪拦下").returncode == 0
+    _write_draft(proj, "R2.md", "R2")
+    _seed_fossil_for(proj, "R2")
+    r2 = _approve_m(proj, "R2.md", "--provisional", "--advisor",
+                    "无方向性异议", "--force-revive")
+    assert r2.returncode == 0, r2.stderr
+    revs = [e for e in journal_events(proj) if e.get("kind") == "plan_revived"]
+    assert len(revs) == 1 and revs[0]["manifest_id"] == "R2"
+    assert "R1" in revs[0].get("precedents", [])
+    assert re.search(r"^status: in-progress$",
+                     (proj / ".regress" / "manifests" / "R2.md").read_text(
+                         encoding="utf-8"), re.M)
+
+
+def test_revive_guard_different_content_passes(tmp_path):
+    """input_hash=边界内容钉——先例取消后边界文件内容已变（新 hash）→
+    现行为放行（假阳性面=同内容才挡，内容真变=新分析）。"""
+    proj = make_proj(tmp_path)
+    _mk_boundary(proj, "x = 1\n")
+    _seed_fossil_for(proj, "R1")
+    assert _approve_m(proj, "R1.md", "--provisional", "--advisor",
+                      "无方向性异议").returncode == 0
+    assert _approve_m(proj, "R1.md", "--cancel", "--note",
+                      "方向调整放弃").returncode == 0
+    _mk_boundary(proj, "x = 2\n")  # 边界内容真变 → 不同 hash
+    _write_draft(proj, "R3.md", "R3")
+    _seed_fossil_for(proj, "R3")
+    r3 = _approve_m(proj, "R3.md", "--provisional", "--advisor", "无方向性异议")
+    assert r3.returncode == 0, r3.stderr
+    assert "复活闸" not in r3.stderr

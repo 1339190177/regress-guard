@@ -21,6 +21,7 @@
 "计划基于 <sha>，其间已有 N 个新提交"——只警示不阻断，由人类定夺。
 """
 import argparse
+import glob
 import os
 import re
 import subprocess
@@ -62,6 +63,39 @@ def _stamp_session(content, manifest_dir):
         return _SESSION_LINE.sub(f"session: {sid}", content, count=1)
     return _STATUS_LINE.sub(lambda m: m.group(0) + f"\nsession: {sid}",
                             content, count=1)
+
+
+def _revive_guard(path, mdir):
+    """批210 复活闸：同边界内容（lease.input_hash）有取消先例的临行挡道。
+
+    两日两标本（REGRESS-2026-208/209 同 hash 复活证伪批）——取消原因在
+    journal plan_cancelled 与清单正文双在场而消费侧不读=消费侧纪律不可
+    依赖，闸立在转写器（生产者侧）。同 hash=同边界内容钉，**不必然同
+    计划**（input_hash 语义=边界文件内容聚合）——文案如实，证据（先例
+    requirement 摘录）直接进 stderr。返回 [(id, 摘录), …]；算不出
+    hash（无边界/异常）返回 []（闸是增强：基础设施故障不拦临行）。
+    """
+    try:
+        from lease import input_hash as _ih
+        ih = _ih(path)
+    except Exception:
+        return []
+    if not ih:
+        return []
+    hits = []
+    for f in sorted(glob.glob(os.path.join(mdir, "*.md"))):
+        if os.path.abspath(f) == os.path.abspath(path):
+            continue
+        try:
+            fm2 = frontmatter(_read(f))
+            if fm2 is None or field(fm2, "status") != "cancelled":
+                continue
+            if block_value(fm2, "lease", "input_hash") == ih:
+                hits.append((field(fm2, "id") or os.path.basename(f),
+                             (field(fm2, "requirement") or "")[:60]))
+        except Exception:
+            continue
+    return hits
 
 
 def _stamp_lease(content, path):
@@ -247,6 +281,9 @@ def main():
     ap.add_argument("--resolution", default="", help="解阻：阻塞如何被解除的")
     ap.add_argument("--provisional", action="store_true",
                     help="临行（预授权+顾问预审无异议：planning→in-progress，进入否决窗）")
+    ap.add_argument("--force-revive", action="store_true",
+                    help="批210 复活闸令牌：同边界内容有取消先例时仍临行"
+                         "（journal 留痕 plan_revived；禁习惯性携带）")
     ap.add_argument("--advisor", default="",
                     help="顾问预审一句话结论（--provisional 必填；必须来自真实 consult，audit 可查）")
     args = ap.parse_args()
@@ -323,6 +360,23 @@ def main():
                   "plan_advisor_review '{\"manifest_id\":\"..\",\"verdict\":\"..\",\"summary\":\"..\"}'"
                   "（防代笔：预审必须留下可审计的痕迹）", file=sys.stderr)
             return 1
+        # 批210 复活闸：同边界内容有取消先例→挡道（--force-revive 显式复活留痕）
+        precedents = _revive_guard(path, mdir)
+        if precedents and not args.force_revive:
+            print("plan_approve: 复活闸——同边界内容有取消先例（input_hash 同，"
+                  "不必然同计划）：", file=sys.stderr)
+            for pid, req in precedents:
+                print(f"  · {pid}: {req}", file=sys.stderr)
+            print("  先读取消原因（journal plan_cancelled 与先例清单的假设失效"
+                  "记录）再决定；确要复活用 --force-revive（复活将留痕 "
+                  "plan_revived）", file=sys.stderr)
+            return 1
+        if precedents and args.force_revive:
+            journal_append("plan_revived", start_dir=mdir, manifest_id=mid,
+                           **_run_kw(fm),
+                           precedents=[pid for pid, _ in precedents])
+            print(f"⚠️ 复活闸放行（--force-revive）：{len(precedents)} 个同边界"
+                  "取消先例已留痕 plan_revived", file=sys.stderr)
         new_content = _stamp_lease(  # v1.109 批161：临行转写同盖租约
             _stamp_session(_set_provisional(  # P1#7：先算后写
                 content, now, args.advisor.replace('"', "'")), mdir), path)
