@@ -304,3 +304,85 @@ def test_sweep_unknown_lifecycle_defer_escalate_seal(monkeypatch, tmp_path):
     assert not [c for c in gh_calls[n_calls:] if c.startswith("COMMENT")]
     assert _json.load(open(st_path))["o/r#94"]["verdict"] == "escalate"  # 封口不改判
 
+# ─── 批212：判据核对范围锁 PR 本体（误引串扰根治）───────
+
+def _write_manifest(path, mid, ears_lines, planned=None):
+    planned = planned or []
+    pc = "\n".join(f"  - file: {f}" for f in planned)
+    path.write_text(
+        f"---\nid: {mid}\nstatus: in-progress\nplanned_changes:\n{pc}\n---\n\n"
+        "## 验收标准（EARS）\n\n" + "\n".join(ears_lines) + "\n",
+        encoding="utf-8")
+
+
+X_ROW = ("当 fleet 修复完成时，脚本对 8B 缺档有明确处理"
+         "（跳过并提示，或单服务模式），无静默落空步骤。（验：命令）")
+
+
+def test_crosstalk_adjacent_prs_zero_leak(tmp_path):
+    """串扰标本（tongtu #146）：A 单 manifest 含判据 X，B 单不含——
+    评 B 时范围锁 PR 本体，X 与 A 的 planned 文件零串入。"""
+    mdir = tmp_path / "manifests"
+    mdir.mkdir()
+    _write_manifest(
+        mdir / "REGRESS-261109-aaaa1111.md", "A",
+        [f"- {X_ROW}"],
+        planned=["fleet.py"])
+    _write_manifest(
+        mdir / "REGRESS-261109-bbbb2222.md", "B",
+        ["- 当 B 完成时，测试 2/2 全绿。（验：pytest）"],
+        planned=["b.py", "tests/test_b.py"])
+    meta = {
+        "title": "[REGRESS-261109-bbbb2222][fix] B 单",
+        "headRefKey": "agent/b-unit-bbbb2222",
+        "body": "## 背景\n…\n## 改动\n…\n## 验证\n…",
+        "files": [{"path": ".regress/manifests/REGRESS-261109-bbbb2222.md"},
+                  {"path": "b.py"}],
+    }
+    names = [p.name for p in mdir.iterdir()]
+    picked = pr_gate._pr_manifest_scope(meta, names)
+    assert picked == {"REGRESS-261109-bbbb2222.md"}
+    manifest_files, ears = pr_gate._collect_criteria(str(mdir), picked)
+    assert manifest_files == ["b.py", "tests/test_b.py"]
+    rows = [r for r, _ in ears]
+    assert rows and all("fleet" not in r and "8B" not in r for r in rows)
+    assert pr_gate.check_criteria(ears, 2, 2)[0]  # 本单判据正常对账通过
+
+
+def test_scope_diff_only_manifest_still_attributed(tmp_path):
+    """标题/分支不带工单号时，diff 涉及的 manifest 仍归本单。"""
+    mdir = tmp_path / "manifests"
+    mdir.mkdir()
+    _write_manifest(mdir / "REGRESS-261109-cccc3333.md", "C",
+                    ["- 当 C 完成时，测试 1/1 全绿。（验：pytest）"],
+                    planned=["c.py"])
+    meta = {"title": "C 单修复", "files": [
+        {"path": ".regress/manifests/REGRESS-261109-cccc3333.md"},
+        {"path": "c.py"}]}
+    picked = pr_gate._pr_manifest_scope(meta, ["REGRESS-261109-cccc3333.md"])
+    assert picked == {"REGRESS-261109-cccc3333.md"}
+
+
+def test_scope_no_attribution_empty(tmp_path):
+    """无归属（diff 无 manifest、文本无工单号）=零清单——判据面留给
+    「PR 内无清单验收行」既有升级路径，不回退全仓扫描。"""
+    meta = {"title": "杂项", "files": [{"path": "x.py"}]}
+    assert pr_gate._pr_manifest_scope(meta, ["REGRESS-261109-aaaa1111.md"]) == set()
+
+
+def test_criteria_failure_message_cites_source():
+    """出处自证：判据失败消息含「出处 文件:行号」。"""
+    ok, why = pr_gate.check_criteria(
+        [("用户会觉得更快", ".regress/manifests/REGRESS-1.md:7")], 5, 5)
+    assert not ok and "出处 .regress/manifests/REGRESS-1.md:7" in why
+    ok, why = pr_gate.check_criteria(
+        [("测试 3/5", ".regress/manifests/REGRESS-1.md:9")], 5, 5)
+    assert not ok and "出处 .regress/manifests/REGRESS-1.md:9" in why
+
+
+def test_criteria_str_rows_backward_compatible():
+    """既有调用（裸 str 行）行为不变——回归护栏。"""
+    assert pr_gate.check_criteria(["全量 5/5 passed ✅"], 5, 5)[0]
+    assert pr_gate.check_criteria(["测试 5/5"], 5, 5)[0]
+    ok, why = pr_gate.check_criteria(["用户会觉得更快"], 5, 5)
+    assert not ok and "出处" not in why

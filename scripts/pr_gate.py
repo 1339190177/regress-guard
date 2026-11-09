@@ -48,6 +48,8 @@ UNKNOWN_MAX_STREAK = 4
 DEFAULT_MAX_LINES = 200          # 记录性阈值（v2.7.3 起不阻断）
 VERIFIED_MARKS = ("✅", "已验", "（过）", "通过")
 RATIO_RE = re.compile(r"(\d+)\s*/\s*(\d+)")
+# 批212：工单号锚（长形式优先防 6 位被 3 位前缀截断——AGENTS 取号纪律正则同序）
+REGRESS_ID_RE = re.compile(r"REGRESS-(?:[0-9]{6}-[0-9a-f]{4,8}|[0-9]{3})")
 
 
 def _gh(args, timeout=60):
@@ -223,32 +225,80 @@ def escalation_hint(fail_reason):
             "禁贴骨架模板原文（占位符未填必拦）——照抄验收节模板行不算判据。")
 
 
+def _pr_manifest_scope(meta, names, head_ref=""):
+    """批212：判据核对范围锁 PR 本体——清单名只取两源：
+    ①PR diff 内改动的 .regress/manifests/*.md（本单清单随单提交）；
+    ②PR 标题/分支名/正文所含工单号能匹配的 manifest 文件名。
+    全仓其余 manifest（他单/历史单）一律不采——误引串扰根治
+    （tongtu #146：PR#141/#143/#145 连续误引 559dbeec 判据三例）。"""
+    picked = set()
+    for f in meta.get("files") or []:
+        p = f.get("path", "")
+        if p.startswith(".regress/manifests/") and p.endswith(".md"):
+            picked.add(os.path.basename(p))
+    hay = " ".join(filter(None, [
+        meta.get("title") or "", head_ref or "", meta.get("body") or ""]))
+    ids = set(REGRESS_ID_RE.findall(hay))
+    for name in names:
+        if any(i in name for i in ids):
+            picked.add(name)
+    return picked
+
+
+def _collect_criteria(mdir, picked):
+    """批212：按 scope 采清单——planned 文件集与 EARS 判据行同源同锁；
+    判据行附出处（.regress/manifests/<名>:<行号>）供升级评论自证。"""
+    manifest_files, ears = [], []
+    for name in sorted(os.listdir(mdir)):
+        if name not in picked or not name.endswith(".md"):
+            continue
+        mp = os.path.join(mdir, name)
+        data = parse_frontmatter(mp) or {}
+        manifest_files += [c.get("file") for c in
+                           (data.get("planned_changes") or [])
+                           if isinstance(c, dict) and c.get("file")]
+        _, rows = ears_extract(mp)
+        if rows:
+            lines = open(mp, encoding="utf-8").read().splitlines()
+            src = f".regress/manifests/{name}"
+            for row in rows:
+                ln = next((i + 1 for i, ln_txt in enumerate(lines)
+                           if row.strip() and row.strip() in ln_txt.strip()), 0)
+                ears.append((row, f"{src}:{ln}"))
+    return manifest_files, ears
+
+
 def check_criteria(ears_rows, passed, total, tests_ok=True):
     """⑤机械化：验收行逐条找机器可对账的证据；含糊/矛盾 → 升级。
 
     口径（保守）：行含已验标记（门禁盖过）=过；行含 N/N 且与 hermetic
     结果一致=过、不一致=矛盾；行含"全绿/全过"且测试全过=过（计数不可得
     的 test_cmd 模式下以 exit code 为准）；其余=含糊。
+
+    批212：ears_rows 元素兼容 str 与 (row, 出处) 二元组——判据类失败
+    消息附「出处 文件:行号」（升级评论自证来源，误引一眼可辨）。
     """
-    for row in ears_rows:
+    for item in ears_rows:
+        row, src = item if isinstance(item, tuple) else (item, "")
+        cite = f" 出处 {src}" if src else ""
         if any(m in row for m in VERIFIED_MARKS):
             continue
         m = RATIO_RE.search(row)
         if m and passed >= 0:
             a, b = int(m.group(1)), int(m.group(2))
             if not (a == b == passed == total):
-                return False, f"判据矛盾: 「{row[:40]}」 vs hermetic {passed}/{total}"
+                return False, f"判据矛盾: 「{row[:40]}」 vs hermetic {passed}/{total}{cite}"
             continue
         if ("全绿" in row or "全过" in row) and tests_ok and (passed < 0 or (passed == total and total > 0)):
             continue
-        return False, f"判据含糊(不可机械化): 「{row[:40]}」"
+        return False, f"判据含糊(不可机械化): 「{row[:40]}」{cite}"
     return True, ""
 
 
 def review_pr(repo, number, cfg, json_out=False):
     """单 PR 机械评审：返回 (rows, verdict_dict)。抛错=自崩（exit 2）。"""
     meta = json.loads(_gh(["pr", "view", str(number), "-R", repo, "--json",
-                           "title,body,files,additions,deletions,reviews,mergeable,author"]))
+                           "title,body,files,additions,deletions,reviews,mergeable,author,headRefKey"]))
     tmp = tempfile.mkdtemp(prefix="prgate-")
     try:
         # hermetic 检出（协议第 4 步命令序列；--reference 本地种子=75MB 级仓秒级克隆）
@@ -274,18 +324,15 @@ def review_pr(repo, number, cfg, json_out=False):
         sections = pr_review_cfg.get("require_pr_sections", DEFAULT_SECTIONS)
         forbidden = (cfg.get("boundary") or {}).get("forbidden", [])
         mdir = os.path.join(wt, ".regress", "manifests")
-        manifest_files, ears_rows = [], []
+        manifest_files, ears = [], []
         if os.path.isdir(mdir):
-            for name in sorted(os.listdir(mdir)):
-                if not name.endswith(".md"):
-                    continue
-                mp = os.path.join(mdir, name)
-                data = parse_frontmatter(mp) or {}
-                manifest_files += [c.get("file") for c in
-                                   (data.get("planned_changes") or [])
-                                   if isinstance(c, dict) and c.get("file")]
-                _, rows = ears_extract(mp)
-                ears_rows += rows
+            # 批212：范围锁 PR 本体——本 PR diff 涉及 manifest ∪ 标题/分支/
+            # 正文所含工单号匹配的 manifest；全仓扫描结果按文件名含本单号
+            # 过滤（他单清单的判据/planned 不再串入 ①⑤ 对账）
+            names = [n for n in os.listdir(mdir) if n.endswith(".md")]
+            picked = _pr_manifest_scope(meta, names, head_ref=meta.get("headRefKey", ""))
+            manifest_files, ears = _collect_criteria(mdir, picked)
+        ears_rows = [r for r, _ in ears]
         # hermetic 测试（④：test-only PR 走 test_cmd_fast 快道；否则 test_cmd；
         # 均未声明走 test_runner CLI=与提交门禁同一事实源）
         test_files = [f["path"] for f in meta["files"]
@@ -348,7 +395,7 @@ def review_pr(repo, number, cfg, json_out=False):
         fail = fail or ("" if ok else why)
         rows.append((tests_ok, f"④hermetic {count_txt}" + (f" | {hermetic_note}" if hermetic_note else "")))
         fail = fail or ("" if tests_ok else f"hermetic {count_txt}")
-        ok, why = (check_criteria(ears_rows, passed, total, tests_ok)
+        ok, why = (check_criteria(ears, passed, total, tests_ok)
                    if ears_rows else (False, "PR 内无清单验收行"))
         rows.append((ok, f"⑤判据机械化 {why}"))
         fail = fail or ("" if ok else why)
