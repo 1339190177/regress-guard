@@ -196,17 +196,50 @@ def _detect(project_dir):
     return None, None, project_dir
 
 
-def _timeout_for(project_dir):
+# 分档缺省（批215，公网 issue#4 次生1）：maven/gradle 全量测试常态 5-15 分钟
+# （Spring Boot 自述），120s 连热身都不够=必然超时记 fail；其余 runner 维持
+# 120s。config 覆写钮优先级不变。
+_TIMEOUT_DEFAULTS = {"maven": 900, "gradle": 900}
+
+
+def _timeout_for(project_dir, runner=None):
     """超时配置钮（v1.69，058-F4）：项目 .regress/config.json 的
-    test_runner.timeout 可调（秒）；缺省 120。套件规模增长越过硬编码
-    窗口时门禁会误杀（本批活体：458 例 155s vs 120s 窗口 0 通过超时）。"""
+    test_runner.timeout 可调（秒）；缺省按 runner 分档（批215：maven/gradle
+    900，其余 120）。套件规模增长越过硬编码窗口时门禁会误杀（本批活体：
+    458 例 155s vs 120s 窗口 0 通过超时）。"""
+    default = _TIMEOUT_DEFAULTS.get(runner or "", 120)
     try:
         with open(os.path.join(project_dir, ".regress", "config.json"),
                   encoding="utf-8") as f:
             v = (json.load(f).get("test_runner") or {}).get("timeout")
-        return int(v) if v else 120
+        return int(v) if v else default
     except Exception:
-        return 120
+        return default
+
+
+def _coarse_result(runner, exit_code, output):
+    """粗粒度 runner（mvn/gradle/go）结果构造（批215 抽出）。
+
+    批215（issue#4 次生2）诚实化：此分支永远解析不出用例级结果，exit≠0 时
+    明示「未解析到用例级结果」——mise/工具链报错不再伪装成「0 失败/0 通过」
+    （用户误判测试跑了全挂的标本）。"""
+    if exit_code == 0:
+        failures = []
+    else:
+        failures = [{
+            "test": "(unknown)",
+            "message": (f"runner 退出码 {exit_code}，未解析到用例级结果"
+                        "——若输出无测试痕迹请查工具链/环境（JDK/版本管理器/"
+                        "PATH），非测试失败：" + output[-300:]),
+        }]
+    return {
+        "runner": runner,
+        "status": "pass" if exit_code == 0 else "fail",
+        "total": 0, "passed": 0, "failed": 0,
+        "duration_ms": 0,
+        "failures": failures,
+        "raw_snippet": output[-200:] if exit_code != 0 else ""
+    }
 
 
 def _parallel_for(project_dir):
@@ -257,9 +290,9 @@ def run_tests(project_dir, timeout=None, extra_args=None):
             "raw_snippet": str  # 失败时的输出片段
         }
     """
-    if timeout is None:
-        timeout = _timeout_for(project_dir)
     runner, cmd, rcwd = _detect(project_dir)
+    if timeout is None:
+        timeout = _timeout_for(project_dir, runner)
 
     if runner is None:
         return {
@@ -289,6 +322,7 @@ def run_tests(project_dir, timeout=None, extra_args=None):
         proc = subprocess.run(
             cmd,
             capture_output=True, text=True,
+            encoding="utf-8", errors="replace",  # 批215：GBK locale 下 mvn 输出不再炸解码
             cwd=rcwd, timeout=timeout,
             env=hermetic_env(),
         )
@@ -317,15 +351,8 @@ def run_tests(project_dir, timeout=None, extra_args=None):
     elif runner == "pytest":
         result = _parse_pytest(output, exit_code, project_dir)
     else:
-        # mvn/gradle/go：靠 exit code 判断，不精细解析
-        result = {
-            "runner": runner,
-            "status": "pass" if exit_code == 0 else "fail",
-            "total": 0, "passed": 0, "failed": 0,
-            "duration_ms": 0,
-            "failures": [] if exit_code == 0 else [{"test": "(unknown)", "message": output[-300:]}],
-            "raw_snippet": output[-200:] if exit_code != 0 else ""
-        }
+        # mvn/gradle/go：靠 exit code 判断，不精细解析（批215 抽出可测）
+        result = _coarse_result(runner, exit_code, output)
     if _par_state:
         # 批157：并行状态透传（"auto"/"workers:N"/"unavailable"）——
         # unavailable 也带（诚实面：请求了但没跑成并行，事件可查）

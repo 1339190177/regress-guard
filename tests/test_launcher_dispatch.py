@@ -88,12 +88,13 @@ def test_env_policy_non_guard_scrubs_python_and_sets_utf8(tmp_path):
 
 
 def test_env_policy_guard_whitelist_unchanged(tmp_path):
-    """门禁脚本：ENV_KEEP 白名单原样——REGRESS_* 不透传（v1.69 契约），
-    PYTHONUTF8 不注入（白名单策略与批191 前逐字节等价）。"""
+    """门禁脚本：拒列式 cleanEnv（批215，公网 issue#4）——覆盖类（REGRESS_*）
+    仍不透传（v1.69 契约面），宿主契约变量放行，PYTHONUTF8 现注入（批215 起
+    cleanEnv 与 scrubbedEnv 对齐）。"""
     d = _mk_layout(tmp_path, target_name="pre_commit_guard.py")
     r = _run(d, "pre_commit_guard.py")
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout.strip().splitlines()[-1])
-    assert out["journal"] is None, "白名单失效：REGRESS_JOURNAL 透传给了门禁"
-    assert out["zproj"] == "/tmp/proj", "白名单漏放宿主契约变量"
-    assert out["utf8"] is None, "门禁白名单被擅改（应逐字节等价）"
+    assert out["journal"] is None, "拒列失效：REGRESS_JOURNAL 透传给了门禁"
+    assert out["zproj"] == "/tmp/proj", "拒列误伤宿主契约变量"
+    assert out["utf8"] == "1", "批215 起 cleanEnv 强制 PYTHONUTF8（与 scrubbedEnv 对齐）"

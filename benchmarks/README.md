@@ -44,8 +44,8 @@
 # 单条（以 TRUST-001 为例）
 python3 -m pytest tests/ -k "test_trust_default_denied"
 
-# 一族（launcher-env 白名单钉族）
-python3 -m pytest tests/ -k "test_poison_env_fully_stripped or test_mixed_env_exact_output or test_whitelist_exact_set"
+# 一族（launcher-env 拒列钉族，批215）
+python3 -m pytest tests/ -k "test_override_injection_denied or test_toolchain_vars_pass or test_deny_list_pinned_exact"
 
 # 全族回放：按 cases.json 的 pytest_selector 逐条跑，或直接跑源测试文件
 python3 -m pytest tests/test_notify.py tests/test_test_cache.py tests/test_boundary_guard.py \

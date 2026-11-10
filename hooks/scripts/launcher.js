@@ -23,31 +23,31 @@ const fs = require("fs");
 const path = require("path");
 
 const DEFAULT_GUARD = "pre_commit_guard.py";
-// 白名单策略只对提交门禁生效（历史契约，ENV_KEEP 注释见下）
+// 拒列策略只对提交门禁生效（历史契约：门禁入口的 env 收紧面）
 const WHITELIST_TARGET = "pre_commit_guard.py";
 
 // 候选 Python 解释器（按优先级）
 const candidates = ["python3", "python", "py"];
 
-// env 白名单（v1.69，run4 R1）：门禁入口构造洁净环境——RG_*/WECOM_*/GIT_* 等
-// 覆盖类变量不透传给守卫子进程（env 缝隙族的入口层根治：宿主进程 env 里任何
-// 对守卫行为/信任判定/git 读数的注入在此失效）。键按大写归一比较（Windows 不区分）。
-const ENV_KEEP = new Set([
-  // 系统基础：找解释器/git、编码、临时区、Windows python 依赖
-  "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "TERM", "TMPDIR", "SYSTEMROOT",
-  // 代理（通知外发走系统代理语义）
-  "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
-  // 宿主契约变量（ZCode 注入的会话/项目/插件根——守卫合法依赖）
-  "ZCODE_SESSION_ID", "CLAUDE_SESSION_ID",
-  "ZCODE_PROJECT_DIR", "CLAUDE_PROJECT_DIR",
-  "ZCODE_HOME", "ZCODE_PLUGIN_ROOT",
-]);
+// env 拒列（批215，公网 issue#4）：门禁入口原为白名单 19 项——把工具链管理器
+// 变量一并裁掉（JAVA_HOME/MISE_*/ASDF_*…），Windows 上 mise/asdf 管 JDK 的项目
+// mvn 起不来→测试没跑被记 fail→提交 100% 误拦（外部用户实证）。反转为拒列式：
+// 拒绝族=v1.69 白名单本就拒的覆盖类（RG_*/REGRESS_*/WECOM_*/GIT_*：守卫行为/
+// 信任判定/git 读数注入面）+ 批191 防投毒（PYTHON* 剥离+强制 PYTHONUTF8）；
+// 其余宿主变量自动放行（旧 19 项无一命中拒列前缀=全保留，向后兼容）。
+// 与 deploy/dsh-native/lib/index.js childEnv 同款政策（同步演化）。
+// 键按大写归一比较（Windows 不区分）。
+const ENV_DENY_PREFIXES = ["PYTHON", "RG_", "REGRESS_", "WECOM_", "GIT_",
+  "AWS_", "AZURE_", "GOOGLE_", "GITHUB_", "GITLAB_", "GH_", "NPM_TOKEN", "DOCKER_"];
 
 function cleanEnv(env) {
   const out = {};
   for (const k of Object.keys(env)) {
-    if (ENV_KEEP.has(k) || ENV_KEEP.has(k.toUpperCase())) out[k] = env[k];
+    const ku = k.toUpperCase();
+    if (ENV_DENY_PREFIXES.some((p) => ku.startsWith(p))) continue;
+    out[k] = env[k];
   }
+  out.PYTHONUTF8 = "1";
   return out;
 }
 
@@ -86,7 +86,7 @@ function envFor(target) {
     : scrubbedEnv(process.env);
 }
 
-module.exports = { cleanEnv, scrubbedEnv, resolveTarget, envFor, ENV_KEEP };
+module.exports = { cleanEnv, scrubbedEnv, resolveTarget, envFor, ENV_DENY_PREFIXES };
 
 function failNoPython() {
   console.error("REGRESS-GUARD: ❌ 找不到 Python 3 解释器。");

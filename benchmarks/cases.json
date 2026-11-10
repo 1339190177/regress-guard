@@ -53,21 +53,21 @@
   "family": "launcher-env",
   "attack_summary": "全污染环境（覆盖类/凭据类/自定义变量）传入守卫子进程",
   "expected": "剥离：白名单外变量全部不出现在子进程环境",
-  "pytest_selector": "test_poison_env_fully_stripped"
+  "pytest_selector": "test_override_injection_denied"
  },
  {
   "id": "ENV-002",
   "family": "launcher-env",
   "attack_summary": "混合环境中夹带覆盖类与凭据类变量，试探精确输出",
   "expected": "剥离：输出恰等于白名单子集，多留一个即红",
-  "pytest_selector": "test_mixed_env_exact_output"
+  "pytest_selector": "test_toolchain_vars_pass"
  },
  {
   "id": "ENV-003",
   "family": "launcher-env",
   "attack_summary": "白名单自身被放宽（增条目漂移）的试探",
   "expected": "钉死：白名单全集双向等值，增删条目即红",
-  "pytest_selector": "test_whitelist_exact_set"
+  "pytest_selector": "test_deny_list_pinned_exact"
  },
  {
   "id": "ENV-004",
@@ -81,7 +81,7 @@
   "family": "launcher-env",
   "attack_summary": "对照：白名单变量夹带在污染环境中传递",
   "expected": "保留：白名单变量原键原值到达，同环境毒变量被剥离",
-  "pytest_selector": "test_whitelist_var_kept"
+  "pytest_selector": "test_legacy_contract_vars_pass"
  },
  {
   "id": "CACHE-001",

@@ -80,11 +80,38 @@ function resultFailed(result) {
 /** Python 解释器候选（批191：Windows 无 python3——python.org 只装 python.exe/py.exe）。 */
 const PY_CANDIDATES = ["python3", "python", "py"];
 
+/**
+ * 守卫子进程 env：拒列式透传（批215，公网 issue#4）。
+ *
+ * 旧白名单 8 项把工具链管理器变量一并裁掉——Windows 上 mise/asdf 管 JDK 的
+ * 项目 mvn 拿不到 JAVA_HOME/MISE_* 起不来，测试没跑就被记 fail（提交门禁
+ * 100% 误拦，外部用户实证矩阵）。反转为拒列：拒绝族=原白名单安全语义的全部
+ * 命脉（PYTHON* 解释器投毒面 / RG_*+REGRESS_* 治理旁路面 / WECOM_*+GIT_*
+ * 读数覆盖面）+ 透传化新开的口（宿主 CLAUDE_*/ZCODE_* 会话变量劫持——批183
+ * 换序后 ZCODE_PROJECT_DIR 是最高优先项目定位符）+ 卫生族（NODE_*/ELECTRON_*）；
+ * 其余宿主变量（JAVA_HOME/MISE_*/ASDF_*/未来任意管理器）自动放行。
+ * 与 launcher.js cleanEnv 同款政策（两适配层 env 政策同步演化）。
+ */
+const ENV_DENY_PREFIXES = ["PYTHON", "RG_", "REGRESS_", "WECOM_", "GIT_",
+	"NODE_", "ELECTRON_", "CLAUDE_", "ZCODE_",
+	"AWS_", "AZURE_", "GOOGLE_", "GITHUB_", "GITLAB_", "GH_", "NPM_TOKEN", "DOCKER_"];
+
+export function childEnv(hostEnv, extra = {}) {
+	const out = {};
+	for (const [k, v] of Object.entries(hostEnv)) {
+		const ku = k.toUpperCase();
+		if (ENV_DENY_PREFIXES.some((p) => ku.startsWith(p))) continue;
+		out[k] = v;
+	}
+	out.PYTHONUTF8 = "1";                 // 批191：中文 Windows 编码根治（拒后重注）
+	if (!("LANG" in out)) out.LANG = "C.UTF-8";
+	return Object.assign(out, extra);     // 本会话契约对后写=覆写宿主残值
+}
+
 /** 进程内跑一个 guard 钩子：真实 fs 视图 + 正确 cwd/env，stdin=CC 形态 payload。
  *
- * 批191：解释器候选回退（python3→python→py）；-E 移除——env 本就是白名单式
- * 最小集（无 PYTHON* 透传，投毒面为空），改注入 PYTHONUTF8=1 根治中文 Windows
- * cp936 编码崩溃；SYSTEMROOT 补入（Windows 上 python.exe 缺它起不来）。 */
+ * 批191：解释器候选回退（python3→python→py）；批215：env 拒列式透传（见
+ * childEnv）——SYSTEMROOT 等随宿主 env 自然在场（Windows python.exe 依赖）。 */
 function runGuardHook(scriptPath, hookArgs, payload, cwd, sessionId, timeoutMs, pyIdx = 0) {
 	return new Promise((resolve) => {
 		let settled = false;
@@ -101,16 +128,10 @@ function runGuardHook(scriptPath, hookArgs, payload, cwd, sessionId, timeoutMs, 
 		try {
 			const child = spawn(PY_CANDIDATES[pyIdx], [scriptPath, ...hookArgs], {
 				cwd,
-				env: {
-					PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
-					HOME: process.env.HOME ?? os.homedir(),
-					LANG: process.env.LANG ?? "C.UTF-8",
-					TZ: process.env.TZ,
-					SYSTEMROOT: process.env.SYSTEMROOT,
-					PYTHONUTF8: "1",
+				env: childEnv(process.env, {
 					CLAUDE_PROJECT_DIR: cwd,
 					CLAUDE_SESSION_ID: sessionId
-				},
+				}),
 				stdio: ["pipe", "pipe", "pipe"],
 				timeout: timeoutMs
 			});

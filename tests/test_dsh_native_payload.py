@@ -201,3 +201,60 @@ def test_docs_record_jobs_intermediate_limitation():
     with open(docs, encoding="utf-8") as f:
         text = f.read()
     assert "中间态" in text, "docs/dsh-support.md 已知边界须留档 jobs 中间态限制"
+
+
+# ─── 批215（公网 issue#4）：childEnv 拒列式透传 ──────────────────
+
+def test_childenv_denylist_passthrough():
+    """env 拒列式政策四断言族：透传/拒列/强制/覆写（issue#4 病灶=白名单裁掉
+    JAVA_HOME/MISE_* 致 mise 管 JDK 项目门禁 100% 误拦）。"""
+    src = _src()
+    m = re.search(r"const ENV_DENY_PREFIXES = \[[^\]]*\];", src)
+    # _extract_fn 的花括号配平从参数默认值 {} 起跳会截半（childEnv 的
+    # extra={} 毁其假设）——签名感知抽取：从函数体开括号起配平
+    sig = "function childEnv(hostEnv, extra = {}) {"
+    i = src.find(sig)
+    assert i >= 0, "index.js 缺 childEnv（重构？）"
+    depth, start = 0, i + len(sig) - 1
+    for j in range(start, len(src)):
+        if src[j] == "{":
+            depth += 1
+        elif src[j] == "}":
+            depth -= 1
+            if depth == 0:
+                fn = src[i:j + 1]
+                break
+    assert m, "index.js 缺 ENV_DENY_PREFIXES（重构？）"
+    probe = m.group(0) + "\n" + fn + """
+const host = {
+  PATH: "/usr/bin", HOME: "/home/t", JAVA_HOME: "/jdk/21",
+  MISE_DATA_DIR: "D:/mise", ASDF_DIR: "/asdf", NVM_DIR: "/nvm",
+  SYSTEMROOT: "C:/Windows", LANG: "C.UTF-8",
+  // 拒列族样本
+  PYTHONSTARTUP: "/tmp/evil.py", PYTHONPATH: "/tmp/evil",
+  REGRESS_VALVE: "off", RG_JOURNAL: "off",
+  WECOM_API_BASE: "https://evil", GIT_DIR: "/tmp/fake.git",
+  NODE_OPTIONS: "--require=/tmp/evil.js", AWS_SECRET_ACCESS_KEY: "k",
+  GITHUB_TOKEN: "t", CLAUDE_PROJECT_DIR: "/stale", ZCODE_PROJECT_DIR: "/stale",
+};
+const out = childEnv(host, { CLAUDE_PROJECT_DIR: "/real", CLAUDE_SESSION_ID: "s1" });
+const leak = ["PYTHONSTARTUP","PYTHONPATH","REGRESS_VALVE","RG_JOURNAL",
+  "WECOM_API_BASE","GIT_DIR","NODE_OPTIONS","AWS_SECRET_ACCESS_KEY",
+  "GITHUB_TOKEN","ZCODE_PROJECT_DIR"].filter(k => k in out);
+console.log(JSON.stringify({
+  toolchain: [out.JAVA_HOME, out.MISE_DATA_DIR, out.ASDF_DIR, out.NVM_DIR],
+  denied: leak,
+  forced: out.PYTHONUTF8,
+  override: [out.CLAUDE_PROJECT_DIR, out.CLAUDE_SESSION_ID],
+  base: [out.PATH, out.HOME, out.SYSTEMROOT],
+}));
+"""
+    r = subprocess.run(["node", "--input-type=module", "-e", probe],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
+    assert r.returncode == 0, f"node 探针崩：{r.stderr[:300]}"
+    o = json.loads(r.stdout.strip().splitlines()[-1])
+    assert o["toolchain"] == ["/jdk/21", "D:/mise", "/asdf", "/nvm"], "工具链变量必须透传（issue#4 本体）"
+    assert o["denied"] == [], f"拒列族泄漏：{o['denied']}"
+    assert o["forced"] == "1", "PYTHONUTF8 强制注入"
+    assert o["override"] == ["/real", "s1"], "本会话契约对必须覆写宿主残值"
+    assert o["base"] == ["/usr/bin", "/home/t", "C:/Windows"], "基础变量透传"

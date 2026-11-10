@@ -532,3 +532,37 @@ def test_parallel_e2e_junitxml_counts(tmp_path):
     assert r["status"] == "pass", r.get("raw_snippet", "")
     assert r["parallel"] == "auto"
     assert r["total"] == 6 and r["passed"] == 6
+
+
+# ─── 批215（公网 issue#4 次生）：分档超时 + 粗粒度失败诚实化 ───
+
+def test_timeout_tiered_defaults(tmp_path):
+    """maven/gradle 缺省 900s（Spring Boot 全量常态 5-15 分钟），其余 120s 不变。"""
+    import test_runner as tr
+    assert tr._timeout_for(str(tmp_path), "maven") == 900
+    assert tr._timeout_for(str(tmp_path), "gradle") == 900
+    assert tr._timeout_for(str(tmp_path), "pytest") == 120
+    assert tr._timeout_for(str(tmp_path), None) == 120
+
+
+def test_timeout_config_override_wins(tmp_path):
+    """config 覆写钮优先级不变（分档只影响缺省）。"""
+    import test_runner as tr
+    (tmp_path / ".regress").mkdir()
+    (tmp_path / ".regress" / "config.json").write_text(
+        json.dumps({"test_runner": {"timeout": 300}}), encoding="utf-8")
+    assert tr._timeout_for(str(tmp_path), "maven") == 300
+    assert tr._timeout_for(str(tmp_path), "pytest") == 300
+
+
+def test_coarse_result_honest_failure_message():
+    """粗粒度 runner exit≠0：明示「未解析到用例级结果」——mise/工具链报错
+    不再伪装成「0 失败/0 通过」（issue#4 标本：用户误判测试跑了全挂）。"""
+    import test_runner as tr
+    r = tr._coarse_result("maven", 1, "mise ERROR java is not a valid shim")
+    assert r["status"] == "fail"
+    msg = r["failures"][0]["message"]
+    assert "未解析到用例级结果" in msg and "工具链" in msg
+    assert "mise ERROR" in msg, "原始输出仍须在场（诊断面）"
+    ok = tr._coarse_result("maven", 0, "BUILD SUCCESS")
+    assert ok["status"] == "pass" and ok["failures"] == []
