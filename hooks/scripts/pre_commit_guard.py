@@ -645,6 +645,23 @@ def _blast_radius_evaluate(config, project_dir, staged):
             "high_impact": hi}
 
 
+_GENERIC_BASENAMES = ("README", ".gitignore", "LICENSE", "CHANGELOG")
+
+
+def _attribution_score(declared, staged_set):
+    """归因计分（批217，sess_92ae8458 双清单咬错标本）。
+
+    旧裸交集两口咬错：①通用文件倾斜——README/版本件/.regress/** 在多清单
+    边界重复出现，交集虚高抢归因（落层提交被无关 M 档清单咬走触发其验收/
+    深查门，run65-67 连续三日标本）②平手取先——严格大于使相等交集落谁
+    取决于磁盘枚举序。修：计分排除治理层路径+泛型四族基名；返回
+    (score, 边界规模) 供平手取更小边界（更专属=更可能真属主）。"""
+    scored = {f for f in (set(declared) & set(staged_set))
+              if not f.startswith(".regress/")
+              and f.rsplit("/", 1)[-1].split(".")[0] not in _GENERIC_BASENAMES}
+    return len(scored), len(set(declared))
+
+
 def main():
     ensure_utf8_stdio()  # 批191：cp936 流垫片（emoji/中文输出根治）
     # ─── 1. 是否 git commit？──────────────────────────
@@ -982,16 +999,24 @@ def main():
             （081/082/083）。planning（未临行）不参与交集归因；全无交集=异常态
             回退有 provisional 戳者保检查面（弱化不允许），再退旧序。"""
             staged_set = {s.replace(os.sep, "/") for s in staged}
-            best, best_n = None, 0
+            best, best_n, best_bsize = None, 0, 0
             for p, mid in mine_list:
                 parsed = parse_frontmatter(p) or {}
                 if str(parsed.get("status") or "") == "planning":
                     continue
                 declared = {f.replace(os.sep, "/")
                             for f in get_all_changed_files(p)}
-                n = len(declared & staged_set)
-                if n > best_n:
-                    best, best_n = (p, mid), n
+                # 批217：计分走 _attribution_score（排除通用件倾斜）；
+                # 平手（score>0）取声明边界更小者——更专属=更可能真属主；
+                # 再平手（含 score==0 纯通用件提交）按 id 字典序=全序终判，
+                # 磁盘枚举序任意性彻底出局（顾问①）；docs 类清单基名剔除
+                # 残余风险记档不修（顾问②，回退链兜底）
+                n, bsize = _attribution_score(declared, staged_set)
+                if (n > best_n
+                        or (n == best_n and n > 0 and best
+                            and bsize < best_bsize)
+                        or (n == best_n and best and mid < best[1])):
+                    best, best_n, best_bsize = (p, mid), n, bsize
             if best:
                 return best
             for p, mid in mine_list:

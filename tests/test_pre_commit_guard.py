@@ -1996,3 +1996,37 @@ def test_monorepo_climb_terminates(tmp_path):
     # 批206：cp1252 父进程下读线程吞异常致 stderr 恒空——[-300:] 断言恒真盲区，
     # 显式 encoding 后 stderr 内容才真实在场
     assert r.returncode in (0, 2), r.stderr[-300:]
+
+
+# ─── 批217（sess_92ae8458 双清单咬错）：归因计分防通用件倾斜+平手取小边界 ───
+
+def test_attribution_score_generic_files_excluded():
+    """README/.regress 层文件不计分——通用件交集虚高不再抢归因。"""
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'hooks', 'scripts')))
+    from pre_commit_guard import _attribution_score
+    declared = {"src/a.py", "README.md", ".regress/journal/x"}
+    n, _ = _attribution_score(declared, {"src/a.py", "README.md"})
+    assert n == 1, "README 应排除，只数 src/a.py"
+    n2, _ = _attribution_score(declared, {"README.md", ".regress/journal/x"})
+    assert n2 == 0, "纯通用件交集=零分（旧裸交集=2 会抢走归因）"
+
+
+def test_attribution_score_tie_reports_boundary_size():
+    """平手时边界规模可辨——(score, size) 元组供调用方取更小者。"""
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'hooks', 'scripts')))
+    from pre_commit_guard import _attribution_score
+    wide = [f"f{i}.py" for i in range(9)] + ["src/x.py"]
+    narrow = ["src/x.py", "y.py"]
+    sw = _attribution_score(wide, {"src/x.py"})
+    sn = _attribution_score(narrow, {"src/x.py"})
+    assert sw[0] == sn[0] == 1 and sn[1] < sw[1], "同分但窄边界更小=平手胜者依据"
+
+
+def test_attribution_score_zero_tie_deterministic_note():
+    """批217 顾问①：score==0 平手由调用点 id 字典序终判（全序无磁盘序）——
+    本测钉语义契约：纯通用件交集计分为 0，0 与 0 平手不在计分器层决胜。"""
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'hooks', 'scripts')))
+    from pre_commit_guard import _attribution_score
+    a = _attribution_score(["README.md"], {"README.md"})
+    b = _attribution_score([".regress/x"], {"README.md"})
+    assert a[0] == b[0] == 0, "纯通用件=双双零分，胜负归调用点字典序"
