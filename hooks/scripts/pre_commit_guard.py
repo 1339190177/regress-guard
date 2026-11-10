@@ -880,7 +880,8 @@ def main():
     manifest = None
     manifest_id = ""
     my_sid = _session_id()
-    # 批218：身份集合（env∪新鲜 relay）——判等一律走集合
+    # 批218 根治档：身份集合（env∪relay，冲突以 relay 真身为准——env 陈旧
+    # 即弃；语义真源 docs/会话身份语义.md）——判等一律走集合
     try:
         from session_relay import my_sids
         my_ids = my_sids(regress_dir)
@@ -904,9 +905,10 @@ def main():
             m_sid = str(parsed.get("session") or "")
             # v1.109 批161：他人清单租约过期 → 收回跨会话保护（归 mine）——
             # 死会话不再永久占边界；重盖租约（接管）即恢复保护
-            # 批218：判等集合化（env∪新鲜 relay，session_relay.my_sids 单一
-            # 来源）——长对话续接换平台号而 shell env 停旧号时，relay 盖的
-            # 新号也是自己（run65-67/217 四次自拦标本收口）
+            # 批218 根治档：判等集合化（env∪relay、冲突 relay 真身为准，
+            # session_relay.my_sids 单一来源，语义真源 docs/会话身份语义.md）
+            # ——长对话续接换平台号而 shell env 停旧号时，relay 真身即自己
+            # （run65-67/217 四次自拦标本收口）
             if m_sid in my_ids:
                 mine.append(entry)
             elif my_sid and m_sid and _lease_expired(parsed):

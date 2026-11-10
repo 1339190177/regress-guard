@@ -528,9 +528,9 @@ def main():
             # v1.109 批161：租约过期的他会话清单不再拦编辑（收回跨会话保护）——
             # 死会话占边界的出口从「人工重盖戳」前移为「到期自动可动」；
             # 无 lease 块=旧语义不变（back-compat）
-            # 批218：身份判等用集合（env∪新鲜 relay）——长对话续接换平台号而
-            # shell 快照停旧号时，relay 盖的新号也是自己（run65-67/217 四次
-            # 自拦标本收口）；relay 侧新鲜窗 15 分钟由 my_sids 保证
+            # 批218 根治档：身份判等用集合（env∪relay，冲突以 relay 真身为
+            # 准、env 陈旧即弃——run65-67/217 四次自拦标本收口）；语义真源
+            # docs/会话身份语义.md；新鲜窗 5min 由 my_sids 保证
             try:
                 from session_relay import my_sids
                 my_ids = my_sids(project_dir)
