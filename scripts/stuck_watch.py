@@ -105,10 +105,10 @@ def _session_path(ticket_id):
 
 
 def _norm_path(p):
-    """批221附（Windows CI 红）：分隔符双态归一——/proc 前缀拼接用正斜杠在
-    Windows（路径反斜杠）上 startswith 永不命中=信号 B 全盲，被四腿 CI 的
-    windows 腿当场抓回。归一双分隔符+normcase（Windows 大小写不敏感）。"""
-    return os.path.normcase(p.replace("\\", "/"))
+    """批221附（Windows CI 红×2）：归一顺序=先 normcase 再转正斜杠——normcase
+    在 Windows 上会把正斜杠转回反斜杠（先转后 normcase=白干，v2.8.18 二红的
+    根因），最终形态恒为小写正斜杠，跨平台可比。"""
+    return os.path.normcase(p).replace("\\", "/")
 
 
 def _proc_refs(state_dir, proc_root="/proc"):
