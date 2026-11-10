@@ -309,8 +309,10 @@ def check_criteria(ears_rows, passed, total, tests_ok=True):
 
 def review_pr(repo, number, cfg, json_out=False):
     """单 PR 机械评审：返回 (rows, verdict_dict)。抛错=自崩（exit 2）。"""
+    # 批214附（公网告警 11:15）：headRefKey 非 gh 合法字段（批212 引入，PR#159 实弹
+    # 自崩标本）→ 改 headRefOid（合法且语义同源——commit 钉）；消费侧 get 同步改名
     meta = json.loads(_gh(["pr", "view", str(number), "-R", repo, "--json",
-                           "title,body,files,additions,deletions,reviews,mergeable,author,headRefKey"]))
+                           "title,body,files,additions,deletions,reviews,mergeable,author,headRefOid"]))
     tmp = tempfile.mkdtemp(prefix="prgate-")
     try:
         # hermetic 检出（协议第 4 步命令序列；--reference 本地种子=75MB 级仓秒级克隆）
@@ -342,7 +344,7 @@ def review_pr(repo, number, cfg, json_out=False):
             # 正文所含工单号匹配的 manifest；全仓扫描结果按文件名含本单号
             # 过滤（他单清单的判据/planned 不再串入 ①⑤ 对账）
             names = [n for n in os.listdir(mdir) if n.endswith(".md")]
-            picked = _pr_manifest_scope(meta, names, head_ref=meta.get("headRefKey", ""))
+            picked = _pr_manifest_scope(meta, names, head_ref=meta.get("headRefOid", ""))
             manifest_files, ears = _collect_criteria(mdir, picked)
         ears_rows = [r for r, _ in ears]
         # hermetic 测试（④：test-only PR 走 test_cmd_fast 快道；否则 test_cmd；
