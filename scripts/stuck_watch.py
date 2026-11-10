@@ -104,13 +104,20 @@ def _session_path(ticket_id):
         SESSIONS, "*", f"worker-{ticket_id}", "session.v4.jsonl.zstd"))
 
 
+def _norm_path(p):
+    """批221附（Windows CI 红）：分隔符双态归一——/proc 前缀拼接用正斜杠在
+    Windows（路径反斜杠）上 startswith 永不命中=信号 B 全盲，被四腿 CI 的
+    windows 腿当场抓回。归一双分隔符+normcase（Windows 大小写不敏感）。"""
+    return os.path.normcase(p.replace("\\", "/"))
+
+
 def _proc_refs(state_dir, proc_root="/proc"):
     """进程扫描：cwd 或 cmdline 精确目录边界命中本实例 state 目录。
 
     批220 边界串扰标本：校准时 "superagent" 子串匹配误配了 superagent-tongtu
     的 bash sleep 进程（子串含于更长路径）——探针必须 state_dir+"/" 前缀或
     等值比对，绝不做裸子串。"""
-    d = state_dir.rstrip("/") + "/"
+    d = _norm_path(state_dir).rstrip("/") + "/"
     n = 0
     try:
         pids = os.listdir(proc_root)
@@ -123,7 +130,8 @@ def _proc_refs(state_dir, proc_root="/proc"):
             cwd = os.readlink(os.path.join(proc_root, pid, "cwd"))
         except OSError:
             cwd = ""
-        if cwd == state_dir or cwd.startswith(d):
+        ncwd = _norm_path(cwd)
+        if ncwd == _norm_path(state_dir) or ncwd.startswith(d):
             n += 1
             continue
         try:
@@ -131,7 +139,7 @@ def _proc_refs(state_dir, proc_root="/proc"):
                 .decode("utf-8", "replace")
         except OSError:
             continue
-        if d in cmd.replace("\0", " "):
+        if d in _norm_path(cmd.replace("\0", " ")):
             n += 1
     return n
 

@@ -213,3 +213,17 @@ def test_main_liveness_bootstrap_dead_is_silent(monkeypatch, tmp_path, capsys):
     out = capsys.readouterr().out
     assert "活0/停1（停: superagent-fake）" in out, out
     assert not notified
+
+
+def test_proc_refs_windows_style_paths_match(tmp_path):
+    """批221附（Windows CI 红钉）：反斜杠路径形态的 cmdline/cwd 必须命中——
+    修前正斜杠前缀拼接在 Windows 上 startswith 永不命中=信号 B 全盲，
+    四腿 CI 的 windows 腿抓回。Linux 本地用 Windows 风格串直接钉。"""
+    base = "C:\\Users\\u\\.dsh\\state"
+    inst = f"{base}\\superagent-tongtu"
+    other = f"{base}\\superagent"
+    proc = tmp_path / "proc"
+    _fake_proc(proc, 9, cmdline=f'bash -c cd "{inst}\\work\\x"; sleep 200')
+    _fake_proc(proc, 10, cmdline=f'node {other}\\worker.js')
+    assert stuck_watch._proc_refs(inst, str(proc)) == 1
+    assert stuck_watch._proc_refs(other, str(proc)) == 1  # 自己的进程要命中
