@@ -87,10 +87,12 @@ const PY_CANDIDATES = ["python3", "python", "py"];
  * 项目 mvn 拿不到 JAVA_HOME/MISE_* 起不来，测试没跑就被记 fail（提交门禁
  * 100% 误拦，外部用户实证矩阵）。反转为拒列：拒绝族=原白名单安全语义的全部
  * 命脉（PYTHON* 解释器投毒面 / RG_*+REGRESS_* 治理旁路面 / WECOM_*+GIT_*
- * 读数覆盖面）+ 透传化新开的口（宿主 CLAUDE_*/ZCODE_* 会话变量劫持——批183
- * 换序后 ZCODE_PROJECT_DIR 是最高优先项目定位符）+ 卫生族（NODE_*/ELECTRON_*）；
- * 其余宿主变量（JAVA_HOME/MISE_*/ASDF_*/未来任意管理器）自动放行。
- * 与 launcher.js cleanEnv 同款政策（两适配层 env 政策同步演化）。
+ * 读数覆盖面）+ 透传化新开的口（宿主 CLAUDE_ 与 ZCODE_ 前缀族会话变量劫持
+ * ——批183 换序后 ZCODE_PROJECT_DIR 是最高优先项目定位符）+ 卫生族（NODE_
+ * 与 ELECTRON_ 前缀族）；其余宿主变量（JAVA_HOME、MISE_、ASDF_ 等未来任意
+ * 管理器）自动放行。与 launcher.js cleanEnv 同款政策（同步演化）。
+ * 批216（issue#6）：块注释内禁星号+斜杠相邻二字符序列——曾把注释提前闭合
+ * 致 SyntaxError 全量拒载（语法 ratchet=tests/test_js_syntax.py）。
  */
 const ENV_DENY_PREFIXES = ["PYTHON", "RG_", "REGRESS_", "WECOM_", "GIT_",
 	"NODE_", "ELECTRON_", "CLAUDE_", "ZCODE_",

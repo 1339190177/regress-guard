@@ -16,6 +16,7 @@
 """
 import argparse
 import json
+import glob
 import os
 import subprocess
 import sys
@@ -258,6 +259,16 @@ def native_install(dsh_home, profile, dsh_bin="dsh"):
         shutil.copy2(os.path.join(PLUGIN_SRC, name), os.path.join(dest, name))
     shutil.rmtree(os.path.join(dest, "lib"), ignore_errors=True)
     shutil.copytree(os.path.join(PLUGIN_SRC, "lib"), os.path.join(dest, "lib"))
+    # 1.5 装后自验（批216，issue#6）：语法坏则回滚拒装——"装了不能载"从此
+    # 不可能过关（标本：块注释内星号斜杠相邻序列提前闭合 → SyntaxError →
+    # 插件 100% 拒载，发布后 25 分钟被外部用户抓回）
+    for js in sorted(glob.glob(os.path.join(dest, "lib", "*.js"))):
+        r = subprocess.run(["node", "--check", js], capture_output=True,
+                           text=True, timeout=30)
+        if r.returncode != 0:
+            shutil.rmtree(os.path.join(dest, "lib"), ignore_errors=True)
+            raise SystemExit(f"install_dsh: 装后自验失败（语法坏拒装已回滚）——{js}\n"
+                             + (r.stderr or "")[:300])
     # 3.0 插件自有依赖落地（advisor 先例：本地插件目录自带 node_modules——
     # pnpm link 不为 link: 目标装依赖，缺此步=插件 import 失败=拦截静默缺位）
     if not os.path.isdir(os.path.join(dest, "node_modules", "@deepseek-ai")):

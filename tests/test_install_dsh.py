@@ -1,5 +1,7 @@
 """install_dsh 安装轨道单测（批166：fixture profile，零网络零真 dsh）。"""
 import os
+
+import pytest
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
@@ -101,3 +103,33 @@ def test_native_track_on_fixture(tmp_path):
     assert not ids.native_bundle_present(dsh, "web")
     # 基线 bundles 不受移除影响
     assert "@deepseek-ai/dsh-base" in _json.loads(pj.read_text(encoding="utf-8"))["dsh"]["profile"]["bundles"]
+
+
+# ─── 批216（公网 issue#6）：装后自验——语法坏拒装回滚 ───
+
+def test_native_install_rejects_broken_js(tmp_path):
+    """块注释内星号斜杠相邻序列（issue#6 标本）→ 装后自验 node --check 红 →
+    SystemExit 且 lib 已回滚（不留半装品）。真 node 不 mock——验的就是真语法。"""
+    import shutil as _sh
+    import unittest.mock as mock
+    if _sh.which("node") is None:
+        pytest.skip("node 不在 PATH")
+    dsh, prof = _fixture_profile(tmp_path)
+    src = tmp_path / "src" / "deploy" / "dsh-native"
+    (src / "lib").mkdir(parents=True)
+    (src / "package.json").write_text("{}", encoding="utf-8")
+    (src / "cordis.patch.yml").write_text("- insert: []\n", encoding="utf-8")
+    # issue#6 原病灶：块注释内的 CLAUDE_*/ZCODE_* 把注释提前闭合，
+    # 后续注释文本成裸代码 → SyntaxError
+    (src / "lib" / "index.js").write_text(
+        "/** 块注释 CLAUDE_*/ZCODE_* 提前闭合标本 */\n"
+        "被注释吞掉的后续文本成为裸代码\nexport const name = 'x'\n",
+        encoding="utf-8")
+    # 预置 node_modules/@deepseek-ai 跳过依赖落地步（测试纯度：不跑 pnpm）
+    (tmp_path / ".dsh" / "local-plugins" / "dsh-regress-guard"
+     / "node_modules" / "@deepseek-ai").mkdir(parents=True)
+    with mock.patch.object(ids, "PLUGIN_SRC", str(src)):
+        with pytest.raises(SystemExit, match="装后自验失败"):
+            ids.native_install(dsh, "web")
+    dest = tmp_path / ".dsh" / "local-plugins" / "dsh-regress-guard"
+    assert not (dest / "lib").exists(), "语法坏必须回滚 lib，不留半装品"
