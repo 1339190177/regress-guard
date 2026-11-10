@@ -49,22 +49,67 @@ def _run(cmd, timeout=60, **kw):
                           timeout=timeout, **kw)
 
 
+def _lib_path(name):
+    """批213：lib 脚本路径解析——env 覆盖 > 双布局探测（顾问裁）。
+
+    标本：GUARD_ROOT/lib/ 在源码树不存在（真路径 hooks/scripts/lib）——
+    journal/notify 自诞生 0 落账的根因（except-pass 吞掉确定性失败）。
+    探测：源码树布局（scripts/../hooks/scripts/lib）→ 部署位布局
+    （scripts/../lib）；命中即打印（可见性——静默选错是旧病镜像）。
+    安装期配置层（timer unit env 注入）记 backlog 未做。"""
+    env = os.environ.get("ZCODE_LIB_PATH")
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cands = ([os.path.join(env, name)] if env else []) + [
+        os.path.join(base, "hooks", "scripts", "lib", name),
+        os.path.join(base, "lib", name),
+    ]
+    for c in cands:
+        if os.path.isfile(c):
+            print(f"[effect_track] lib 命中: {c}", file=sys.stderr)
+            return c
+    return cands[-1]  # 都不命中返回末候选——让子进程错误可见
+
+
 def _notify(title, body):
     try:
-        _run(["python3", os.path.join(GUARD_ROOT, "lib", "notify.py"),
-              ".", "chat", "--title", title, "--body", body],
-             cwd=WORKSPACE, timeout=30)
-    except Exception:
-        pass
+        r = _run(["python3", _lib_path("notify.py"),
+                  ".", "chat", "--title", title, "--body", body],
+                 cwd=WORKSPACE, timeout=30)
+        if r.returncode != 0:  # 批213：rc 不查=安慰剂调用（测试抓出的真缺口）
+            raise RuntimeError(f"notify rc={r.returncode}: {r.stderr[:120]}")
+    except Exception as e:
+        print(f"[effect_track] notify 失败（best-effort）: {e}", file=sys.stderr)
+
+
+_JOURNAL_FALLBACK = "journal-fallback.jsonl"
 
 
 def _journal(note):
+    """ops_note 落账——失败三重可见（顾问裁）：stderr + 本地 jsonl 兜底 +
+    返回 False（调用方以此置非零退出，systemd failed=监控面告警）。
+    失败判定含 rc≠0（旧代码只靠异常——错路径 rc=2 从未触发 except=
+    「成功」是假的，验证主权家族标本）。"""
     try:
-        _run(["python3", os.path.join(GUARD_ROOT, "lib", "journal.py"),
-              WORKSPACE, "add", "ops_note",
-              json.dumps({"note": note}, ensure_ascii=False)], timeout=15)
-    except Exception:
-        pass
+        r = _run(["python3", _lib_path("journal.py"),
+                  WORKSPACE, "add", "ops_note",
+                  json.dumps({"note": note}, ensure_ascii=False)], timeout=15)
+        if r.returncode != 0:
+            raise RuntimeError(f"journal rc={r.returncode}: {r.stderr[:120]}")
+        return True
+    except Exception as e:
+        print(f"[effect_track] journal 失败: {e}——本地兜底落档 "
+              f"{_JOURNAL_FALLBACK}", file=sys.stderr)
+        try:
+            import time as _t
+            fb_dir = os.path.join(WORKSPACE, ".regress")
+            os.makedirs(fb_dir, exist_ok=True)
+            with open(os.path.join(fb_dir, _JOURNAL_FALLBACK),
+                      "a", encoding="utf-8") as f:
+                f.write(json.dumps({"ts": _t.strftime("%F %T"), "note": note},
+                                   ensure_ascii=False) + "\n")
+        except OSError as e2:
+            print(f"[effect_track] 兜底落档也失败: {e2}", file=sys.stderr)
+        return False
 
 
 def load_state():
@@ -254,8 +299,10 @@ def main():
                   f"/等槽{fp[2].get('conflict_wait', 0)}"
                   f"/接力{fp[2].get('conflict_resolver', 0)}"
                   if fp and len(fp) > 2 and fp[2] else ""))
-    _journal(summary + (f" | 已修:{fixed}" if fixed else "")
-             + (f" | 发现:{len(findings)}项" if findings else " | 全绿"))
+    # 批213：journal 落账失败=非零退出（systemd failed=监控告警；顾问裁
+    # 「软失败仍 0 落账无告警」不可接受）——发现位与落账位独立取或
+    journal_ok = _journal(summary + (f" | 已修:{fixed}" if fixed else "")
+                          + (f" | 发现:{len(findings)}项" if findings else " | 全绿"))
     if findings:
         _notify("效果跟踪轮次：有发现", "\n".join(findings + [f"已自动处理：{f}" for f in fixed]))
     save_state(st)
@@ -264,7 +311,7 @@ def main():
         print("⚠", x)
     for x in fixed:
         print("✓", x)
-    return 1 if findings else 0
+    return (1 if findings else 0) | (0 if journal_ok else 2)
 
 
 if __name__ == "__main__":
