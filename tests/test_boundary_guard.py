@@ -4,6 +4,9 @@ import json
 import os
 import subprocess
 
+sys.path.insert(0, os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "..", "hooks", "scripts", "lib")))
+
 GUARD = os.path.join(os.path.dirname(__file__), "..", "hooks", "scripts",
                      "boundary_guard.py")
 GUARD = os.path.abspath(GUARD)
@@ -486,6 +489,67 @@ def test_cross_session_edit_blocked(tmp_path):
 
 def test_own_session_edit_unaffected(tmp_path):
     """戳==本会话：老行为不变（in-progress 边界内放行）。"""
+    proj = make_project(tmp_path)
+    _stamp_manifest(proj, "R1", "sess-mine-00002")
+    r = run_guard(proj, proj / "src/auth/login.ts",
+                  extra_env={"CLAUDE_SESSION_ID": "sess-mine-00002"})
+    assert r.returncode == 0
+
+
+# ── 批218 根治档：双 id 工件——双源判等（relay 真身优先，env 陈旧即弃）──
+
+def _write_relay(proj, sid):
+    import session_relay as sr
+    assert sr.write_relay(str(proj), sid) is True
+
+
+def test_dual_id_relay_real_passes_edit(tmp_path):
+    """双源不一致 fixture：env 旧号 + relay 真身号、清单盖真身号 → 放行。
+
+    REGRESS-261110-b9473428 根治判据：长对话续接换平台号而 shell env 停
+    旧号时，守卫按 relay 真身认自己——不再误拦我方写。
+    """
+    proj = make_project(tmp_path)
+    _stamp_manifest(proj, "R1", "sess-real-00003")   # 盖章侧 relay 优先盖真身
+    _write_relay(proj, "sess-real-00003")
+    r = run_guard(proj, proj / "src/auth/login.ts",
+                  extra_env={"CLAUDE_SESSION_ID": "old-shell-id"})
+    assert r.returncode == 0
+
+
+def test_dual_id_relay_real_passes_bash_write(tmp_path):
+    """同 fixture 的 Bash 写通道：真身会话直通（对抗循环收口）。"""
+    proj = make_project(tmp_path)
+    _stamp_manifest(proj, "R1", "sess-real-00003")
+    _write_relay(proj, "sess-real-00003")
+    env = {**os.environ}
+    env.pop("ZCODE_PROJECT_DIR", None)
+    env["CLAUDE_PROJECT_DIR"] = str(proj)
+    env["CLAUDE_SESSION_ID"] = "old-shell-id"
+    r = subprocess.run(
+        [sys.executable, GUARD],
+        input=json.dumps({"tool_name": "Bash",
+                          "tool_input": {"command": "echo x > src/auth/login.ts"}}),
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env=env, timeout=10)
+    assert r.returncode == 0
+
+
+def test_dual_id_conflict_env_discarded(tmp_path):
+    """冲突时 env 陈旧即弃：清单盖旧 env 号而 relay 已换新真身 → 判他会话拦。
+
+    防误认方向：旧号属历史会话，不得因 env 残留被当自己。
+    """
+    proj = make_project(tmp_path)
+    _stamp_manifest(proj, "R1", "old-shell-id")
+    _write_relay(proj, "sess-real-00003")
+    r = run_guard(proj, proj / "src/auth/login.ts",
+                  extra_env={"CLAUDE_SESSION_ID": "old-shell-id"})
+    assert r.returncode == 2 and "跨会话" in r.stderr
+
+
+def test_dual_id_no_relay_fallback_env(tmp_path):
+    """relay 无 id（新会话冷启）→ 回退 env 源（既有单源行为零变化）。"""
     proj = make_project(tmp_path)
     _stamp_manifest(proj, "R1", "sess-mine-00002")
     r = run_guard(proj, proj / "src/auth/login.ts",

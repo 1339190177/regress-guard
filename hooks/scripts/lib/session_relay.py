@@ -60,28 +60,43 @@ def read_relay(project_dir):
         return {}
 
 
-def my_sids(project_dir, max_age_minutes=5):
-    """批218：守卫侧身份集合——env sid ∪ 新鲜 relay sid（顾问收紧：窗 5min）。
+def relay_fresh_sid(project_dir, max_age_minutes=5):
+    """新鲜窗内的 relay sid（窗外/缺失/坏 ts → 空串）。
 
-    双 id 工件根治：长对话续接后平台换会话号而 shell 快照 env 停留旧号
-    （run65-67/217 四次自拦标本：盖章侧 relay 优先盖新号，守卫侧纯 env 比
-    旧号=自己的清单被判他会话）。守卫身份判等一律用本集合——两源任一命中
-    即自己。relay 仅在新鲜窗内有效（UserPromptSubmit 每轮写，活跃会话恒
-    新鲜；窗外=陈旧中继不得再代言——会话切换后旧号失效语义保留）。
-    只读判等专用：不写回不继承（防中继回翻污染持久化戳——顾问条件）。
-    定稿路径（backlog）：单调序号 relay / shell 快照 env 刷新治本。"""
-    ids = set()
-    env_sid = sid_from_env()
-    if env_sid:
-        ids.add(env_sid)
+    relay 仅在新鲜窗内有效（UserPromptSubmit 每轮写，活跃会话恒新鲜；
+    窗外=陈旧中继不得再代言——会话切换后旧号失效语义保留）。
+    """
     d = read_relay(project_dir) if project_dir else {}
     sid, ts = str(d.get("sid") or ""), str(d.get("ts") or "")
-    if sid:
-        try:
-            age = (datetime.datetime.now()
-                   - datetime.datetime.fromisoformat(ts)).total_seconds()
-            if 0 <= age <= max_age_minutes * 60:
-                ids.add(sid)
-        except ValueError:
-            pass
-    return ids
+    if not sid:
+        return ""
+    try:
+        age = (datetime.datetime.now()
+               - datetime.datetime.fromisoformat(ts)).total_seconds()
+    except ValueError:
+        return ""
+    return sid if 0 <= age <= max_age_minutes * 60 else ""
+
+
+def my_sids(project_dir, max_age_minutes=5):
+    """批218 根治档：守卫侧双源身份（env ∪ relay，冲突以 relay 真身为准）。
+
+    双 id 工件：长对话续接后平台换会话号而 shell 快照 env 停留旧号
+    （run65-67/217 四次自拦标本）。语义真源=docs/会话身份语义.md：
+    ① 单源（任一在场）→ 该源即身份（relay 无 id 冷启回退 env）；
+    ② 双源一致 → 同一 id；
+    ③ 双源冲突（新鲜 relay≠env）→ relay 真身为准，env 陈旧即弃——
+      relay 每轮写后重盖=最新真值，Bash 写通道对真身会话直通，
+      不再出现「中继盖真身 id→守卫比 env 旧 id→误拦」对抗循环。
+    只读判等专用：不写回不继承（防中继回翻污染持久化戳——顾问条件）。
+    """
+    env_sid = sid_from_env()
+    relay_sid = relay_fresh_sid(project_dir, max_age_minutes)
+    if relay_sid:
+        if env_sid and relay_sid != env_sid:
+            return {relay_sid}  # 冲突：relay 真身为准，env 陈旧即弃
+        ids = {relay_sid}
+        if env_sid:
+            ids.add(env_sid)  # 一致或 env 缺省：并集（同号时即单元素）
+        return ids
+    return {env_sid} if env_sid else set()
