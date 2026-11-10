@@ -528,10 +528,18 @@ def main():
             # v1.109 批161：租约过期的他会话清单不再拦编辑（收回跨会话保护）——
             # 死会话占边界的出口从「人工重盖戳」前移为「到期自动可动」；
             # 无 lease 块=旧语义不变（back-compat）
+            # 批218：身份判等用集合（env∪新鲜 relay）——长对话续接换平台号而
+            # shell 快照停旧号时，relay 盖的新号也是自己（run65-67/217 四次
+            # 自拦标本收口）；relay 侧新鲜窗 15 分钟由 my_sids 保证
+            try:
+                from session_relay import my_sids
+                my_ids = my_sids(project_dir)
+            except ImportError:
+                my_ids = {my_sid}
             foreign = [m for m in matched
-                       if m[4] and m[4] != my_sid
+                       if m[4] and m[4] not in my_ids
                        and not _manifest_lease_expired(m[0])]
-            own = [m for m in matched if not m[4] or m[4] == my_sid]
+            own = [m for m in matched if not m[4] or m[4] in my_ids]
             if foreign:
                 f_ids = ", ".join(f"{mid or os.path.basename(mf)}（{sid[:8]}…）"
                                   for mf, mid, _, _, sid in foreign[:3])

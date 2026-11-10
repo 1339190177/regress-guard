@@ -58,3 +58,30 @@ def read_relay(project_dir):
         return d if isinstance(d, dict) else {}
     except (IOError, OSError, json.JSONDecodeError):
         return {}
+
+
+def my_sids(project_dir, max_age_minutes=5):
+    """批218：守卫侧身份集合——env sid ∪ 新鲜 relay sid（顾问收紧：窗 5min）。
+
+    双 id 工件根治：长对话续接后平台换会话号而 shell 快照 env 停留旧号
+    （run65-67/217 四次自拦标本：盖章侧 relay 优先盖新号，守卫侧纯 env 比
+    旧号=自己的清单被判他会话）。守卫身份判等一律用本集合——两源任一命中
+    即自己。relay 仅在新鲜窗内有效（UserPromptSubmit 每轮写，活跃会话恒
+    新鲜；窗外=陈旧中继不得再代言——会话切换后旧号失效语义保留）。
+    只读判等专用：不写回不继承（防中继回翻污染持久化戳——顾问条件）。
+    定稿路径（backlog）：单调序号 relay / shell 快照 env 刷新治本。"""
+    ids = set()
+    env_sid = sid_from_env()
+    if env_sid:
+        ids.add(env_sid)
+    d = read_relay(project_dir) if project_dir else {}
+    sid, ts = str(d.get("sid") or ""), str(d.get("ts") or "")
+    if sid:
+        try:
+            age = (datetime.datetime.now()
+                   - datetime.datetime.fromisoformat(ts)).total_seconds()
+            if 0 <= age <= max_age_minutes * 60:
+                ids.add(sid)
+        except ValueError:
+            pass
+    return ids
