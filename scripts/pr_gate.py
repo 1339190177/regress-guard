@@ -217,12 +217,24 @@ def _conflict_engine(repo, n, state, state_path, head, agent):
 def escalation_hint(fail_reason):
     """判据类升级的教学行（run60 批182，昨夜 PR#20-26 标本：worker 收升级评论后
     不知格式反复重推 15 次零合并）。措辞=须补可核证据（顾问护栏：不是"写这些即过"）。
+    批214：含糊分支附转写配方——首过率三连降（42→29→13%）9/11 是自然语言判据
+    （「当 X 完成时，脚本…」），旧教学只教"怎么验"不教"怎么改写"，worker 无从下笔。
     非判据类返回空串——评论与旧文等价，教学只进判据信道。"""
     if "判据" not in (fail_reason or ""):
         return ""
-    return ("\n\n判据行过关须补可核证据（三式任一）：行尾 ✅（已验/通过）｜"
+    hint = ("\n\n判据行过关须补可核证据（三式任一）：行尾 ✅（已验/通过）｜"
             "行含 N/N 计数且与 hermetic 实跑一致｜行含「全绿/全过」。"
             "禁贴骨架模板原文（占位符未填必拦）——照抄验收节模板行不算判据。")
+    if "含糊" in (fail_reason or ""):
+        hint += ("\n\n转写配方（把你的自然语言判据改写成可机械化形态）：\n"
+                 "「当 X 完成时，脚本 Y…」→「When X，Then <实跑命令> 输出 "
+                 "<N passed/exit 0>（验：REGRESS-工单号 N/N）」\n"
+                 "三件齐：可跑命令+可数结果+工单号对账。例：「当 fleet 修复完成时，"
+                 "脚本通过」→「When fleet 修复合入，Then python tests/test_fleet.py "
+                 "输出 12 passed（验：REGRESS-261109-xxxx 12/12）」。\n"
+                 "真感官类判据不可机械化→标注 human_check 走人类终验（勿造假配方）；"
+                 "实例仅供参考，禁止照抄当测试。")
+    return hint
 
 
 def _pr_manifest_scope(meta, names, head_ref=""):

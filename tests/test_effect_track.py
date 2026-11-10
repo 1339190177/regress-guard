@@ -108,3 +108,39 @@ def test_journal_failure_visible_and_fallback(tmp_path, monkeypatch, capsys):
     assert "journal 失败" in err and "兜底落档" in err
     fb = tmp_path / ".regress" / "journal-fallback.jsonl"
     assert fb.exists() and "run-测试备注" in fb.read_text(encoding="utf-8")
+
+
+# ─── 批214：磁盘压力回收（超阈 >24h 终态树存档即收，单轮≤8） ───
+
+def test_disk_pressure_reclaims_old_terminal_only(monkeypatch, tmp_path):
+    """超阈时：>24h 无活跃清单树被存档+删除；新树/活跃清单树不碰。"""
+    import sys
+    import time
+    import subprocess as _sp
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+    import effect_track as et
+
+    work = tmp_path / "work"
+    old_t = work / "ticket-old-aaaa1111bbbb"
+    new_t = work / "ticket-new-cccc2222dddd"
+    act_t = work / "ticket-live-eeee3333ffff"
+    for t, age in ((old_t, 30 * 3600), (new_t, 3600), (act_t, 30 * 3600)):
+        t.mkdir(parents=True)
+        (t / "ui-evidence").mkdir()
+        (t / "ui-evidence" / "shot.png").write_bytes(b"x")
+        os.utime(t, (time.time() - age, time.time() - age))
+    mf = act_t / ".regress" / "manifests"
+    mf.mkdir(parents=True)
+    (mf / "1.md").write_text("status: planning\n", encoding="utf-8")
+
+    monkeypatch.setattr(et, "_work_dirs", lambda: [str(work)])
+    monkeypatch.setattr(et, "_run", lambda cmd, timeout=60, **kw:
+                        _sp.CompletedProcess(cmd, 0, "99999999\t" + " ".join(cmd), ""))
+    findings, fixed = [], []
+    et.check_disk(findings, {"disk_history": []}, fixed)
+    assert not old_t.exists(), "旧终态树应被回收"
+    assert new_t.exists(), "新树不碰"
+    assert act_t.exists(), "活跃清单树不碰"
+    ev = tmp_path / "evidence" / old_t.name / "shot.png"
+    assert ev.exists(), "证据先存档"
+    assert any("压力回收" in f for f in fixed)

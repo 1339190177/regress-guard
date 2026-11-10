@@ -205,7 +205,7 @@ def gc_ended_worktrees(fixed):
                        capture_output=True, timeout=30)
 
 
-def check_disk(findings, st):
+def check_disk(findings, st, fixed):
     """③ worktree 磁盘趋势：总量入史；超阈值列可清清单（不自动删）。"""
     total_kb = 0
     for wd in _work_dirs():
@@ -234,6 +234,54 @@ def check_disk(findings, st):
                     s = _run(["du", "-sh", wt], timeout=120)
                     stale.append(f"{os.path.basename(wt)[:40]} {s.stdout.split()[0] if s.stdout else '?'}")
         findings.append(f"③磁盘面：worktree {gb:.1f}G/df {pct}% 超阈——可清候选（终态+>3天）：{stale or '无'}")
+        # 批214 压力回收：只列不清=worker 风暴造树翻倍（12.7→30.7G 两日）收不了口。
+        # 超阈即压：>24h 终态无活跃清单树，ui-evidence 先存档（与常态 gc 同款路径，
+        # 顾问加固：存档逐文件大小核验通过才删，失败跳过）后删除，单轮 ≤8 棵
+        # （限速防久占 timer 槽）；每删一棵按 du 扣减估算、达标即停（勿机械删满）。
+        # 24h<常态 3 天=压力档放宽；活跃树仍被 _worktree_holds 挡住（mtime+清单非
+        # atime——noatime 挂载免疫）；与常态 gc 同进程顺序执行=单飞（oneshot 无并发）。
+        import shutil
+        press_cutoff = datetime.datetime.now().timestamp() - 24 * 3600
+        reclaimed = 0
+        gb_left = gb
+        for wd in _work_dirs():
+            cands = sorted((w for w in glob.glob(os.path.join(wd, "*"))
+                            if os.path.getmtime(w) < press_cutoff),
+                           key=os.path.getmtime)
+            for wt in cands:
+                if reclaimed >= 8 or gb_left <= 12:
+                    break
+                name = os.path.basename(wt)
+                if _worktree_holds(name[-12:]):
+                    continue
+                ev_src = os.path.join(wt, "ui-evidence")
+                verify_fail = False
+                if os.path.isdir(ev_src):
+                    ev_dst = os.path.join(os.path.dirname(wd), "evidence", name)
+                    os.makedirs(ev_dst, exist_ok=True)
+                    for f2 in glob.glob(os.path.join(ev_src, "*")):
+                        if not os.path.isfile(f2):
+                            continue
+                        dst2 = os.path.join(ev_dst, os.path.basename(f2))
+                        shutil.copy2(f2, ev_dst)
+                        if os.path.getsize(dst2) != os.path.getsize(f2):
+                            verify_fail = True
+                            break
+                if verify_fail:
+                    findings.append(f"③压力回收跳过 {name[:36]}（证据存档校验失败）")
+                    continue
+                s = _run(["du", "-s", wt], timeout=120)
+                try:
+                    gb_left -= int(s.stdout.split()[0]) / 1024 / 1024
+                except (IndexError, ValueError):
+                    pass
+                shutil.rmtree(wt, ignore_errors=True)
+                fixed.append(f"压力回收 {name[:44]}（>24h 终态，证据已存档）")
+                reclaimed += 1
+        if reclaimed:
+            for seed in sorted(glob.glob(os.path.expanduser("~/src/*/.git"))):
+                subprocess.run(["git", "-C", os.path.dirname(seed), "worktree", "prune"],
+                               capture_output=True, timeout=30)
 
 
 def check_friction(findings, since):
@@ -284,7 +332,7 @@ def main():
     exit0_n = check_exit0(findings)
     check_containers(findings, fixed)
     gc_ended_worktrees(fixed)
-    check_disk(findings, st)
+    check_disk(findings, st, fixed)
     friction = check_friction(findings, since)
     fp = check_firstpass(findings, since)
     st["run"] += 1

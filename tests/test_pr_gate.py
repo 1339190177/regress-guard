@@ -386,3 +386,15 @@ def test_criteria_str_rows_backward_compatible():
     assert pr_gate.check_criteria(["测试 5/5"], 5, 5)[0]
     ok, why = pr_gate.check_criteria(["用户会觉得更快"], 5, 5)
     assert not ok and "出处" not in why
+
+
+# ─── 批214：判据含糊升级评论附转写配方（首过率三连降根治面） ───
+
+def test_escalation_hint_vague_carries_rewrite_recipe():
+    """含糊判据的升级评论必须带 When/Then/REGRESS 转写配方+实例——
+    旧教学只教验证三式，9/11 worker 无从下笔。"""
+    h = pr_gate.escalation_hint('判据含糊(不可机械化): 「当 fleet 修复完成时，脚本')
+    assert "转写配方" in h and "When" in h and "REGRESS-" in h and "passed" in h
+    h2 = pr_gate.escalation_hint("判据核对失败: 3/5")
+    assert "转写配方" not in h2 and h2 != ""
+    assert pr_gate.escalation_hint("hermetic exit0") == ""
