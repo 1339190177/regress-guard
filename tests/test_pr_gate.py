@@ -544,3 +544,54 @@ def test_sweep_crash_comment_failure_is_best_effort(monkeypatch, tmp_path):
     import json as _json
     rec = _json.load(open(st_path))["o/r#1"]
     assert rec["verdict"] == "crash" and journals[-1]["decision"] == "crash"
+
+
+# ─── 批220（Ref 90d0f8d 批211 复活）：escalate 评论幂等闸 ───
+
+def test_sweep_conflicting_escalate_comment_idempotent(monkeypatch, tmp_path):
+    """CONFLICTING 滞留 PR：首报发评论 → 同 head 同因重评静默（零评论，
+    pr_review 可见性保留）→ fail_reason 变化重发。修前红：三轮评论=3。"""
+    import json as _json
+    reg = tmp_path / "reg.json"
+    reg.write_text(_json.dumps([{"repo": "o/r", "agent_login": "a1"}]), encoding="utf-8")
+    st_path = tmp_path / "st.json"
+    st_path.write_text("{}", encoding="utf-8")
+    comments = []
+    reasons = iter(["hermetic exit0", "hermetic exit0", "清单外文件: x/"])
+
+    def _gh(args):
+        if args[:3] == ["pr", "list", "-R"]:
+            return _json.dumps([{"number": 94, "headRefOid": "h1",
+                                 "mergeable": "CONFLICTING"}])
+        if args[:2] == ["pr", "comment"]:
+            comments.append((args[-1] or "")[:40])
+            return ""
+        raise AssertionError(f"意外 gh 调用: {args}")
+
+    monkeypatch.setattr(pr_gate, "REGISTRY", str(reg))
+    monkeypatch.setattr(pr_gate, "_review_state",
+                        lambda: (_json.load(open(st_path)), str(st_path)))
+    monkeypatch.setattr(pr_gate, "_journal", lambda f: None)
+    monkeypatch.setattr(pr_gate, "_notify", lambda t, b: None)
+    monkeypatch.setattr(pr_gate, "SUPERAGENT_DB", str(tmp_path / "no.db"))
+    monkeypatch.setattr(pr_gate, "_gh", _gh)
+    monkeypatch.setattr(pr_gate, "review_pr", lambda repo, n, _: {
+        "mechanical_pass": False, "mode": "auto-merge",
+        "fail_reason": next(reasons)})
+
+    for i, (expect_n, label) in enumerate(
+            [(1, "首发"), (1, "同因重评静默"), (2, "原因变化重发")]):
+        pr_gate.sweep()
+        assert len(comments) == expect_n, \
+            f"第{i+1}轮应为{label}：评论数={len(comments)} {comments}"
+
+
+def test_save_review_persists_fail_reason(tmp_path):
+    """fail_reason 入账（幂等闸比对基）；不传则不记（向后兼容）。"""
+    st = {}
+    p = tmp_path / "st.json"
+    pr_gate._save_review(st, str(p), "o/r", 94, "h1", "escalate",
+                         fail_reason="hermetic exit0")
+    assert st["o/r#94"]["fail_reason"] == "hermetic exit0"
+    pr_gate._save_review(st, str(p), "o/r", 95, "h2", "merged")
+    assert "fail_reason" not in st["o/r#95"]

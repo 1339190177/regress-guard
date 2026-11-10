@@ -470,14 +470,17 @@ def _comment_best_effort(repo, number, body):
 
 
 def _save_review(state, path, repo, number, head, verdict, streak=None,
-                 streak_key="unknown_streak"):
+                 streak_key="unknown_streak", fail_reason=None):
     """批207：streak=同 head 的 UNKNOWN 连续轮数（defer 态记账；其余 verdict
     整记录覆写即自然清零）。批218：streak_key 参数化——crash 态同机制记账
-    （crash_streak），复评成功整记录覆写即自愈清零。"""
+    （crash_streak），复评成功整记录覆写即自愈清零。批220（Ref 90d0f8d）：
+    fail_reason 随 escalate 态入账——评论幂等闸的比对基。"""
     rec = {"head": head, "verdict": verdict,
            "at": __import__("time").strftime("%F %T")}
     if streak is not None:
         rec[streak_key] = streak
+    if fail_reason is not None:
+        rec["fail_reason"] = fail_reason
     state[f"{repo}#{number}"] = rec
     try:
         json.dump(state, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
@@ -570,10 +573,23 @@ def sweep():
                     _save_review(state, state_path, repo, n, head, "escalate")
                     continue
                 escalated.append(f"{repo}#{n}: {v['fail_reason']}")
-                _save_review(state, state_path, repo, n, head, "escalate")
-                _gh(["pr", "comment", str(n), "-R", repo, "--body",
-                     f"机械评审升级：{v['fail_reason']}（判据逐项见 journal pr_review）——留人类/LLM 裁决。"
-                     + escalation_hint(v["fail_reason"])])
+                # 批220（Ref 90d0f8d 批211 复活）：escalate 评论幂等闸——
+                # CONFLICTING 态滞留 PR 每轮重估是批184 设计（dev 移动可自愈），
+                # 但同 head 同因重评每轮重发同文评论=噪音风暴（PR94 标本：head
+                # 未变 1 commit 收 14 条同文评论，~30min 节拍=mergeable 抖动穿透
+                # 批207 UNKNOWN 封口）。首报/变化才发；同因重评静默——可见性由
+                # pr_review 承担、沉底由哨兵日报承担（顾问三轮裁决完全静默）。
+                same_as_prev = (prev.get("head") == head
+                                and prev.get("verdict") == "escalate"
+                                and prev.get("fail_reason") == v["fail_reason"])
+                _save_review(state, state_path, repo, n, head, "escalate",
+                             fail_reason=v["fail_reason"])
+                if same_as_prev:
+                    escalated.append(f"{repo}#{n}: 同因重评静默（评论幂等闸）")
+                else:
+                    _gh(["pr", "comment", str(n), "-R", repo, "--body",
+                         f"机械评审升级：{v['fail_reason']}（判据逐项见 journal pr_review）——留人类/LLM 裁决。"
+                         + escalation_hint(v["fail_reason"])])
                 continue
             if mode == "auto-merge":
                 count = v.get("count_txt") or f"{v['passed']}/{v['total']}"
