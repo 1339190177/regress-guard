@@ -45,6 +45,11 @@ DEFAULT_SECTIONS = ["背景", "改动", "验证"]
 # 批207：mergeable=UNKNOWN 的 defer 阈值——90s sweep × 4 ≈ 6min，远超 GitHub
 # 常规合并性计算延迟（秒级）；连续 4 轮仍未知视为卡死，升级一次后封口
 UNKNOWN_MAX_STREAK = 4
+# 批218：review_pr 自崩的有界重评阈值——同节拍同语义（评审器侧异常可重试，
+# 但 headRefKey 类全量崩不能每 90s 无限重试）。标本=tongtu PR#159：11:15 崩
+# （批212 字段病）11:17 根修，旧代码崩即记 escalate 被去重封口→永不复评→
+# 人肉双跑复核（人类评论"评审器零置评"）。
+CRASH_MAX_STREAK = UNKNOWN_MAX_STREAK
 DEFAULT_MAX_LINES = 200          # 记录性阈值（v2.7.3 起不阻断）
 VERIFIED_MARKS = ("✅", "已验", "（过）", "通过")
 RATIO_RE = re.compile(r"(\d+)\s*/\s*(\d+)")
@@ -454,13 +459,25 @@ def _review_state():
         return {}, p
 
 
-def _save_review(state, path, repo, number, head, verdict, streak=None):
+def _comment_best_effort(repo, number, body):
+    """批218（FP1）：置评 best-effort——置评失败不让 sweep 崩（journal 已落账
+    兜底，WeCom 摘要仍带"自崩"）。PR#159 教训的信号面主信道，主信道坏时
+    其余信道照常。"""
+    try:
+        _gh(["pr", "comment", str(number), "-R", repo, "--body", body])
+    except Exception:
+        pass
+
+
+def _save_review(state, path, repo, number, head, verdict, streak=None,
+                 streak_key="unknown_streak"):
     """批207：streak=同 head 的 UNKNOWN 连续轮数（defer 态记账；其余 verdict
-    整记录覆写即自然清零）。"""
+    整记录覆写即自然清零）。批218：streak_key 参数化——crash 态同机制记账
+    （crash_streak），复评成功整记录覆写即自愈清零。"""
     rec = {"head": head, "verdict": verdict,
            "at": __import__("time").strftime("%F %T")}
     if streak is not None:
-        rec["unknown_streak"] = streak
+        rec[streak_key] = streak
     state[f"{repo}#{number}"] = rec
     try:
         json.dump(state, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
@@ -494,7 +511,10 @@ def sweep():
             # 批184 例外：CONFLICTING 随 dev 移动可自愈必须重估；
             # 批207：UNKNOWN 且已 escalate——GitHub 侧卡死等人类，封口不再重评
             # （原「非 MERGEABLE 一律重评」使 UNKNOWN 每轮重跑 hermetic+重发指令）
-            if prev.get("head") == head and prev.get("verdict") in ("merged", "escalate"):
+            # 批218：recommend（human-merge 建议合）入封口集——原每轮重评+重发
+            # "建议合并"评论（90s 刷评潜伏面）；新推送=新 head 自动复评不变
+            if prev.get("head") == head and prev.get("verdict") in (
+                    "merged", "escalate", "recommend"):
                 if mb in ("MERGEABLE", "UNKNOWN"):
                     continue
             # 批207：UNKNOWN 三态化——瞬态不判冲突/不发指令/不跑 hermetic；
@@ -510,8 +530,32 @@ def sweep():
             try:
                 v = review_pr(repo, n, {})
             except Exception as e:
-                escalated.append(f"{repo}#{n}: 自崩 {str(e)[:100]}")
-                _save_review(state, state_path, repo, n, head, "escalate")
+                # 批218：自崩≠终态裁定——评审器侧异常应可重试可自愈，与"PR 真
+                # 有问题"的 escalate 分家。三缺口补齐：置评（PR 侧 actor 可见）
+                # +journal 落账（考古断链根治）+crash 态不封口（根因修复后下轮
+                # 自动复评）。有界：连续 CRASH_MAX_STREAK 仍崩才封口 escalate
+                # 终评（防全量崩无限重试）。置评节律=首轮+封口轮，中继轮静默。
+                streak = (prev.get("crash_streak", 0) + 1
+                          if prev.get("head") == head else 1)
+                err = f"自崩 {str(e)[:100]}"
+                sealed = streak >= CRASH_MAX_STREAK
+                if streak == 1 or sealed:
+                    _comment_best_effort(repo, n, (
+                        f"机械评审自崩：{err}\n"
+                        + ("——评审器自身异常，非本 PR 问题；根因修复后下轮自动复评"
+                           "（无需重推）。" if not sealed else
+                           f"——连续 {streak} 轮自崩，封口留人类/LLM 裁决"
+                           "（评审器侧待修，与本 PR 内容无关）。")))
+                _journal({"repo": repo, "pr": n, "mode": "machine",
+                          "decision": "escalate" if sealed else "crash",
+                          "tier": "sweep",
+                          "fail_reason": f"{err}（第 {streak} 轮）"})
+                if sealed:
+                    _save_review(state, state_path, repo, n, head, "escalate")
+                else:
+                    _save_review(state, state_path, repo, n, head, "crash",
+                                 streak=streak, streak_key="crash_streak")
+                escalated.append(f"{repo}#{n}: {err}")
                 continue
             mode = v["mode"]  # 权威源=仓内 .regress（hermetic clone 读得）
             fields = {"repo": repo, "pr": n, "mode": "machine",

@@ -398,3 +398,149 @@ def test_escalation_hint_vague_carries_rewrite_recipe():
     h2 = pr_gate.escalation_hint("判据核对失败: 3/5")
     assert "转写配方" not in h2 and h2 != ""
     assert pr_gate.escalation_hint("hermetic exit0") == ""
+
+
+# ─── 批218：自崩路径三缺口（crash 态分家+置评+落账+有界自愈） ───
+# 标本=tongtu PR#159：11:15 崩（批212 字段病）→零置评零落账+崩即记 escalate
+# 被批207 去重封口→11:17 根修后永不复评→人肉双跑复核（"评审器零置评"）。
+
+def _sweep_env(monkeypatch, tmp_path, pr_entry, review_fn, gh_mock=None):
+    """批218 sweep 测试环境：注册表+态文件+全 best-effort 静默。"""
+    import json as _json
+    reg = tmp_path / "reg.json"
+    reg.write_text(_json.dumps([{"repo": "o/r", "agent_login": "a1"}]),
+                   encoding="utf-8")
+    st_path = tmp_path / "st.json"
+    st_path.write_text("{}", encoding="utf-8")
+    gh_calls, journals = [], []
+
+    def _gh(args):
+        gh_calls.append(list(args))
+        if args[:3] == ["pr", "list", "-R"]:
+            return _json.dumps([pr_entry])
+        if args[:2] == ["pr", "view"]:  # view N -R …（参数序与 list 不同）
+            return _json.dumps({"body": ""})
+        return ""
+
+    monkeypatch.setattr(pr_gate, "REGISTRY", str(reg))
+    monkeypatch.setattr(pr_gate, "_review_state",
+                        lambda: (_json.load(open(st_path)), str(st_path)))
+    monkeypatch.setattr(pr_gate, "_journal", lambda f: journals.append(f))
+    monkeypatch.setattr(pr_gate, "_notify", lambda t, b: None)
+    monkeypatch.setattr(pr_gate, "SUPERAGENT_DB", str(tmp_path / "no.db"))
+    monkeypatch.setattr(pr_gate, "_gh", gh_mock or _gh)
+    monkeypatch.setattr(pr_gate, "review_pr", review_fn)
+    return gh_calls, journals, st_path
+
+
+def _comments(gh_calls):
+    return [c[-1] for c in gh_calls if c[:2] == ["pr", "comment"]]
+
+
+def test_sweep_crash_lifecycle_comment_journal_seal(monkeypatch, tmp_path):
+    """自崩生命周期：首轮置评一次+journal crash 落账→中继轮静默 streak 递增
+    →第 4 轮封口 escalate+终评置评→此后同 head 封口零重评。"""
+    import json as _json
+
+    def _boom(repo, n, cfg):
+        raise RuntimeError("headRefKey 非法字段（批212 病灶回放）")
+
+    pr = {"number": 159, "headRefOid": "h1", "mergeable": "MERGEABLE"}
+    gh_calls, journals, st_path = _sweep_env(monkeypatch, tmp_path, pr, _boom)
+
+    # 轮 1：崩——置评一条（自崩+自愈说明）+journal decision=crash+态 crash/1
+    assert pr_gate.sweep() == 1
+    cs = _comments(gh_calls)
+    assert len(cs) == 1 and "机械评审自崩" in cs[0] and "自动复评" in cs[0]
+    assert journals[-1]["decision"] == "crash" and "自崩" in journals[-1]["fail_reason"]
+    rec = _json.load(open(st_path))["o/r#159"]
+    assert rec["verdict"] == "crash" and rec["crash_streak"] == 1
+
+    # 轮 2-3：仍崩——不置评不刷屏，仅 streak 递增（journal 每轮落账供考古）
+    pr_gate.sweep()
+    pr_gate.sweep()
+    assert len(_comments(gh_calls)) == 1
+    rec = _json.load(open(st_path))["o/r#159"]
+    assert rec["verdict"] == "crash" and rec["crash_streak"] == 3
+
+    # 轮 4：封口——escalate 终态+第二条置评（明示封口）+journal decision=escalate
+    assert pr_gate.sweep() == 1
+    cs = _comments(gh_calls)
+    assert len(cs) == 2 and "连续 4 轮" in cs[1] and "封口" in cs[1]
+    assert journals[-1]["decision"] == "escalate" and "第 4 轮" in journals[-1]["fail_reason"]
+    assert _json.load(open(st_path))["o/r#159"]["verdict"] == "escalate"
+
+    # 轮 5：同 head 已封口——零重评零置评（仅 pr list 枚举）
+    n_calls = len(gh_calls)
+    assert pr_gate.sweep() == 0
+    assert len(gh_calls) == n_calls + 1
+    assert not _comments(gh_calls[n_calls:])
+
+
+def test_sweep_crash_then_heal_overwrites_verdict(monkeypatch, tmp_path):
+    """自愈钉（PR#159 本可如此）：崩一轮→根因修复→下轮复评成功走正常档位
+    （merged 覆写 crash 态，streak 清零）。"""
+    import json as _json
+    calls = {"n": 0}
+
+    def _flaky(repo, n, cfg):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("gh pr view 失败: boom")
+        return {"mechanical_pass": True, "fail_reason": "", "conflict": False,
+                "mode": "auto-merge", "count_txt": "5/5", "passed": 5, "total": 5}
+
+    pr = {"number": 159, "headRefOid": "h1", "mergeable": "MERGEABLE"}
+    gh_calls, journals, st_path = _sweep_env(monkeypatch, tmp_path, pr, _flaky)
+
+    assert pr_gate.sweep() == 1                      # 崩轮：升级口径（有自崩）
+    assert pr_gate.sweep() == 0                      # 复评成功：合并，无升级
+    rec = _json.load(open(st_path))["o/r#159"]
+    assert rec["verdict"] == "merged" and "crash_streak" not in rec
+    assert any(c[:2] == ["pr", "merge"] for c in gh_calls)  # 真合并发生
+
+
+def test_sweep_recommend_seals_same_head(monkeypatch, tmp_path):
+    """批218 伴生：recommend（human-merge 建议合）同 head 封口——原每 90s
+    重评+重发"建议合并"（刷评潜伏面，注册表现无此档位未咬过）。"""
+    import json as _json
+
+    def _ok(repo, n, cfg):
+        return {"mechanical_pass": True, "fail_reason": "", "conflict": False,
+                "mode": "human-merge", "count_txt": "3/3", "passed": 3, "total": 3}
+
+    pr = {"number": 7, "headRefOid": "h1", "mergeable": "MERGEABLE"}
+    gh_calls, _, st_path = _sweep_env(monkeypatch, tmp_path, pr, _ok)
+
+    pr_gate.sweep()
+    assert len(_comments(gh_calls)) == 1 and "建议合并" in _comments(gh_calls)[0]
+    assert _json.load(open(st_path))["o/r#7"]["verdict"] == "recommend"
+    n_calls = len(gh_calls)
+    pr_gate.sweep()                                   # 同 head：封口不重评
+    assert len(gh_calls) == n_calls + 1
+    assert not _comments(gh_calls[n_calls:])
+
+
+def test_sweep_crash_comment_failure_is_best_effort(monkeypatch, tmp_path):
+    """FP1：置评信道本身坏（gh 抛异常）不让 sweep 崩——journal 落账兜底，
+    态照记（下轮仍重评），WeCom 摘要仍带自崩。"""
+
+    def _boom(repo, n, cfg):
+        raise RuntimeError("评审器内伤")
+
+    pr = {"number": 1, "headRefOid": "h1", "mergeable": "MERGEABLE"}
+
+    def _gh_comment_broken(args):
+        if args[:2] == ["pr", "comment"]:
+            raise RuntimeError("gh comment 网络不可达")
+        import json as _json
+        if args[:3] == ["pr", "list", "-R"]:
+            return _json.dumps([pr])
+        return ""
+
+    gh_calls, journals, st_path = _sweep_env(
+        monkeypatch, tmp_path, pr, _boom, gh_mock=_gh_comment_broken)
+    assert pr_gate.sweep() == 1                       # 不抛：best-effort 吞置评失败
+    import json as _json
+    rec = _json.load(open(st_path))["o/r#1"]
+    assert rec["verdict"] == "crash" and journals[-1]["decision"] == "crash"
