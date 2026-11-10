@@ -11,6 +11,8 @@ import sqlite3
 import sys
 import time
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import stuck_watch  # noqa: E402
 
@@ -132,8 +134,14 @@ def test_service_alive_lock_fresh(tmp_path):
     assert alive and "lock" in why
 
 
+@pytest.mark.skipif(os.name == "nt", reason=(
+    "信号 B 的 /proc cwd 读取是 Linux 专属——Windows 生产无 /proc，"
+    "listdir OSError→0 命中→信号 A 兜底（设计好的降级）。Windows 腿的"
+    "归一化验证由 cmdline 两测承担（v2.8.19 实证过）；此子例在 Windows "
+    "只剩 symlink 文件/目录重解析点的平台琐碎（v2.8.17~19 三红现场），"
+    "非生产行为。"))
 def test_service_alive_stale_lock_procs_present(tmp_path):
-    """信号 B 双保险：lock 超龄但进程边界命中在场仍活。"""
+    """信号 B 双保险：lock 超龄但进程边界命中在场仍活（Linux /proc 形态）。"""
     inst = tmp_path / "superagent-fake"
     (inst / "work" / "wo-1").mkdir(parents=True)
     lock = tmp_path / "superagent-fake.lock"
