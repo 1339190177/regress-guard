@@ -103,3 +103,113 @@ def test_main_heartbeat_zero_is_distinguishable(monkeypatch, tmp_path, capsys):
     out = capsys.readouterr().out
     assert "实例 0" in out and "running 0" in out, out
     assert not notified
+
+
+# ─── 批220：服务活性双信号+跃迁制（"running 0"分不清停摆与空闲的盲区） ───
+# 标本=11-07 周末 30h 空窗：服务停摆期间巡检照绿；主实例停摆数日零噪音可展示。
+
+import time as _time
+
+
+def _fake_proc(root, pid, cwd=None, cmdline=""):
+    d = root / str(pid)
+    d.mkdir(parents=True)
+    if cwd:
+        (d / "cwd").symlink_to(cwd)
+    if cmdline:
+        (d / "cmdline").write_bytes(cmdline.replace(" ", "\0").encode())
+    return d
+
+
+def test_service_alive_lock_fresh(tmp_path):
+    """信号 A：实例同级 <dir>.lock 目录 mtime 新鲜即活（零进程也活）。"""
+    inst = tmp_path / "superagent-fake"
+    inst.mkdir()
+    lock = tmp_path / "superagent-fake.lock"
+    lock.mkdir()
+    alive, why = stuck_watch._service_alive(
+        str(inst), proc_root=str(tmp_path / "no-proc"))
+    assert alive and "lock" in why
+
+
+def test_service_alive_stale_lock_procs_present(tmp_path):
+    """信号 B 双保险：lock 超龄但进程边界命中在场仍活。"""
+    inst = tmp_path / "superagent-fake"
+    (inst / "work" / "wo-1").mkdir(parents=True)
+    lock = tmp_path / "superagent-fake.lock"
+    lock.mkdir()
+    old = _time.time() - 20 * 3600
+    os.utime(lock, (old, old))
+    proc = tmp_path / "proc"
+    _fake_proc(proc, 101, cwd=str(inst / "work" / "wo-1"))
+    alive, why = stuck_watch._service_alive(str(inst), proc_root=str(proc))
+    assert alive and "进程在场" in why
+
+
+def test_service_alive_dead_when_no_lock_no_proc(tmp_path):
+    """双无=停，判据明示（lock 缺失/超龄且零进程）。"""
+    inst = tmp_path / "superagent-fake"
+    inst.mkdir()
+    alive, why = stuck_watch._service_alive(
+        str(inst), proc_root=str(tmp_path / "no-proc"))
+    assert not alive and "零进程" in why
+
+
+def test_proc_refs_no_substring_crosstalk(tmp_path):
+    """边界串扰钉（校准实弹）：tongtu 路径进程不得算给主实例 superagent——
+    裸子串匹配会把 superagent-tongtu 的 bash sleep 记到 superagent 头上。"""
+    base = tmp_path / "state"
+    main, tongtu = base / "superagent", base / "superagent-tongtu"
+    (tongtu / "work" / "x").mkdir(parents=True)
+    proc = tmp_path / "proc"
+    _fake_proc(proc, 1, cmdline=f'bash -c sleep 200; cd "{tongtu}/work/x"')
+    assert stuck_watch._proc_refs(str(tongtu), str(proc)) == 1
+    assert stuck_watch._proc_refs(str(main), str(proc)) == 0
+
+
+def _armed_liveness(monkeypatch, tmp_path, notified, alive_seq):
+    """活性主路径环境：无卡滞工单（stale 0=健康），_service_alive 按剧本走。"""
+    inst = _mk_instance(tmp_path, tmp_path / "sessions", stale_min_ago=0)
+    _armed(monkeypatch, tmp_path, inst, notified)
+    it = iter(alive_seq)
+    monkeypatch.setattr(stuck_watch, "_service_alive",
+                        lambda sd, **k: (next(it), "测试剧本"))
+    return inst
+
+
+def test_main_liveness_transition_alert_once_then_silent(monkeypatch, tmp_path, capsys):
+    """活→停跃迁：一次告警 rc 1；停摆持续：心跳如实展示 rc 0 不重复告警；
+    窗内假复苏再停（flap）被 REDEDUP 压制。"""
+    notified = []
+    _armed_liveness(monkeypatch, tmp_path, notified,
+                    [True, False, False, True, False])
+    st = json.load(open(stuck_watch.STATE, encoding="utf-8"))
+    st["liveness"] = {"superagent-fake": True}
+    json.dump(st, open(stuck_watch.STATE, "w", encoding="utf-8"))
+
+    assert stuck_watch.main() == 0            # 活：零发现
+    assert "活1/停0" in capsys.readouterr().out
+
+    assert stuck_watch.main() == 1            # 活→停：跃迁告警
+    assert any("服务疑似停摆" in str(x) for x in notified), notified
+    assert "活0/停1（停: superagent-fake）" in capsys.readouterr().out
+
+    assert stuck_watch.main() == 0            # 停摆持续：零新告警
+    assert "活0/停1" in capsys.readouterr().out
+
+    stuck_watch.main()                        # 假复苏：停→活不告警
+    assert "活1/停0" in capsys.readouterr().out
+    n_before = len(notified)
+    assert stuck_watch.main() == 0            # 窗内再停（flap）：REDEDUP 压制
+    assert len(notified) == n_before, notified  # 零新通知（态仍如实记停）
+    assert "活0/停1" in capsys.readouterr().out
+
+
+def test_main_liveness_bootstrap_dead_is_silent(monkeypatch, tmp_path, capsys):
+    """首 run 无记忆且判停：只记录零告警（主实例长期停摆零噪音标本）。"""
+    notified = []
+    _armed_liveness(monkeypatch, tmp_path, notified, [False])
+    assert stuck_watch.main() == 0
+    out = capsys.readouterr().out
+    assert "活0/停1（停: superagent-fake）" in out, out
+    assert not notified

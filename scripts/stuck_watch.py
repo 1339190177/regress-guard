@@ -38,6 +38,11 @@ SESSIONS = os.path.expanduser("~/.dsh/sessions")
 STALE_MIN = 20        # 转录静默阈值（分钟）
 QUEUE_STALL_H = 2     # 建单无派发阈值（小时）
 REDEDUP_H = 2         # 同工单告警去重窗（小时）
+# 批220：服务活性双信号——lock 新鲜阈值。实证节拍：活性服务对实例同级
+# <dir>.lock 目录的触碰间隔 ≤2.5h（11-07 11:41→14:12 两观测点），12h=5 倍
+# 余量。触碰是否纯心跳（长假真空闲会不会超 12h）未标定=FP1，跃迁制兜底
+# （假跃迁最多一噪，2h 去重）。
+LOCK_STALE_H = 12
 
 
 def _notify(title, body):
@@ -82,9 +87,10 @@ def _load():
         with open(STATE) as f:
             data = json.load(f)
         data.setdefault("alerted", {})  # 批207：最小态/手删键的文件不再 KeyError
+        data.setdefault("liveness", {})  # 批220：实例上轮活/停（跃迁告警的记忆面）
         return data
     except Exception:
-        return {"alerted": {}}
+        return {"alerted": {}, "liveness": {}}
 
 
 def _save(st):
@@ -96,6 +102,60 @@ def _save(st):
 def _session_path(ticket_id):
     return glob.glob(os.path.join(
         SESSIONS, "*", f"worker-{ticket_id}", "session.v4.jsonl.zstd"))
+
+
+def _proc_refs(state_dir, proc_root="/proc"):
+    """进程扫描：cwd 或 cmdline 精确目录边界命中本实例 state 目录。
+
+    批220 边界串扰标本：校准时 "superagent" 子串匹配误配了 superagent-tongtu
+    的 bash sleep 进程（子串含于更长路径）——探针必须 state_dir+"/" 前缀或
+    等值比对，绝不做裸子串。"""
+    d = state_dir.rstrip("/") + "/"
+    n = 0
+    try:
+        pids = os.listdir(proc_root)
+    except OSError:
+        return 0
+    for pid in pids:
+        if not pid.isdigit():
+            continue
+        try:
+            cwd = os.readlink(os.path.join(proc_root, pid, "cwd"))
+        except OSError:
+            cwd = ""
+        if cwd == state_dir or cwd.startswith(d):
+            n += 1
+            continue
+        try:
+            cmd = open(os.path.join(proc_root, pid, "cmdline"), "rb").read() \
+                .decode("utf-8", "replace")
+        except OSError:
+            continue
+        if d in cmd.replace("\0", " "):
+            n += 1
+    return n
+
+
+def _service_alive(state_dir, proc_root="/proc", now=None):
+    """批220 双信号活性：lock 目录 mtime 新鲜 OR 进程在场。
+
+    A（lock）：实例同级 <dir>.lock 目录被活性服务周期性触碰（停摆实例无此
+    目录——主实例标本：11-02 后零转录零进程零 lock）。
+    B（进程）：边界精确 /proc 扫描（worker 后台 job cwd 在 work/<工单>/ 下，
+    服务本体 cwd 在原型仓——B 是 lock 语义漂移时的双保险）。
+    返回 (alive, why)。"""
+    now = now if now is not None else datetime.datetime.now().timestamp()
+    lock = state_dir.rstrip("/") + ".lock"
+    try:
+        age_h = (now - os.path.getmtime(lock)) / 3600
+        if age_h < LOCK_STALE_H:
+            return True, f"lock {age_h:.1f}h 前触碰"
+    except OSError:
+        pass
+    n = _proc_refs(state_dir, proc_root)
+    if n:
+        return True, f"{n} 进程在场"
+    return False, "lock 缺失/超龄且零进程"
 
 
 def main():
@@ -158,9 +218,31 @@ def main():
             healthy.append(f"{tid[:8]}({idle/60:.0f}m前活跃)")
 
     _save(st)
+    # 批220 服务活性：双信号探针+跃迁制告警——"running 0 健康 N"分不清服务
+    # 停摆与真空闲（11-07 周末 30h 空窗标本：停摆期间巡检照绿）。长期停摆
+    # （主实例）=心跳如实展示不告警；活→停跃迁才 finding（一次，REDEDUP 窗
+    # 去重）；首 run bootstrap 只记录；停→活只记录（重启是好事）。
+    alive_n, dead_names = 0, []
+    for sd in dirs:
+        name = os.path.basename(sd)
+        alive, why = _service_alive(sd)
+        if alive:
+            alive_n += 1
+        else:
+            dead_names.append(name)
+        prev = st["liveness"].get(name)
+        if prev is True and not alive:
+            key = f"down:{name}"
+            if st["alerted"].get(key, "") < (now_utc - datetime.timedelta(hours=REDEDUP_H)).isoformat():
+                findings.append(f"[{name}] 服务疑似停摆（{why}）——上轮还活着")
+                st["alerted"][key] = now_utc.isoformat(timespec="seconds")
+        st["liveness"][name] = alive
+    _save(st)
     # 批207 心跳自证：输出带扫描面（实例数/工单数）——哨兵视野为空（实例 0）
-    # 与哨兵空转谎报（历史上恒 running 0）从此可区分
+    # 与哨兵空转谎报（历史上恒 running 0）从此可区分；批220 再扩服务活性面
     line = (f"卡滞哨：实例 {len(dirs)} 工单 {len(tickets)}｜running {running} 健康 {len(healthy)}"
+            f"｜服务 活{alive_n}/停{len(dead_names)}"
+            + (f"（停: {', '.join(dead_names)}）" if dead_names else "")
             + (f"｜{', '.join(healthy)}" if healthy else ""))
     if findings:
         _journal("卡滞哨发现：" + "；".join(findings))
