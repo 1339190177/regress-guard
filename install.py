@@ -111,6 +111,14 @@ def copy_files() -> None:
     for n in sorted(os.listdir(tpl_src)):  # v1.26.1：全部模板（缺部署会断 init 链）
         if n.endswith(".md"):
             shutil.copy2(os.path.join(tpl_src, n), tpl_dst)
+    # 批222：装机树版本档随装刷新——.zcode-plugin/plugin.json 曾由市场形态安装器
+    # （或旧流程）留档而拷贝段不覆盖，冻结在首装版本（标本：残档 2.8.4 vs
+    # .source 2.8.21，run68 取证被骗两次）。.source 仍是 post_install_check 的
+    # 优先真源；本刷新让两档恒一致，未知读者不再读到失真版本。
+    zp_dst = os.path.join(HOOK_HOME, ".zcode-plugin")
+    os.makedirs(zp_dst, exist_ok=True)
+    shutil.copy2(os.path.join(PLUGIN_ROOT, ".zcode-plugin", "plugin.json"),
+                 os.path.join(zp_dst, "plugin.json"))
     # chmod +x 保险（Windows 上等价 no-op，不失败）
     for n in ENTRY_SCRIPTS:
         try:

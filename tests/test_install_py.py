@@ -65,6 +65,25 @@ def test_install_lays_out_selfheal_in_lib(tmp_path):
     assert not (hook_home / "self_heal.py").exists(), "根位残留（120 病例）"
 
 
+def test_install_refreshes_stale_installed_plugin_json(tmp_path):
+    """批222：装机树版本档随装刷新——预埋失真残档（标本：市场形态留档冻结在
+    首装版本，install.py 拷贝段从不覆盖，取证读出 2.8.4 而真身已 2.8.21）。"""
+    zh = _sandbox(tmp_path)
+    hook_home = zh / "regress-guard-hooks"
+    stale = hook_home / ".zcode-plugin" / "plugin.json"
+    stale.parent.mkdir(parents=True)
+    stale.write_text(json.dumps({"name": "regress-guard-hooks",
+                                 "version": "0.0.1"}), encoding="utf-8")
+    _install(zh)
+    got = json.loads(stale.read_text(encoding="utf-8"))
+    src = json.loads(open(os.path.join(ROOT, ".zcode-plugin", "plugin.json"),
+                          encoding="utf-8").read())
+    assert got["version"] == src["version"], (
+        f"装机树版本档未随装刷新（残档冻结：{got['version']} != 源仓 "
+        f"{src['version']}——取证误导面）")
+    assert got == src, "全量覆盖语义：内容应与源仓 plugin.json 完全一致"
+
+
 def test_uninstall_zero_residue(tmp_path):
     """卸载后 config 零 regress 痕迹 + hook 目录/命令清除。"""
     zh = _sandbox(tmp_path)
