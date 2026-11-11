@@ -35,6 +35,30 @@ def test_dist_excludes_dev_and_keeps_manifest():
                     and "38046" not in t, p
 
 
+def test_whitelist_excludes_real_repo_caches_and_unlisted():
+    """批224：白名单制——真仓实存的事故三凶（.mypy_cache/.ruff_cache/.zcode，
+    2026-11-11 PR#34 同步泄漏实证）与一切未点名顶层件均不进载荷；点名面
+    （根件/scripts 十件）全在场（正向契约——显式少带=红，静默多带=不可能）。"""
+    r = subprocess.run([sys.executable, SCRIPT], cwd=ROOT, capture_output=True,
+                       text=True, encoding="utf-8", errors="replace", timeout=120)
+    assert r.returncode == 0, r.stderr
+    assert "自检过" in r.stdout, r.stdout[-400:] + r.stderr[-200:]
+    dist = os.path.join(ROOT, "dist", "plugins", "regress-guard")
+    for culprit in (".mypy_cache", ".ruff_cache", ".zcode", "__pycache__",
+                    ".pytest_cache"):
+        assert not os.path.exists(os.path.join(dist, culprit)), culprit
+    for unlisted in ("pyproject.toml", "pytest.ini", "validate.sh", "tests",
+                     "deploy", "marketplace.json", ".github"):
+        assert not os.path.exists(os.path.join(dist, unlisted)), unlisted
+    for leaked in ("publish.py", "gen_reference.py", "prepare_marketplace.py"):
+        assert not os.path.exists(os.path.join(dist, "scripts", leaked)), leaked
+    for need in ("LICENSE", "install.py", "uninstall.py", "install.sh",
+                 "requirements-dev.txt", "hooks/hooks.json",
+                 ".zcode-plugin/plugin.json", "scripts/post_install_check.py",
+                 "scripts/install_dsh.py", "scripts/check_docs.py"):
+        assert os.path.exists(os.path.join(dist, need)), need
+
+
 def test_marketplace_entry_shape():
     r = subprocess.run([sys.executable, SCRIPT], cwd=ROOT,
                        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
