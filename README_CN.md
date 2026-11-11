@@ -115,6 +115,19 @@ ignored），AI 无投票权——门禁数字不自己给自己打分，比厂�
 | **需求判据层（软引导）** | 验收标准节（判据/证据/状态——"根治/更好"类词必须挂判据，非功能底线需求阶段定型）+ 设计备选卡（没有备选=没想过）；未门禁化——误用病例出现再议 | /regress-plan 4.8 · verify |
 | **产品适定性层（软引导）** | 产品上下文卡（用户/价值观人类填，行业惯例顾问 scout 起草，永不删人类段）+ 草图先行（用户可见功能卡片必备「所见」，否决在草图不在实现后）+ design_rejected 学费化石+ 预审第四问必带搜索（scout 不可用则标注，不以无搜索充数） | /regress-plan 2a·5a · learn |
 
+## 多宿主与机器生态（v2.4+）
+
+上表是单会话内的治理链；v2.4 起插件长出第二条腿——**多宿主与机器自治面**
+（本节详述中文版定位；英文 README 保持短脸面只列要点）：
+
+| 能力族 | 实现方式 | 自哪个版本 |
+|--------|---------|-----------|
+| **dsh 双宿主** | DeepSeek dsh 桌面版原生插件轨道（五拦截点：pre/post-execute+session-start+pre-step+turn-stopping）；web/headless/superagent 三 profile；桥兼容 `--mode bridge`（[docs/dsh-support.md](docs/dsh-support.md)） | v2.4.0（批166）起，v2.6.0 默认原生 |
+| **PR 机械评审** | pr_gate：90 秒 systemd 兜底扫描+事件驱动，mergeable 三态、冲突自处理引擎（单槽串行+熔断 agent 接力）、同因重评幂等闸、升级评论附判据教学（[docs/pr-auto-review.md](docs/pr-auto-review.md)） | v2.6.x 起，批184/207/214/220 递进 |
+| **效果跟踪与服务活性** | effect_track：容器清理/磁盘压力 GC（超阈回收终态无主树，ui-evidence 归档校验）/首过率与新会话摩擦遥测；stuck_watch：卡滞三态+服务活性双信号（lock 目录 mtime OR /proc 精确边界），活→停跃迁一次性告警 | 批208-221 渐进 |
+| **会话身份层** | session_relay 会话身份中继（钩子侧盖章/agent 侧读）；my_sids 身份集合=env∪新鲜 relay（双 id 工件根治——长对话续接换平台号而 shell env 停旧号不再自拦）；清单 lease 租约跨会话协作；双清单并存归因引擎（交集评分+全序决胜） | 批211-218 |
+| **Windows 对称与编码** | PowerShell 三方言递归删目标判定（与 POSIX rm -rf 对称——外部用户三轮反馈标本）；PYTHONUTF8 进程级+父进程九调用位显式 encoding+AST ratchet 测试（subprocess text 缺 encoding 当场红） | 批195/206 |
+
 ## 命令
 
 | 命令 | 作用 |
@@ -157,7 +170,7 @@ ignored），AI 无投票权——门禁数字不自己给自己打分，比厂�
 
 **实况（由 gen_reference.py 生成，勿手改本区）**
 
-- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：563 个
+- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：1051 个
 
 | 命令 | 说明 |
 |---|---|
@@ -174,7 +187,7 @@ ignored），AI 无投票权——门禁数字不自己给自己打分，比厂�
 | `/regress-stats` | 健康报表：门禁拦截/债务/规律命中/僵尸清单/钩子活性一屏读（观测期仪表盘，只读不改） |
 | `/regress-trace` | 查看交付链：需求→会话→事件→提交 的可追溯视图（文本版 Inspector） |
 | `/regress-track` | 对比 git diff 发现 F3 并直接回写（AI 完成修改后自动执行，不需用户手动触发） |
-| `/regress-uninstall` | 卸载 regress-guard（清理用户级配置 + hook + skill + 命令） |
+| `/regress-uninstall` | 卸载 regress-guard（清理用户级配置 + hook + 命令） |
 | `/regress-update` | 检查并更新 regress-guard 到最新版（手动触发；SessionStart 也会自动检测） |
 | `/regress-verify` | 跑测试预览结果（提交时 hook 也会自动跑；测试失败 AI 应自行修复重跑） |
 
@@ -190,4 +203,9 @@ ignored），AI 无投票权——门禁数字不自己给自己打分，比厂�
   钉官方域；无 MCP、无遥测上传、无第三方分析
 - **Hook 面**：PreToolUse（提交门禁/边界守卫/执行阀）、PostToolUse（清单回写桥）、
   UserPromptSubmit（治理上下文）、SessionStart（自愈）、Stop（轮末警示）
+- **常驻定时器（可选组件，v2.6+ 生态）**：PR 评审（pr-gate，90 秒兜底扫描）、
+  效果跟踪（effect_track）、服务活性（stuck-watch）、提案扫描（proposal-sweep）
+  四个 systemd **用户级**单元——仅在你显式启用对应生态（PR 评审/效果跟踪）时
+  安装，全部 `systemctl --user disable --now <单元>` 可停、`~/.config/systemd/user/`
+  可查，不碰系统级
 - **逃生**：`/regress-bypass N` 分钟级限时赦免（留债审计）；各特性独立 env 开关

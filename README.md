@@ -39,12 +39,22 @@ workflow: **the commit**.
   accuracy. Public benchmark: 82 cases / 13 families, see [benchmarks/](benchmarks/).
 - **Self-healing**: session start compares the installed copy against the source
   repo; version drift is announced, not silently tolerated.
+- **Dual-host**: the same guard chain also runs as a native plugin on DeepSeek
+  dsh desktop (five interception points; web/headless/superagent profiles).
+- **Machine PR-review loop (optional)**: a 90-second systemd user sweep
+  mechanically triages agent PRs — mergeable checks, a conflict self-resolution
+  engine, and same-cause re-review idempotence keep the loop noise-free.
+- **Session identity layer**: manifest leases plus a session relay make
+  cross-session collaboration safe — a continued conversation that mints a new
+  platform id no longer trips its own guards.
 
 ## Install
 
 **Marketplace (recommended)**: install `regress-guard` from the ZCode plugin
 marketplace — hooks activate via the host runtime, and the plugin can be
-toggled/upgraded natively.
+toggled/upgraded natively. (Listing under review upstream — see PR
+[zai-org/zcode-plugins#34](https://github.com/zai-org/zcode-plugins/pull/34);
+available via the personal-source track below in the meantime.)
 
 **Personal-source track**: add marketplace source
 `github:1339190177/regress-guard` in ZCode settings, then install.
@@ -123,6 +133,11 @@ gate-pass end to end.
 - **Hook surface**: PreToolUse (commit gate / boundary guard / execution valve),
   PostToolUse (manifest bridge), UserPromptSubmit (governance context),
   SessionStart (self-heal), Stop (end-of-turn notices)
+- **Resident timers (optional, v2.6+ ecosystem)**: PR review (pr-gate, 90 s
+  fallback sweep), effect tracking, stuck-watch liveness, proposal sweep —
+  systemd **user-level** units, installed only when you explicitly enable the
+  corresponding ecosystem; disable with `systemctl --user disable --now <unit>`,
+  inspect under `~/.config/systemd/user/`. No system-level units.
 - **Escapes**: `/regress-bypass N` gives a time-boxed amnesty (audited); each
   feature has an independent env switch
 
@@ -139,7 +154,7 @@ MIT. Third-party: none at runtime (stdlib only).
 
 **实况（由 gen_reference.py 生成，勿手改本区）**
 
-- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：1048 个
+- 命令：16 个 · hook 注册：11 个事件条目 · 测试函数：1051 个
 
 | 命令 | 说明 |
 |---|---|

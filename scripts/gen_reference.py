@@ -10,12 +10,18 @@
 用法：
   python3 scripts/gen_reference.py           # 就地重写 README 生成区
   python3 scripts/gen_reference.py --check   # 仅校验，不一致退出 1（validate 用）
+  python3 scripts/gen_reference.py --init    # 显式为缺区文件建生成区（默认缺区=报错）
+
+批223：双 README 同刷（README.md + README_CN.md）——单文件设计时代 CN 从未被
+刷新，生成区烂在 563 例（真身 1048）无人叫红；缺区一律报错非零（顾问预审：
+静默插入=把缺区错误伪装成成功，563 病例同族），显式 --init 才建区。
 """
 import os
 import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TARGETS = ("README.md", "README_CN.md")
 BEGIN = "<!-- generated: reference start · 本区由 scripts/gen_reference.py 生成，勿手改 -->"
 END = "<!-- generated: reference end -->"
 
@@ -77,32 +83,44 @@ def render():
     return "\n".join(lines)
 
 
-def apply(readme_path=None, check=False):
+def apply(readme_path=None, check=False, init=False):
     path = readme_path or os.path.join(ROOT, "README.md")
+    name = os.path.basename(path)
     content = open(path, encoding="utf-8").read()
     expected = render()
     pattern = re.compile(re.escape(BEGIN) + r".*?" + re.escape(END), re.DOTALL)
     if not pattern.search(content):
-        new = content.rstrip() + "\n\n" + expected + "\n"
-        if check:
-            print("gen_reference: README 缺生成区（先跑不带 --check 的本脚本）", file=sys.stderr)
+        # 批223：缺区=报错非零（含非 check 模式）——静默插入会把路径笔误/markers
+        # 被删再次伪装成成功；显式 --init 才建区
+        if not init:
+            print(f"gen_reference: {name} 缺生成区（显式创建："
+                  f"python3 scripts/gen_reference.py --init）", file=sys.stderr)
             return 1
+        new = content.rstrip() + "\n\n" + expected + "\n"
         open(path, "w", encoding="utf-8").write(new)
-        print(f"gen_reference: 生成区已插入（{len(_commands())} 命令）")
+        print(f"gen_reference: {name} 生成区已插入（{len(_commands())} 命令）")
         return 0
     if check:
         current = pattern.search(content).group(0)
         if current != expected:
-            print("gen_reference: 生成区与实况不一致——跑 python3 scripts/gen_reference.py 更新",
-                  file=sys.stderr)
+            print(f"gen_reference: {name} 生成区与实况不一致——"
+                  f"跑 python3 scripts/gen_reference.py 更新", file=sys.stderr)
             return 1
-        print("gen_reference: 生成区一致 ✓")
+        print(f"gen_reference: {name} 生成区一致 ✓")
         return 0
     new = pattern.sub(lambda _: expected, content, count=1)
     open(path, "w", encoding="utf-8").write(new)
-    print(f"gen_reference: 生成区已刷新（{len(_commands())} 命令）")
+    print(f"gen_reference: {name} 生成区已刷新（{len(_commands())} 命令）")
     return 0
 
 
+def apply_all(check=False, init=False):
+    """批223：双 README 逐个过——退出码取或（任一红即红，validate 消费）。"""
+    rc = 0
+    for name in TARGETS:
+        rc |= apply(readme_path=os.path.join(ROOT, name), check=check, init=init)
+    return rc
+
+
 if __name__ == "__main__":
-    sys.exit(apply(check="--check" in sys.argv))
+    sys.exit(apply_all(check="--check" in sys.argv, init="--init" in sys.argv))
