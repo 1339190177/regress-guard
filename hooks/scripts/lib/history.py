@@ -78,7 +78,7 @@ def _maybe_archive(regress_dir, history_path, max_events=500):
     try:
         if os.path.getsize(history_path) < max_events * 80:
             return  # 快路径：体积远未到阈值，不可能超条数
-        with open(history_path, encoding="utf-8") as f:
+        with open(history_path, encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
         if len(lines) <= max_events:
             return
@@ -101,7 +101,7 @@ def load_history(regress_dir):
     if not os.path.exists(history_path):
         return events
     try:
-        with open(history_path, encoding="utf-8") as f:
+        with open(history_path, encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if line:
@@ -420,7 +420,7 @@ def telemetry(regress_dir):
     hp = os.path.join(regress_dir, "history.jsonl")
     try:
         evs = [json.loads(ln) for ln in
-               open(hp, encoding="utf-8").read().splitlines() if ln.strip()]
+               open(hp, encoding="utf-8", errors="replace").read().splitlines() if ln.strip()]
         out["history"] = {"file": "history.jsonl", "fields": "event/timestamp",
                           "events": len(evs),
                           "last": evs[-1].get("event") if evs else None,
@@ -430,7 +430,7 @@ def telemetry(regress_dir):
     jp = os.path.join(regress_dir, "journal", "events.jsonl")
     try:
         evs = [json.loads(ln) for ln in
-               open(jp, encoding="utf-8").read().splitlines() if ln.strip()]
+               open(jp, encoding="utf-8", errors="replace").read().splitlines() if ln.strip()]
         out["journal"] = {"file": "journal/events.jsonl", "fields": "kind/ts",
                           "events": len(evs),
                           "last": evs[-1].get("kind") if evs else None,
@@ -466,7 +466,7 @@ def feature_fire_health(regress_dir, registry_path=None):
     events = load_history(regress_dir)
     jp = os.path.join(regress_dir, "journal", "events.jsonl")
     try:
-        with open(jp, encoding="utf-8") as f:
+        with open(jp, encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if not line:

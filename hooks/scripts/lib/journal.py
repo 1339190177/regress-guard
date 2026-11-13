@@ -82,7 +82,7 @@ def load_journal(project_dir):
     path = journal_path(project_dir)
     events = []
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if not line:

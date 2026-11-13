@@ -78,25 +78,35 @@ def relay_fresh_sid(project_dir, max_age_minutes=5):
     return sid if 0 <= age <= max_age_minutes * 60 else ""
 
 
-def my_sids(project_dir, max_age_minutes=5):
-    """批218 根治档：守卫侧双源身份（env ∪ relay，冲突以 relay 真身为准）。
+def my_sids(project_dir, max_age_minutes=5, payload_sid=None):
+    """批225（issue#8）：守卫侧身份集——payload 锚定优先，冲突不弃 env。
 
-    双 id 工件：长对话续接后平台换会话号而 shell 快照 env 停留旧号
-    （run65-67/217 四次自拦标本）。语义真源=docs/会话身份语义.md：
-    ① 单源（任一在场）→ 该源即身份（relay 无 id 冷启回退 env）；
-    ② 双源一致 → 同一 id；
-    ③ 双源冲突（新鲜 relay≠env）→ relay 真身为准，env 陈旧即弃——
-      relay 每轮写后重盖=最新真值，Bash 写通道对真身会话直通，
-      不再出现「中继盖真身 id→守卫比 env 旧 id→误拦」对抗循环。
-    只读判等专用：不写回不继承（防中继回翻污染持久化戳——顾问条件）。
+    语义真源=docs/会话身份语义.md。三级：
+    ① payload_sid 在场（钩子进程 stdin 载荷真号，两宿主皆然）→
+      {payload} ∪ {env 若在}——payload=当前真身锚点；env 保留兜 ZCode
+      续接旧戳清单（env 是自有谱系旧号，从不是他会话号——弃 env=双 id
+      自拦回归）。**relay 不进集**：其「无载荷语境下猜真身」的使命已被
+      payload 取代，且 DSH 同项目多 agent 会话共享 relay 被 last-writer-wins
+      踩踏（issue#8 实测 2-5 分钟/次）——带他会话噪音。
+    ② 无 payload（agent 侧 CLI 等）→ env ∪ 新鲜 relay 并集，冲突不弃 env
+      ——批218 根治档「冲突以 relay 真身为准 env 即弃」的前提（env 恒陈旧）
+      是 ZCode 续接特例；DSH 每钩子/工具进程 env 皆真身，弃 env=弃真身
+      →自己拦自己（issue#8 主诉）。
+    ③ 单源 → 该源即身份。
+    只读判等专用：不写回不继承（防中继回翻污染持久化戳）。
+    残留已知面：无 payload 路径的并集含他会话新鲜 relay=误放窗口（有界
+    5min，批218 前既有语义；写者指纹/单调序号=定稿 backlog 不变）。
     """
     env_sid = sid_from_env()
-    relay_sid = relay_fresh_sid(project_dir, max_age_minutes)
-    if relay_sid:
-        if env_sid and relay_sid != env_sid:
-            return {relay_sid}  # 冲突：relay 真身为准，env 陈旧即弃
-        ids = {relay_sid}
+    if payload_sid:
+        ids = {payload_sid}
         if env_sid:
-            ids.add(env_sid)  # 一致或 env 缺省：并集（同号时即单元素）
+            ids.add(env_sid)
         return ids
-    return {env_sid} if env_sid else set()
+    relay_sid = relay_fresh_sid(project_dir, max_age_minutes)
+    ids = set()
+    if env_sid:
+        ids.add(env_sid)
+    if relay_sid:
+        ids.add(relay_sid)
+    return ids

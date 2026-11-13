@@ -49,7 +49,7 @@ def _load():
     """重放账本：返回 (待决 dict, 已决 dict)。坏行跳过（台账是增强不是依赖）。"""
     adds, resolves = {}, {}
     try:
-        with open(_path(), encoding="utf-8") as f:
+        with open(_path(), encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -141,7 +141,7 @@ def merge_note(nid):
 
 def count_merged():
     try:
-        with open(_path(), encoding="utf-8") as f:
+        with open(_path(), encoding="utf-8", errors="replace") as f:
             return sum(1 for line in f if '"merge_into"' in line)
     except (IOError, OSError):
         return 0

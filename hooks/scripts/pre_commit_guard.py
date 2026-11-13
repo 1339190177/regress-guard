@@ -679,7 +679,10 @@ def main():
         materialize_tool_input(_pl)
         raw_input = json.dumps(_pl) if _pl else raw_input
     except Exception:
-        pass
+        _pl = {}
+    # 批225（issue#8）：载荷真号锚点——钩子 stdin 两宿主皆带 session_id，
+    # 供身份集合 my_sids(payload_sid=…) 判等（不再依赖 relay 猜真身）
+    payload_sid = str(_pl.get("session_id") or "") if isinstance(_pl, dict) else ""
     if not is_git_commit(raw_input):
         emit_pass()
 
@@ -880,11 +883,12 @@ def main():
     manifest = None
     manifest_id = ""
     my_sid = _session_id()
-    # 批218 根治档：身份集合（env∪relay，冲突以 relay 真身为准——env 陈旧
-    # 即弃；语义真源 docs/会话身份语义.md）——判等一律走集合
+    # 批225（issue#8）：身份集合=payload 锚定（{payload}∪{env}，relay 退出
+    # 判等——DSH 多会话 relay 踩踏标本）；无载荷回退 env∪新鲜 relay 并集
+    # （冲突不弃 env）；语义真源 docs/会话身份语义.md
     try:
         from session_relay import my_sids
-        my_ids = my_sids(regress_dir)
+        my_ids = my_sids(regress_dir, payload_sid=payload_sid or None)
     except ImportError:
         my_ids = {my_sid} if my_sid else set()
     my_ids.discard("")
@@ -1544,7 +1548,7 @@ def main():
         jevents = []
         try:
             with open(os.path.join(regress_dir, "journal", "events.jsonl"),
-                      encoding="utf-8") as f:
+                      encoding="utf-8", errors="replace") as f:
                 for line in f:
                     line = line.strip()
                     if line:

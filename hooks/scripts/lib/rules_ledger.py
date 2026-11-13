@@ -306,7 +306,7 @@ def case(project_dir, top=5):
     fires = {}
     try:
         with open(os.path.join(project_dir, ".regress", "history.jsonl"),
-                  encoding="utf-8") as f:
+                  encoding="utf-8", errors="replace") as f:
             for line in f:
                 try:
                     ev = json.loads(line)

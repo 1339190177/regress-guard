@@ -436,7 +436,7 @@ def _stats():
     total = ok = 0
     by_event = {}
     try:
-        with open(ledger, encoding="utf-8") as f:
+        with open(ledger, encoding="utf-8", errors="replace") as f:
             for line in f:
                 m = re.match(r"^\d{2}-\d{2} \d{2}:\d{2}:\d{2} errcode=(\d+)", line)
                 if not m:

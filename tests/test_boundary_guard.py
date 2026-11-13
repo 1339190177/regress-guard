@@ -44,16 +44,18 @@ def make_project(tmp_path, with_boundary=True, status="in-progress",
     return proj
 
 
-def run_guard(proj, file_path, tool="Edit", extra_env=None):
+def run_guard(proj, file_path, tool="Edit", extra_env=None, payload=None):
     # 批183 换序后 ZCODE_ 压过 CLAUDE_——交互环境 session 带 ZCODE_PROJECT_DIR
     # 指真仓，测试必须剥离两根变量再设自己的（与 test_pre_commit_guard 同律）
     env = {**os.environ}
     env.pop("ZCODE_PROJECT_DIR", None)
     env["CLAUDE_PROJECT_DIR"] = str(proj)
     env.update(extra_env or {})
+    data = {"tool_name": tool, "tool_input": {"file_path": str(file_path)}}
+    data.update(payload or {})  # 批225：payload session_id 注入位（issue#8）
     return subprocess.run(
         [sys.executable, GUARD],
-        input=json.dumps({"tool_name": tool, "tool_input": {"file_path": str(file_path)}}),
+        input=json.dumps(data),
         capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=10,
     )
 
@@ -535,17 +537,37 @@ def test_dual_id_relay_real_passes_bash_write(tmp_path):
     assert r.returncode == 0
 
 
-def test_dual_id_conflict_env_discarded(tmp_path):
-    """冲突时 env 陈旧即弃：清单盖旧 env 号而 relay 已换新真身 → 判他会话拦。
-
-    防误认方向：旧号属历史会话，不得因 env 残留被当自己。
-    """
+def test_dual_id_conflict_union_not_block(tmp_path):
+    """批225（issue#8）：冲突不弃 env——清单盖旧 env 号（续接前所戳）而
+    relay 已换新真身 → 并集判自己放行（旧号属自有谱系；弃 env=DSH 多会话
+    误拦 + ZCode 续接旧清单自拦双病灶。批218 根治档「env 即弃」语义退役，
+    其原测试断言的「拦」恰是 issue#8 主诉）。"""
     proj = make_project(tmp_path)
     _stamp_manifest(proj, "R1", "old-shell-id")
     _write_relay(proj, "sess-real-00003")
     r = run_guard(proj, proj / "src/auth/login.ts",
                   extra_env={"CLAUDE_SESSION_ID": "old-shell-id"})
-    assert r.returncode == 2 and "跨会话" in r.stderr
+    assert r.returncode == 0, r.stderr
+
+
+def test_payload_anchored_identity_dsh_multi_session(tmp_path):
+    """批225（issue#8）端到端：DSH 多会话形态——载荷 sid=真身 A、relay 被
+    他会话 B 踩踏（新鲜）。自己（A 戳）清单放行；他会话（B 戳）清单仍拦
+    ——payload 锚定排除 relay=误拦与误放双向收口（旧并集语义此处会放行 B）。"""
+    proj = make_project(tmp_path)
+    _write_relay(proj, "sess-B")  # 他会话踩踏中继（新鲜窗内）
+    _stamp_manifest(proj, "R1", "sess-A")
+    r1 = run_guard(proj, proj / "src/auth/login.ts",
+                   payload={"session_id": "sess-A"})
+    assert r1.returncode == 0, r1.stderr
+    # 他会话清单 R2（B 戳，同边界）——不得因 relay=B 被并入自己（误放）
+    (proj / ".regress" / "manifests" / "R2.md").write_text(
+        MANIFEST_TMPL.format(mid="R2", status="in-progress",
+                             boundary=BOUNDARY_BLOCK), encoding="utf-8")
+    _stamp_manifest(proj, "R2", "sess-B")
+    r2 = run_guard(proj, proj / "src/auth/login.ts",
+                   payload={"session_id": "sess-A"})
+    assert r2.returncode == 2 and "跨会话" in r2.stderr, r2.stderr
 
 
 def test_dual_id_no_relay_fallback_env(tmp_path):

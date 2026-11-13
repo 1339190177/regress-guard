@@ -87,7 +87,7 @@ def search(project_dir, query, days=90):
     # 源三：journal 反对语义预审化石
     jp = os.path.join(regress, "journal", "events.jsonl")
     try:
-        with open(jp, encoding="utf-8") as f:
+        with open(jp, encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if not line:

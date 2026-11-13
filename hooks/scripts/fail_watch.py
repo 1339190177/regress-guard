@@ -133,7 +133,7 @@ def recent_failures(window_min=10):
     path = state_path()
     events = []
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             for line in f:
                 try:
                     events.append(json.loads(line))

@@ -439,8 +439,13 @@ def main():
 
     # 批166（dsh 桥）：工具名规范化（内部分支按 CC 大小写匹配——dsh 小写
     # 名不规范化则全线漏判=假阴性放行）
+    # 批225（issue#8）：补 absorb_session 第五接线点——docs/dsh-support.md
+    # 五钩子契约对齐（rbe/pre_commit/risk/fail 之外 boundary 缺席=CC 桥
+    # 无 env 路径跨会话检查 fail-open）
     try:
-        from host_env import canonicalize_tool_names, materialize_tool_input
+        from host_env import (absorb_session, canonicalize_tool_names,
+                              materialize_tool_input)
+        absorb_session(data)
         canonicalize_tool_names(data)
         materialize_tool_input(data)
     except ImportError:
@@ -528,12 +533,13 @@ def main():
             # v1.109 批161：租约过期的他会话清单不再拦编辑（收回跨会话保护）——
             # 死会话占边界的出口从「人工重盖戳」前移为「到期自动可动」；
             # 无 lease 块=旧语义不变（back-compat）
-            # 批218 根治档：身份判等用集合（env∪relay，冲突以 relay 真身为
-            # 准、env 陈旧即弃——run65-67/217 四次自拦标本收口）；语义真源
-            # docs/会话身份语义.md；新鲜窗 5min 由 my_sids 保证
+            # 批225（issue#8）：身份判等=payload 锚定集合（{payload}∪{env}，
+            # relay 退出守卫判等——DSH 多会话踩踏标本）；无载荷语境回退
+            # env∪新鲜 relay 并集（冲突不弃 env）；语义真源 docs/会话身份语义.md
             try:
                 from session_relay import my_sids
-                my_ids = my_sids(project_dir)
+                my_ids = my_sids(project_dir,
+                                 payload_sid=(data.get("session_id") or None))
             except ImportError:
                 my_ids = {my_sid}
             foreign = [m for m in matched

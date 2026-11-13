@@ -7,19 +7,50 @@ sys.path.insert(0, os.path.abspath(LIB))
 import session_relay  # noqa: E402
 
 
-# ─── 批218 根治档：双源身份——冲突以 relay 真身为准（env 陈旧即弃） ───
+# ─── 批218 双源身份 → 批225（issue#8）payload 锚定+冲突不弃 env ───
 
-def test_my_sids_conflict_relay_wins(tmp_path, monkeypatch):
-    """双源不一致（env 旧号+relay 新鲜真身）→ 真身为准，env 陈旧即弃。
+def test_my_sids_conflict_union_not_discard_env(tmp_path, monkeypatch):
+    """双源不一致 → 并集不弃 env（issue#8 主诉钉）。
 
-    REGRESS-261110-b9473428 根治判据：守卫判等不得再认 env 旧号——
-    否则他清单误归属（旧号属历史会话）与对抗循环（绕 Edit 通道）复发。
+    批218 根治档「冲突以 relay 真身为准 env 即弃」在 DSH 同项目多 agent
+    会话反噬：relay 被他会话 2-5 分钟踩踏一次，真身 env 被弃→自己拦自己。
+    「env 恒陈旧」是 ZCode 续接特例，不是两宿主通例。
     """
     import datetime
-    monkeypatch.setattr(session_relay, "sid_from_env", lambda: "old-shell-id")
+    monkeypatch.setattr(session_relay, "sid_from_env", lambda: "my-true-env")
     monkeypatch.setattr(session_relay, "read_relay", lambda pd: {
-        "sid": "sess-new-real", "ts": datetime.datetime.now().isoformat(timespec="seconds")})
-    assert session_relay.my_sids(str(tmp_path)) == {"sess-new-real"}
+        "sid": "other-session-relay", "ts": datetime.datetime.now().isoformat(timespec="seconds")})
+    assert session_relay.my_sids(str(tmp_path)) == {"my-true-env", "other-session-relay"}
+
+
+def test_my_sids_payload_anchors_and_excludes_relay(tmp_path, monkeypatch):
+    """批225：payload 在场=真身锚点——relay 退出判等（DSH 踩踏标本：
+    他会话新鲜 relay 不得进集合=误放方向同修）。"""
+    import datetime
+    monkeypatch.setattr(session_relay, "sid_from_env", lambda: "")
+    monkeypatch.setattr(session_relay, "read_relay", lambda pd: {
+        "sid": "other-session", "ts": datetime.datetime.now().isoformat(timespec="seconds")})
+    ids = session_relay.my_sids(str(tmp_path), payload_sid="payload-true")
+    assert ids == {"payload-true"}
+
+
+def test_my_sids_payload_unions_env_for_dual_id(tmp_path, monkeypatch):
+    """批225：payload 新号 ∪ env 旧号——ZCode 续接双 id 形态两代清单皆自己
+    （env 是自有谱系旧号，弃 env=双 id 自拦回归——顾问修正案不采纳的理由）。"""
+    monkeypatch.setattr(session_relay, "sid_from_env", lambda: "old-shell-id")
+    ids = session_relay.my_sids(str(tmp_path), payload_sid="sess-new-real")
+    assert ids == {"sess-new-real", "old-shell-id"}
+
+
+def test_my_sids_payload_with_relay_thrash_dsh(tmp_path, monkeypatch):
+    """issue#8 端到端形态：DSH 多会话（env=A 真身+relay=B 踩踏）+载荷 A
+    → 集合恰为 {A}（B 排除）——既不误拦自己也不误放他会话边界。"""
+    import datetime
+    monkeypatch.setattr(session_relay, "sid_from_env", lambda: "sess-A")
+    monkeypatch.setattr(session_relay, "read_relay", lambda pd: {
+        "sid": "sess-B", "ts": datetime.datetime.now().isoformat(timespec="seconds")})
+    ids = session_relay.my_sids(str(tmp_path), payload_sid="sess-A")
+    assert ids == {"sess-A"}
 
 
 def test_my_sids_single_source_agree(tmp_path, monkeypatch):

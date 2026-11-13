@@ -235,7 +235,7 @@ def main():
 def _recent(path, window_min):
     events = []
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             for line in f:
                 try:
                     events.append(json.loads(line))

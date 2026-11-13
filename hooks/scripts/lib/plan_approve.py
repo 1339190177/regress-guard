@@ -446,14 +446,20 @@ def main():
     at = human_at or datetime.now().isoformat(timespec="seconds")
     if not note:
         note = "产物直通（人类直接编辑 approved.at）" if human_at else "对话批准转写"
+    # 批225（issue#8）：journal 读取前置于清单写盘——读先于写不变式。
+    # 病例：旧序在写盘后读 journal，journal 遇非法字节崩 → 清单已转
+    # in-progress 而 plan_approved 事件未落 → 重跑因 status≠planning
+    # 报「无需批准」=批准记录永久缺失（崩锁）。
+    already = _already_journaled("plan_approved", mid, mdir)
+    dirty = _dirty_files(mdir)  # 批准时刻的工作区原点（思想二·基线冻结）
+
     new_content = _stamp_lease(  # v1.109 批161：批准转写同盖租约（holder=本会话）
         _stamp_session(_apply(content, "in-progress", at, note), mdir), path)  # P1#7：先算后写
     with open(path, "w", encoding="utf-8") as f:
         f.write(new_content)
 
-    dirty = _dirty_files(mdir)  # 批准时刻的工作区原点（思想二·基线冻结）
-
-    already = _already_journaled("plan_approved", mid, mdir)
+    already_post = _already_journaled("plan_approved", mid, mdir)
+    already = already or already_post  # 双检：读前置防半途崩，写后复检防窗口竞态
     ears_block, ears_n = _ears_display(path, field(fm, "tier"))
     if not already:
         journal_append("plan_approved", start_dir=mdir, manifest_id=mid, **_run_kw(fm),
